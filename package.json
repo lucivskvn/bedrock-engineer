@@ -46,7 +46,7 @@
     "chart.js": "^4.4.9",
     "cors": "2.8.5",
     "diff": "^8.0.2",
-    "electron-store": "^10.0.1",
+    "electron-store": "~8.2.0",
     "electron-updater": "^6.6.2",
     "express": "^5.1.0",
     "fix-path": "^4.0.0",

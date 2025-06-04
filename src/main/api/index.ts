@@ -17,7 +17,7 @@ interface PromiseRequestHandler {
 }
 
 function wrap(fn: PromiseRequestHandler): RequestHandler {
-  return (req, res, next) => fn(req, res, next).catch(next)
+  return (req, res, next) => fn(req, res, next).catch(next).then<void>(() => {})
 }
 
 // Error handling middleware

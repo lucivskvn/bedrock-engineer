@@ -2,6 +2,7 @@ import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import svgr from 'vite-plugin-svgr'
+// @ts-ignore TS2307: Cannot find module or its corresponding type declarations.
 import tailwindcss from '@tailwindcss/postcss' // Updated import
 
 export default defineConfig({
