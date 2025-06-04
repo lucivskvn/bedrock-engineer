@@ -2,7 +2,7 @@ import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import svgr from 'vite-plugin-svgr'
-import tailwindcss from 'tailwindcss'
+import tailwindcss from '@tailwindcss/postcss' // Updated import
 
 export default defineConfig({
   main: {
@@ -32,6 +32,7 @@ export default defineConfig({
     ],
     css: {
       postcss: {
+        // The imported 'tailwindcss' is now from '@tailwindcss/postcss'
         plugins: [tailwindcss() as any]
       }
     }
