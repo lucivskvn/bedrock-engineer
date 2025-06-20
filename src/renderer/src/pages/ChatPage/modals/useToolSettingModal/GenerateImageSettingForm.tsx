@@ -9,7 +9,8 @@ export const GenerateImageSettingForm: React.FC = () => {
   const { generateImageModel, setGenerateImageModel, awsRegion } = useSettings()
   const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string }>>([])
 
-  // リージョンが変更されたときに利用可能なモデルを取得
+  // Get available models when the region changes
+  // Translation: リージョンが変更されたときに利用可能なモデルを取得
   useEffect(() => {
     const fetchModels = async () => {
       if (awsRegion && window.api?.bedrock?.getImageGenerationModelsForRegion) {
@@ -19,7 +20,8 @@ export const GenerateImageSettingForm: React.FC = () => {
           )
           setAvailableModels(models)
 
-          // 現在選択されているモデルが利用可能なモデルに含まれていない場合、最初のモデルを選択
+          // If the currently selected model is not in the available models, select the first model
+          // Translation: 現在選択されているモデルが利用可能なモデルに含まれていない場合、最初のモデルを選択
           const modelIds = models.map((m) => m.id)
           if (generateImageModel && !modelIds.includes(generateImageModel) && models.length > 0) {
             setGenerateImageModel(models[0].id)
@@ -34,19 +36,22 @@ export const GenerateImageSettingForm: React.FC = () => {
     fetchModels()
   }, [awsRegion, generateImageModel, setGenerateImageModel])
 
-  // モデルをプロバイダーごとにソート（すでにソート済みのものが返ってくるが念のため）
+  // Sort models by provider (although they should already be sorted, this is a precaution)
+  // Translation: モデルをプロバイダーごとにソート（すでにソート済みのものが返ってくるが念のため）
   const sortedModels = useMemo(() => {
     return [...availableModels]
   }, [availableModels])
 
-  // モデル変更のハンドラー
+  // Handler for model change
+  // Translation: モデル変更のハンドラー
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setGenerateImageModel(e.target.value)
   }
 
   return (
     <div className="prose dark:prose-invert max-w-none w-full">
-      {/* ツールの説明 */}
+      {/* Tool Description */}
+      {/* Translation: ツールの説明 */}
       <div className="mb-6 w-full">
         <p className="mb-4 text-gray-700 dark:text-gray-300">
           {t(
@@ -56,10 +61,11 @@ export const GenerateImageSettingForm: React.FC = () => {
         </p>
       </div>
 
-      {/* 設定フォーム */}
+      {/* Settings Form */}
+      {/* Translation: 設定フォーム */}
       <div className="flex flex-col gap-2 p-4 border border-gray-200 dark:border-gray-700 rounded-md mb-6 w-full">
         <div className="mb-4 w-full">
-          <Label htmlFor="generateImageModel" value={t('Image Generation Model')} />
+          <Label htmlFor="generateImageModel">{t('Image Generation Model')}</Label>
           {sortedModels.length > 0 ? (
             <Select
               id="generateImageModel"
@@ -85,7 +91,8 @@ export const GenerateImageSettingForm: React.FC = () => {
           )}
         </div>
 
-        {/* 使用上の注意 */}
+        {/* Important Notes */}
+        {/* Translation: 使用上の注意 */}
         <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 dark:border dark:border-yellow-700 rounded-md">
           <h5 className="font-medium mb-2 dark:text-yellow-300">{t('Important Notes')}</h5>
           <ul className="text-sm text-gray-700 dark:text-gray-200 space-y-1">

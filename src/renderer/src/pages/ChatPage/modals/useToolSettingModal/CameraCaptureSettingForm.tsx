@@ -6,9 +6,11 @@ import { useSettings } from '@renderer/contexts/SettingsContext'
 import { CameraConfig } from '@/types/agent-chat'
 import { CameraDeviceInfo, enumerateCameraDevices } from '@renderer/lib/camera-utils'
 
-// カメラデバイス情報の型定義（既存のCameraConfigと互換性を保つ）
+// Type definition for camera device information (maintaining compatibility with existing CameraConfig)
+// Translation: カメラデバイス情報の型定義（既存のCameraConfigと互換性を保つ）
 interface CameraInfo extends CameraDeviceInfo {
-  thumbnail?: string // base64画像データ（オプショナル）
+  thumbnail?: string // base64 image data (optional)
+  // Translation: base64画像データ（オプショナル）
 }
 
 export const CameraCaptureSettingForm: React.FC = () => {
@@ -22,13 +24,15 @@ export const CameraCaptureSettingForm: React.FC = () => {
     updateAgentAllowedCameras
   } = useSettings()
 
-  // カメラ関連の状態
+  // State related to cameras
+  // Translation: カメラ関連の状態
   const [availableCameras, setAvailableCameras] = useState<CameraInfo[]>([])
   const [allowedCameras, setAllowedCameras] = useState<CameraConfig[]>([])
   const [isLoadingCameras, setIsLoadingCameras] = useState(false)
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set())
 
-  // プレビューウィンドウの状態
+  // State of the preview window
+  // Translation: プレビューウィンドウの状態
   const [previewEnabled, setPreviewEnabled] = useState(false)
   const [previewSize, setPreviewSize] = useState<'small' | 'medium' | 'large'>('medium')
   const [previewOpacity, setPreviewOpacity] = useState(0.9)
@@ -37,7 +41,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
   >('bottom-right')
   const [previewStatus, setPreviewStatus] = useState<{ isActive: boolean }>({ isActive: false })
 
-  // Vision-capable モデルをフィルタリング（Claude と Nova シリーズ）
+  // Filter for Vision-capable models (Claude and Nova series)
+  // Translation: Vision-capable モデルをフィルタリング（Claude と Nova シリーズ）
   const visionCapableModels = useMemo(() => {
     return availableModels
       .filter(
@@ -47,7 +52,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
       .sort((a, b) => a.modelName.localeCompare(b.modelName))
   }, [availableModels])
 
-  // エージェントの許可カメラ設定を読み込み
+  // Load allowed camera settings for the agent
+  // Translation: エージェントの許可カメラ設定を読み込み
   useEffect(() => {
     if (selectedAgentId) {
       const cameras = getAgentAllowedCameras(selectedAgentId)
@@ -55,15 +61,18 @@ export const CameraCaptureSettingForm: React.FC = () => {
     }
   }, [selectedAgentId, getAgentAllowedCameras])
 
-  // 画像読み込みエラーハンドラー（React状態ベース）
+  // Image load error handler (React state-based)
+  // Translation: 画像読み込みエラーハンドラー（React状態ベース）
   const handleImageError = useCallback((cameraId: string) => {
     setImageLoadErrors((prev) => new Set([...prev, cameraId]))
   }, [])
 
-  // 利用可能なカメラ一覧を取得
+  // Get list of available cameras
+  // Translation: 利用可能なカメラ一覧を取得
   const fetchAvailableCameras = useCallback(async () => {
     setIsLoadingCameras(true)
-    setImageLoadErrors(new Set()) // エラー状態をリセット
+    setImageLoadErrors(new Set()) // Reset error state
+    // Translation: エラー状態をリセット
     try {
       const cameras = await enumerateCameraDevices()
       setAvailableCameras(cameras)
@@ -75,19 +84,22 @@ export const CameraCaptureSettingForm: React.FC = () => {
     }
   }, [])
 
-  // カメラが許可されているかチェック
+  // Check if a camera is allowed
+  // Translation: カメラが許可されているかチェック
   const isCameraAllowed = (camera: CameraInfo): boolean => {
     return allowedCameras.some((allowed) => allowed.id === camera.id)
   }
 
-  // カメラの許可/非許可を切り替え
+  // Toggle camera permission (allow/disallow)
+  // Translation: カメラの許可/非許可を切り替え
   const handleCameraToggle = (camera: CameraInfo, enabled: boolean) => {
     if (!selectedAgentId) return
 
     let updatedCameras: CameraConfig[]
 
     if (enabled) {
-      // カメラを許可リストに追加
+      // Add camera to the allowed list
+      // Translation: カメラを許可リストに追加
       const newCamera: CameraConfig = {
         id: camera.id,
         name: camera.name,
@@ -95,7 +107,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
       }
       updatedCameras = [...allowedCameras.filter((c) => c.id !== camera.id), newCamera]
     } else {
-      // カメラを許可リストから削除
+      // Remove camera from the allowed list
+      // Translation: カメラを許可リストから削除
       updatedCameras = allowedCameras.filter((c) => c.id !== camera.id)
     }
 
@@ -103,7 +116,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
     updateAgentAllowedCameras(selectedAgentId, updatedCameras)
   }
 
-  // プレビューウィンドウの状態を取得
+  // Get the state of the preview window
+  // Translation: プレビューウィンドウの状態を取得
   const fetchPreviewStatus = useCallback(async () => {
     if (window.api?.camera?.getPreviewStatus) {
       try {
@@ -122,28 +136,33 @@ export const CameraCaptureSettingForm: React.FC = () => {
     }
   }, [])
 
-  // プレビューウィンドウの表示/非表示を切り替え
+  // Toggle the visibility of the preview window
+  // Translation: プレビューウィンドウの表示/非表示を切り替え
   const handlePreviewToggle = useCallback(
     async (enabled: boolean) => {
       if (!window.api?.camera) return
 
       try {
         if (enabled) {
-          // 現在利用可能なカメラデバイスを再取得
+          // Re-fetch the currently available camera devices
+          // Translation: 現在利用可能なカメラデバイスを再取得
           await fetchAvailableCameras()
 
-          // 選択された複数カメラのIDを取得
+          // Get the IDs of the selected multiple cameras
+          // Translation: 選択された複数カメラのIDを取得
           const selectedCameraIds = allowedCameras
             .filter((camera) => camera.enabled)
             .map((camera) => camera.id)
 
-          // 実際に利用可能なカメラとマッチング
+          // Match with actually available cameras
+          // Translation: 実際に利用可能なカメラとマッチング
           const availableCameraIds = availableCameras.map((camera) => camera.id)
           const validCameraIds = selectedCameraIds.filter(
             (id) => availableCameraIds.includes(id) || id === 'default'
           )
 
-          // 有効なカメラが見つからない場合はデフォルトカメラを使用
+          // Use the default camera if no valid cameras are found
+          // Translation: 有効なカメラが見つからない場合はデフォルトカメラを使用
           const cameraIds = validCameraIds.length > 0 ? validCameraIds : ['default']
 
           console.log('Preview window - Available cameras:', availableCameraIds)
@@ -191,7 +210,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
     ]
   )
 
-  // プレビューウィンドウの設定を更新
+  // Update the preview window settings
+  // Translation: プレビューウィンドウの設定を更新
   const handlePreviewSettingsUpdate = useCallback(async () => {
     if (!window.api?.camera || !previewStatus.isActive) return
 
@@ -206,14 +226,16 @@ export const CameraCaptureSettingForm: React.FC = () => {
     }
   }, [previewSize, previewOpacity, previewPosition, previewStatus.isActive])
 
-  // プレビュー設定が変更された時に自動更新
+  // Automatically update when preview settings change
+  // Translation: プレビュー設定が変更された時に自動更新
   useEffect(() => {
     if (previewStatus.isActive) {
       handlePreviewSettingsUpdate()
     }
   }, [previewSize, previewOpacity, previewPosition, handlePreviewSettingsUpdate])
 
-  // 初回読み込み時にカメラ一覧とプレビュー状態を取得
+  // Get the camera list and preview status on initial load
+  // Translation: 初回読み込み時にカメラ一覧とプレビュー状態を取得
   useEffect(() => {
     fetchAvailableCameras()
     fetchPreviewStatus()
@@ -221,7 +243,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
 
   return (
     <div className="prose dark:prose-invert max-w-none w-full">
-      {/* ツールの説明 */}
+      {/* Tool description */}
+      {/* Translation: ツールの説明 */}
       <div className="mb-6 w-full">
         <p className="mb-4 text-gray-700 dark:text-gray-300">
           {t(
@@ -231,15 +254,17 @@ export const CameraCaptureSettingForm: React.FC = () => {
         </p>
       </div>
 
-      {/* 設定フォーム */}
+      {/* Settings form */}
+      {/* Translation: 設定フォーム */}
       <div className="flex flex-col gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md mb-6 w-full">
         <h4 className="font-medium text-sm mb-2 dark:text-gray-200">
           {t('AI Image Analysis Settings')}
         </h4>
 
-        {/* LLMモデル選択 */}
+        {/* LLM model selection */}
+        {/* Translation: LLMモデル選択 */}
         <div className="w-full">
-          <Label htmlFor="cameraCaptureModel" value={t('AI Model for Image Analysis')} />
+          <Label htmlFor="cameraCaptureModel">{t('AI Model for Image Analysis')}</Label>
           <Select
             id="cameraCaptureModel"
             value={recognizeImageModel}
@@ -254,9 +279,10 @@ export const CameraCaptureSettingForm: React.FC = () => {
           </Select>
         </div>
 
-        {/* カメラ品質設定 */}
+        {/* Camera quality settings */}
+        {/* Translation: カメラ品質設定 */}
         <div className="w-full">
-          <Label htmlFor="cameraQuality" value={t('Image Quality')} />
+          <Label htmlFor="cameraQuality">{t('Image Quality')}</Label>
           <Select id="cameraQuality" className="mt-2 w-full" defaultValue="medium">
             <option value="low">{t('Low (640x480)')}</option>
             <option value="medium">{t('Medium (1280x720)')}</option>
@@ -264,7 +290,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
           </Select>
         </div>
 
-        {/* 使用方法 */}
+        {/* How to use */}
+        {/* Translation: 使用方法 */}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 dark:border dark:border-blue-700 rounded-md">
           <h5 className="font-medium mb-2 dark:text-blue-300">{t('How to Use')}</h5>
           <ul className="text-sm text-gray-700 dark:text-gray-200 space-y-1">
@@ -285,7 +312,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
           </ul>
         </div>
 
-        {/* プラットフォーム要件 */}
+        {/* Platform requirements */}
+        {/* Translation: プラットフォーム要件 */}
         <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 dark:border dark:border-green-700 rounded-md">
           <h5 className="font-medium mb-2 dark:text-green-300">{t('Platform Requirements')}</h5>
           <ul className="text-sm text-gray-700 dark:text-gray-200 space-y-1">
@@ -303,7 +331,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
         </div>
       </div>
 
-      {/* カメラアクセス許可設定 */}
+      {/* Camera access permission settings */}
+      {/* Translation: カメラアクセス許可設定 */}
       <div className="flex flex-col gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md mb-6 w-full">
         <div className="flex items-center justify-between">
           <h4 className="font-medium text-sm mb-2 dark:text-gray-200">
@@ -327,7 +356,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
           )}
         </p>
 
-        {/* カメラプレビューグリッド */}
+        {/* Camera preview grid */}
+        {/* Translation: カメラプレビューグリッド */}
         {isLoadingCameras ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100"></div>
@@ -351,19 +381,20 @@ export const CameraCaptureSettingForm: React.FC = () => {
                   key={camera.id}
                   className={`
                     relative cursor-pointer transition-all duration-200 transform hover:scale-105
-                    ${
-                      isSelected
-                        ? 'ring-2 ring-blue-500 dark:ring-blue-400 shadow-lg'
-                        : 'ring-1 ring-gray-200 dark:ring-gray-600 hover:ring-gray-300 dark:hover:ring-gray-500'
+                    ${isSelected
+                      ? 'ring-2 ring-blue-500 dark:ring-blue-400 shadow-lg'
+                      : 'ring-1 ring-gray-200 dark:ring-gray-600 hover:ring-gray-300 dark:hover:ring-gray-500'
                     }
                     rounded-lg overflow-hidden bg-white dark:bg-gray-800
                   `}
                   onClick={() => handleCameraToggle(camera, !isSelected)}
                 >
-                  {/* カメラプレビュー */}
+                  {/* Camera preview */}
+                  {/* Translation: カメラプレビュー */}
                   <div className="relative aspect-video bg-gray-100 dark:bg-gray-700">
                     {hasImageError ? (
-                      // React状態ベースのフォールバックUI
+                      // React state-based fallback UI
+                      // Translation: React状態ベースのフォールバックUI
                       <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
                         <div className="text-center">
                           <div className="text-2xl mb-1">📷</div>
@@ -386,7 +417,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
                       </div>
                     )}
 
-                    {/* 選択状態のオーバーレイ */}
+                    {/* Selected state overlay */}
+                    {/* Translation: 選択状態のオーバーレイ */}
                     {isSelected && (
                       <div className="absolute inset-0 bg-blue-500/20 dark:bg-blue-400/20 flex items-center justify-center">
                         <div className="bg-blue-500 dark:bg-blue-400 text-white rounded-full p-1">
@@ -401,13 +433,15 @@ export const CameraCaptureSettingForm: React.FC = () => {
                       </div>
                     )}
 
-                    {/* カメラ解像度情報 */}
+                    {/* Camera resolution info */}
+                    {/* Translation: カメラ解像度情報 */}
                     <div className="absolute top-1 right-1 bg-black/50 text-white text-xs px-1 py-0.5 rounded">
                       {camera.capabilities.maxWidth}×{camera.capabilities.maxHeight}
                     </div>
                   </div>
 
-                  {/* カメラ情報 */}
+                  {/* Camera info */}
+                  {/* Translation: カメラ情報 */}
                   <div className="p-3">
                     <div className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
                       {camera.name}
@@ -422,14 +456,16 @@ export const CameraCaptureSettingForm: React.FC = () => {
           </div>
         )}
 
-        {/* 許可されたカメラの数 */}
+        {/* Number of allowed cameras */}
+        {/* Translation: 許可されたカメラの数 */}
         {allowedCameras.length > 0 && (
           <div className="text-sm text-green-600 dark:text-green-400">
             {t('{{count}} camera(s) allowed', { count: allowedCameras.length })}
           </div>
         )}
 
-        {/* ヒント */}
+        {/* Hints */}
+        {/* Translation: ヒント */}
         <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 dark:border dark:border-yellow-700 rounded-md">
           <h5 className="font-medium mb-2 dark:text-yellow-300">{t('Usage Tips')}</h5>
           <ul className="text-sm text-gray-700 dark:text-gray-200 space-y-1">
@@ -441,7 +477,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
         </div>
       </div>
 
-      {/* カメラプレビューウィンドウ設定 */}
+      {/* Camera preview window settings */}
+      {/* Translation: カメラプレビューウィンドウ設定 */}
       <div className="flex flex-col gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md mb-6 w-full">
         <div className="flex items-center justify-between">
           <h4 className="font-medium text-sm mb-2 dark:text-gray-200">
@@ -463,12 +500,14 @@ export const CameraCaptureSettingForm: React.FC = () => {
           )}
         </p>
 
-        {/* プレビューウィンドウが有効な場合の設定 */}
+        {/* Settings for when the preview window is enabled */}
+        {/* Translation: プレビューウィンドウが有効な場合の設定 */}
         {previewEnabled && (
           <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border border-gray-200 dark:border-gray-600">
-            {/* ウィンドウサイズ設定 */}
+            {/* Window size settings */}
+            {/* Translation: ウィンドウサイズ設定 */}
             <div className="w-full">
-              <Label htmlFor="previewSize" value={t('Preview Window Size')} />
+              <Label htmlFor="previewSize">{t('Preview Window Size')}</Label>
               <Select
                 id="previewSize"
                 value={previewSize}
@@ -481,9 +520,10 @@ export const CameraCaptureSettingForm: React.FC = () => {
               </Select>
             </div>
 
-            {/* ウィンドウ位置設定 */}
+            {/* Window position settings */}
+            {/* Translation: ウィンドウ位置設定 */}
             <div className="w-full">
-              <Label htmlFor="previewPosition" value={t('Preview Window Position')} />
+              <Label htmlFor="previewPosition">{t('Preview Window Position')}</Label>
               <Select
                 id="previewPosition"
                 value={previewPosition}
@@ -501,9 +541,10 @@ export const CameraCaptureSettingForm: React.FC = () => {
               </Select>
             </div>
 
-            {/* 透明度設定 */}
+            {/* Opacity settings */}
+            {/* Translation: 透明度設定 */}
             <div className="w-full">
-              <Label htmlFor="previewOpacity" value={t('Window Opacity')} />
+              <Label htmlFor="previewOpacity">{t('Window Opacity')}</Label>
               <div className="flex items-center gap-4 mt-2">
                 <input
                   type="range"
@@ -521,7 +562,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
               </div>
             </div>
 
-            {/* プレビューウィンドウの状態表示 */}
+            {/* Preview window status display */}
+            {/* Translation: プレビューウィンドウの状態表示 */}
             <div className="p-3 bg-blue-50 dark:bg-blue-900/20 dark:border dark:border-blue-700 rounded-md">
               <div className="flex items-center gap-2 mb-2">
                 <div
@@ -542,7 +584,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
           </div>
         )}
 
-        {/* プレビューウィンドウについての情報 */}
+        {/* Information about the preview window */}
+        {/* Translation: プレビューウィンドウについての情報 */}
         <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 dark:border dark:border-purple-700 rounded-md">
           <h5 className="font-medium mb-2 dark:text-purple-300">{t('Preview Window Features')}</h5>
           <ul className="text-sm text-gray-700 dark:text-gray-200 space-y-1">
@@ -554,7 +597,8 @@ export const CameraCaptureSettingForm: React.FC = () => {
           </ul>
         </div>
 
-        {/* 注意事項 */}
+        {/* Important notes */}
+        {/* Translation: 注意事項 */}
         <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 dark:border dark:border-amber-700 rounded-md">
           <h5 className="font-medium mb-2 dark:text-amber-300">{t('Important Notes')}</h5>
           <ul className="text-sm text-gray-700 dark:text-gray-200 space-y-1">

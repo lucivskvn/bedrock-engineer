@@ -34,6 +34,9 @@ export default defineConfig({
       postcss: {
         plugins: [tailwindcss() as any]
       }
+    },
+    optimizeDeps: {
+      include: ['flowbite-react/lib/esm/**/*.js']
     }
   }
 })

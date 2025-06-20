@@ -5,13 +5,16 @@ import { ArrowPathIcon } from '@heroicons/react/24/outline'
 import { useSettings } from '@renderer/contexts/SettingsContext'
 import { WindowConfig } from '@/types/agent-chat'
 
-// ウィンドウ情報の型定義
+// Type definition for window information
+// Translation: ウィンドウ情報の型定義
 interface WindowInfo {
   id: string
   name: string
   enabled: boolean
-  thumbnail: string // base64画像データ
-  dimensions: { width: number; height: number } // 実際のウィンドウサイズ
+  thumbnail: string // base64 image data
+  // Translation: base64画像データ
+  dimensions: { width: number; height: number } // actual window size
+  // Translation: 実際のウィンドウサイズ
 }
 
 export const ScreenCaptureSettingForm: React.FC = () => {
@@ -25,13 +28,15 @@ export const ScreenCaptureSettingForm: React.FC = () => {
     updateAgentAllowedWindows
   } = useSettings()
 
-  // ウィンドウ関連の状態
+  // State related to windows
+  // Translation: ウィンドウ関連の状態
   const [availableWindows, setAvailableWindows] = useState<WindowInfo[]>([])
   const [allowedWindows, setAllowedWindows] = useState<WindowConfig[]>([])
   const [isLoadingWindows, setIsLoadingWindows] = useState(false)
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set())
 
-  // Vision-capable モデルをフィルタリング（Claude と Nova シリーズ）
+  // Filter for Vision-capable models (Claude and Nova series)
+  // Translation: Vision-capable モデルをフィルタリング（Claude と Nova シリーズ）
   const visionCapableModels = useMemo(() => {
     return availableModels
       .filter(
@@ -41,7 +46,8 @@ export const ScreenCaptureSettingForm: React.FC = () => {
       .sort((a, b) => a.modelName.localeCompare(b.modelName))
   }, [availableModels])
 
-  // エージェントの許可ウィンドウ設定を読み込み
+  // Load allowed window settings for the agent
+  // Translation: エージェントの許可ウィンドウ設定を読み込み
   useEffect(() => {
     if (selectedAgentId) {
       const windows = getAgentAllowedWindows(selectedAgentId)
@@ -49,15 +55,18 @@ export const ScreenCaptureSettingForm: React.FC = () => {
     }
   }, [selectedAgentId, getAgentAllowedWindows])
 
-  // 画像読み込みエラーハンドラー（React状態ベース）
+  // Image load error handler (React state-based)
+  // Translation: 画像読み込みエラーハンドラー（React状態ベース）
   const handleImageError = useCallback((windowId: string) => {
     setImageLoadErrors((prev) => new Set([...prev, windowId]))
   }, [])
 
-  // 利用可能なウィンドウ一覧を取得
+  // Get list of available windows
+  // Translation: 利用可能なウィンドウ一覧を取得
   const fetchAvailableWindows = async () => {
     setIsLoadingWindows(true)
-    setImageLoadErrors(new Set()) // エラー状態をリセット
+    setImageLoadErrors(new Set()) // Reset error state
+    // Translation: エラー状態をリセット
     try {
       const windows = await window.api.screen.listAvailableWindows()
       setAvailableWindows(windows || [])
@@ -69,19 +78,22 @@ export const ScreenCaptureSettingForm: React.FC = () => {
     }
   }
 
-  // ウィンドウが許可されているかチェック
+  // Check if a window is allowed
+  // Translation: ウィンドウが許可されているかチェック
   const isWindowAllowed = (window: WindowInfo): boolean => {
     return allowedWindows.some((allowed) => allowed.id === window.id)
   }
 
-  // ウィンドウの許可/非許可を切り替え
+  // Toggle window permission (allow/disallow)
+  // Translation: ウィンドウの許可/非許可を切り替え
   const handleWindowToggle = (window: WindowInfo, enabled: boolean) => {
     if (!selectedAgentId) return
 
     let updatedWindows: WindowConfig[]
 
     if (enabled) {
-      // ウィンドウを許可リストに追加
+      // Add window to the allowed list
+      // Translation: ウィンドウを許可リストに追加
       const newWindow: WindowConfig = {
         id: window.id,
         name: window.name,
@@ -89,7 +101,8 @@ export const ScreenCaptureSettingForm: React.FC = () => {
       }
       updatedWindows = [...allowedWindows.filter((w) => w.id !== window.id), newWindow]
     } else {
-      // ウィンドウを許可リストから削除
+      // Remove window from the allowed list
+      // Translation: ウィンドウを許可リストから削除
       updatedWindows = allowedWindows.filter((w) => w.id !== window.id)
     }
 
@@ -97,14 +110,16 @@ export const ScreenCaptureSettingForm: React.FC = () => {
     updateAgentAllowedWindows(selectedAgentId, updatedWindows)
   }
 
-  // 初回読み込み時にウィンドウ一覧を取得
+  // Get window list on initial load
+  // Translation: 初回読み込み時にウィンドウ一覧を取得
   useEffect(() => {
     fetchAvailableWindows()
   }, [])
 
   return (
     <div className="prose dark:prose-invert max-w-none w-full">
-      {/* ツールの説明 */}
+      {/* Tool description */}
+      {/* Translation: ツールの説明 */}
       <div className="mb-6 w-full">
         <p className="mb-4 text-gray-700 dark:text-gray-300">
           {t(
@@ -114,15 +129,17 @@ export const ScreenCaptureSettingForm: React.FC = () => {
         </p>
       </div>
 
-      {/* 設定フォーム */}
+      {/* Settings form */}
+      {/* Translation: 設定フォーム */}
       <div className="flex flex-col gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md mb-6 w-full">
         <h4 className="font-medium text-sm mb-2 dark:text-gray-200">
           {t('AI Image Analysis Settings')}
         </h4>
 
-        {/* LLMモデル選択 */}
+        {/* LLM model selection */}
+        {/* Translation: LLMモデル選択 */}
         <div className="w-full">
-          <Label htmlFor="recognizeImageModel" value={t('AI Model for Image Analysis')} />
+          <Label htmlFor="recognizeImageModel">{t('AI Model for Image Analysis')}</Label>
           <Select
             id="recognizeImageModel"
             value={recognizeImageModel}
@@ -137,7 +154,8 @@ export const ScreenCaptureSettingForm: React.FC = () => {
           </Select>
         </div>
 
-        {/* 使用方法 */}
+        {/* How to use */}
+        {/* Translation: 使用方法 */}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 dark:border dark:border-blue-700 rounded-md">
           <h5 className="font-medium mb-2 dark:text-blue-300">{t('How to Use')}</h5>
           <ul className="text-sm text-gray-700 dark:text-gray-200 space-y-1">
@@ -158,7 +176,8 @@ export const ScreenCaptureSettingForm: React.FC = () => {
           </ul>
         </div>
 
-        {/* プラットフォーム要件 */}
+        {/* Platform requirements */}
+        {/* Translation: プラットフォーム要件 */}
         <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 dark:border dark:border-green-700 rounded-md">
           <h5 className="font-medium mb-2 dark:text-green-300">{t('Platform Requirements')}</h5>
           <ul className="text-sm text-gray-700 dark:text-gray-200 space-y-1">
@@ -172,7 +191,8 @@ export const ScreenCaptureSettingForm: React.FC = () => {
         </div>
       </div>
 
-      {/* ウィンドウアクセス許可設定 */}
+      {/* Window access permission settings */}
+      {/* Translation: ウィンドウアクセス許可設定 */}
       <div className="flex flex-col gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md mb-6 w-full">
         <div className="flex items-center justify-between">
           <h4 className="font-medium text-sm mb-2 dark:text-gray-200">
@@ -196,7 +216,8 @@ export const ScreenCaptureSettingForm: React.FC = () => {
           )}
         </p>
 
-        {/* ウィンドウプレビューグリッド */}
+        {/* Window preview grid */}
+        {/* Translation: ウィンドウプレビューグリッド */}
         {isLoadingWindows ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100"></div>
@@ -220,19 +241,20 @@ export const ScreenCaptureSettingForm: React.FC = () => {
                   key={window.id}
                   className={`
                     relative cursor-pointer transition-all duration-200 transform hover:scale-105
-                    ${
-                      isSelected
-                        ? 'ring-2 ring-blue-500 dark:ring-blue-400 shadow-lg'
-                        : 'ring-1 ring-gray-200 dark:ring-gray-600 hover:ring-gray-300 dark:hover:ring-gray-500'
+                    ${isSelected
+                      ? 'ring-2 ring-blue-500 dark:ring-blue-400 shadow-lg'
+                      : 'ring-1 ring-gray-200 dark:ring-gray-600 hover:ring-gray-300 dark:hover:ring-gray-500'
                     }
                     rounded-lg overflow-hidden bg-white dark:bg-gray-800
                   `}
                   onClick={() => handleWindowToggle(window, !isSelected)}
                 >
-                  {/* サムネイル画像 */}
+                  {/* Thumbnail image */}
+                  {/* Translation: サムネイル画像 */}
                   <div className="relative aspect-video bg-gray-100 dark:bg-gray-700">
                     {hasImageError ? (
-                      // React状態ベースのフォールバックUI
+                      // React state-based fallback UI
+                      // Translation: React状態ベースのフォールバックUI
                       <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
                         <div className="text-center">
                           <div className="text-2xl mb-1">📱</div>
@@ -248,7 +270,8 @@ export const ScreenCaptureSettingForm: React.FC = () => {
                       />
                     )}
 
-                    {/* 選択状態のオーバーレイ */}
+                    {/* Selected state overlay */}
+                    {/* Translation: 選択状態のオーバーレイ */}
                     {isSelected && (
                       <div className="absolute inset-0 bg-blue-500/20 dark:bg-blue-400/20 flex items-center justify-center">
                         <div className="bg-blue-500 dark:bg-blue-400 text-white rounded-full p-1">
@@ -263,13 +286,15 @@ export const ScreenCaptureSettingForm: React.FC = () => {
                       </div>
                     )}
 
-                    {/* ウィンドウサイズ情報 */}
+                    {/* Window size info */}
+                    {/* Translation: ウィンドウサイズ情報 */}
                     <div className="absolute top-1 right-1 bg-black/50 text-white text-xs px-1 py-0.5 rounded">
                       {window.dimensions.width}×{window.dimensions.height}
                     </div>
                   </div>
 
-                  {/* ウィンドウ情報 */}
+                  {/* Window info */}
+                  {/* Translation: ウィンドウ情報 */}
                   <div className="p-3">
                     <div className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
                       {window.name}
@@ -281,14 +306,16 @@ export const ScreenCaptureSettingForm: React.FC = () => {
           </div>
         )}
 
-        {/* 許可されたウィンドウの数 */}
+        {/* Number of allowed windows */}
+        {/* Translation: 許可されたウィンドウの数 */}
         {allowedWindows.length > 0 && (
           <div className="text-sm text-green-600 dark:text-green-400">
             {t('{{count}} window(s) allowed', { count: allowedWindows.length })}
           </div>
         )}
 
-        {/* ヒント */}
+        {/* Hints */}
+        {/* Translation: ヒント */}
         <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 dark:border dark:border-yellow-700 rounded-md">
           <h5 className="font-medium mb-2 dark:text-yellow-300">{t('Usage Tips')}</h5>
           <ul className="text-sm text-gray-700 dark:text-gray-200 space-y-1">

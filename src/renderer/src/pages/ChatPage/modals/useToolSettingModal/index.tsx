@@ -15,7 +15,7 @@ import { FlowSettingForm } from './FlowSettingForm'
 import { CodeInterpreterSettingForm } from './CodeInterpreterSettingForm'
 import { ScreenCaptureSettingForm } from './ScreenCaptureSettingForm'
 import { CameraCaptureSettingForm } from './CameraCaptureSettingForm'
-import { Button, Modal, ToggleSwitch } from 'flowbite-react'
+import { Button, Modal, ModalBody, ModalFooter, ModalHeader, ToggleSwitch } from 'flowbite-react';
 import { memo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ToolState } from '@/types/agent-chat'
@@ -425,7 +425,7 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
       onClose={onClose}
       className="dark:bg-gray-800 border border-gray-200 dark:border-gray-500 shadow-lg dark:shadow-gray-900/50"
     >
-      <Modal.Header className="border-b border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-t-lg">
+      <ModalHeader className="border-b border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-t-lg">
         {hasSelectedAgent ? (
           <div className="flex items-center">
             <span>Agent Tools: </span>
@@ -439,9 +439,9 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
             </div>
           </div>
         )}
-      </Modal.Header>
+      </ModalHeader>
 
-      <Modal.Body className="p-0 h-[700px] dark:bg-gray-800 rounded-b-lg">
+      <ModalBody className="p-0 h-[700px] dark:bg-gray-800 rounded-b-lg">
         <div className="flex h-full w-full rounded-lg">
           {/* 左側サイドバー：ツールリスト - fixed height with own scrollbar */}
           <div className="lg:w-1/3 w-[60px] border-r border-gray-200 dark:border-gray-600 overflow-y-auto h-full max-h-[700px] flex-shrink-0 dark:bg-gray-800 rounded-bl-lg">
@@ -621,15 +621,15 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
             )}
           </div>
         </div>
-      </Modal.Body>
-      <Modal.Footer className="dark:bg-gray-800 dark:border-t dark:border-gray-600 rounded-b-lg">
+      </ModalBody>
+      <ModalFooter className="dark:bg-gray-800 dark:border-t dark:border-gray-600 rounded-b-lg">
         <Button
           onClick={onClose}
           className="dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white"
         >
           {t('Close')}
         </Button>
-      </Modal.Footer>
+      </ModalFooter>
 
       {/* JSON Spec モーダル */}
       {selectedTool && (
@@ -641,7 +641,7 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
         />
       )}
     </Modal>
-  )
+  );
 })
 
 ToolSettingModal.displayName = 'ToolSettingModal'

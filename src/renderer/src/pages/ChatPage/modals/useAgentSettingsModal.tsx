@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { CustomAgent } from '@/types/agent-chat'
 import useSetting from '@renderer/hooks/useSetting'
 import { useTranslation } from 'react-i18next'
-import { Modal } from 'flowbite-react'
+import { Modal, ModalBody, ModalHeader } from 'flowbite-react';
 import { AgentForm } from '../components/AgentForm/AgentForm'
 import { AgentList } from '../components/AgentList'
 import toast from 'react-hot-toast'
@@ -145,7 +145,7 @@ const AgentSettingsModal = React.memo(
           e.stopPropagation()
         }}
       >
-        <Modal.Header className="border-b border-gray-200 dark:border-gray-600 dark:bg-gray-800 rounded-t-lg">
+        <ModalHeader className="border-b border-gray-200 dark:border-gray-600 dark:bg-gray-800 rounded-t-lg">
           <div className="flex items-center space-x-2">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
               {editingAgent ? t('editAgent') : t('customAgents')}
@@ -171,8 +171,8 @@ const AgentSettingsModal = React.memo(
               </p>
             </div>
           )}
-        </Modal.Header>
-        <Modal.Body
+        </ModalHeader>
+        <ModalBody
           className="p-0 dark:bg-gray-800 rounded-b-lg"
           onClick={(e) => {
             // モーダルボディのクリックイベントは伝播させない
@@ -199,9 +199,9 @@ const AgentSettingsModal = React.memo(
               />
             )}
           </div>
-        </Modal.Body>
+        </ModalBody>
       </Modal>
-    )
+    );
   }
 )
 

@@ -8,7 +8,8 @@ export const RecognizeImageSettingForm: React.FC = () => {
   const { t } = useTranslation()
   const { recognizeImageModel, setRecognizeImageModel, availableModels } = useSettings()
 
-  // Claude関連モデルをフィルタリング
+  // Filter for Claude-related models
+  // Translation: Claude関連モデルをフィルタリング
   const visionCapableModels = useMemo(() => {
     return availableModels
       .filter(
@@ -18,14 +19,16 @@ export const RecognizeImageSettingForm: React.FC = () => {
       .sort((a, b) => a.modelName.localeCompare(b.modelName))
   }, [availableModels])
 
-  // モデル変更のハンドラー
+  // Handler for model change
+  // Translation: モデル変更のハンドラー
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setRecognizeImageModel(e.target.value)
   }
 
   return (
     <div className="prose dark:prose-invert max-w-none w-full">
-      {/* ツールの説明 */}
+      {/* Tool description */}
+      {/* Translation: ツールの説明 */}
       <div className="mb-6 w-full">
         <p className="mb-4 text-gray-700 dark:text-gray-300">
           {t(
@@ -35,10 +38,11 @@ export const RecognizeImageSettingForm: React.FC = () => {
         </p>
       </div>
 
-      {/* 設定フォーム */}
+      {/* Settings form */}
+      {/* Translation: 設定フォーム */}
       <div className="flex flex-col gap-2 p-4 border border-gray-200 dark:border-gray-700 rounded-md mb-6 w-full">
         <div className="mb-4 w-full">
-          <Label htmlFor="recognizeImageModel" value={t('Recognition Model')} />
+          <Label htmlFor="recognizeImageModel">{t('Recognition Model')}</Label>
           <Select
             id="recognizeImageModel"
             value={recognizeImageModel}

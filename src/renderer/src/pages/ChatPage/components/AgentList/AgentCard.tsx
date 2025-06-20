@@ -2,7 +2,7 @@ import React from 'react'
 import { CustomAgent } from '@/types/agent-chat'
 import { FiMoreVertical } from 'react-icons/fi'
 import { TbRobot } from 'react-icons/tb'
-import { Dropdown } from 'flowbite-react'
+import { Dropdown, DropdownItem } from 'flowbite-react';
 import { useTranslation } from 'react-i18next'
 import { AGENT_ICONS } from '@renderer/components/icons/AgentIcons'
 
@@ -103,30 +103,30 @@ export const AgentCard: React.FC<AgentCardProps> = ({
               )}
             >
               {isCustomAgent && !agent.isShared && (
-                <Dropdown.Item onClick={() => onEdit?.(agent)} className="w-48">
+                <DropdownItem onClick={() => onEdit?.(agent)} className="w-48">
                   {t('edit')}
-                </Dropdown.Item>
+                </DropdownItem>
               )}
-              <Dropdown.Item onClick={() => onDuplicate?.(agent)} className="w-48">
+              <DropdownItem onClick={() => onDuplicate?.(agent)} className="w-48">
                 {t('duplicate')}
-              </Dropdown.Item>
+              </DropdownItem>
               {!agent.isShared && onSaveAsShared && (
-                <Dropdown.Item onClick={() => onSaveAsShared(agent)} className="w-48">
+                <DropdownItem onClick={() => onSaveAsShared(agent)} className="w-48">
                   {t('saveAsShared')}
-                </Dropdown.Item>
+                </DropdownItem>
               )}
               {isCustomAgent && !agent.isShared && (
-                <Dropdown.Item
+                <DropdownItem
                   onClick={() => onDelete?.(agent.id!)}
                   className="text-red-600 dark:text-red-400 w-48"
                 >
                   {t('delete')}
-                </Dropdown.Item>
+                </DropdownItem>
               )}
             </Dropdown>
           </div>
         )}
       </div>
     </div>
-  )
+  );
 }

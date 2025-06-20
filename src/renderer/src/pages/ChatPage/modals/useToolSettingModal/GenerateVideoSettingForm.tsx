@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSettings } from '@renderer/contexts/SettingsContext'
-import { Label, TextInput } from 'flowbite-react'
+import { Label, TextInput, HelperText } from 'flowbite-react'
 
 export const GenerateVideoSettingForm: React.FC = () => {
   const { t } = useTranslation()
@@ -9,20 +9,23 @@ export const GenerateVideoSettingForm: React.FC = () => {
   const [s3Uri, setS3Uri] = useState(generateVideoS3Uri)
   const [isValidUri, setIsValidUri] = useState(true)
 
-  // バリデーション関数
+  // Validation function
+  // Translation: バリデーション関数
   const validateS3Uri = (uri: string): boolean => {
     if (!uri) return false
     return uri.startsWith('s3://') && uri.length > 5
   }
 
-  // S3 URI入力のハンドラー
+  // Handler for S3 URI input
+  // Translation: S3 URI入力のハンドラー
   const handleS3UriChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setS3Uri(value)
     setIsValidUri(validateS3Uri(value) || value === '')
   }
 
-  // S3 URI入力完了のハンドラー（blur時）
+  // Handler for when S3 URI input is finished (on blur)
+  // Translation: S3 URI入力完了のハンドラー（blur時）
   const handleS3UriBlur = () => {
     if (validateS3Uri(s3Uri)) {
       setGenerateVideoS3Uri(s3Uri)
@@ -35,14 +38,16 @@ export const GenerateVideoSettingForm: React.FC = () => {
     }
   }
 
-  // 設定値が外部から変更された場合の同期
+  // Sync when the setting value is changed externally
+  // Translation: 設定値が外部から変更された場合の同期
   useEffect(() => {
     setS3Uri(generateVideoS3Uri)
   }, [generateVideoS3Uri])
 
   return (
     <div className="prose dark:prose-invert max-w-none w-full">
-      {/* ツールの説明 */}
+      {/* Tool Description */}
+      {/* Translation: ツールの説明 */}
       <div className="mb-6 w-full">
         <p className="mb-4 text-gray-700 dark:text-gray-300">
           {t(
@@ -51,7 +56,8 @@ export const GenerateVideoSettingForm: React.FC = () => {
           )}
         </p>
 
-        {/* ツールグループの説明 */}
+        {/* Tool Group Description */}
+        {/* Translation: ツールグループの説明 */}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 dark:border dark:border-blue-700 rounded-md">
           <h5 className="font-medium mb-2 dark:text-blue-300">{t('Tool Group', 'Tool Group')}</h5>
           <p className="text-sm text-gray-700 dark:text-gray-200">
@@ -63,14 +69,15 @@ export const GenerateVideoSettingForm: React.FC = () => {
         </div>
       </div>
 
-      {/* 設定フォーム */}
+      {/* Settings Form */}
+      {/* Translation: 設定フォーム */}
       <div className="flex flex-col gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md mb-6 w-full">
-        {/* S3 URI設定 */}
+        {/* S3 URI Settings */}
+        {/* Translation: S3 URI設定 */}
         <div className="w-full">
-          <Label
-            htmlFor="generateVideoS3Uri"
-            value={t('S3 Output URI (Required)', 'S3 Output URI (Required)')}
-          />
+          <Label htmlFor="generateVideoS3Uri">
+            {t('S3 Output URI (Required)', 'S3 Output URI (Required)')}
+          </Label>
           <TextInput
             id="generateVideoS3Uri"
             type="text"
@@ -80,27 +87,28 @@ export const GenerateVideoSettingForm: React.FC = () => {
             onBlur={handleS3UriBlur}
             className="mt-2 w-full"
             color={!isValidUri ? 'failure' : 'gray'}
-            helperText={
-              !isValidUri ? (
-                <span className="text-red-600 dark:text-red-400">
-                  {t(
-                    'S3 URI must start with s3:// and include a bucket name',
-                    'S3 URI must start with s3:// and include a bucket name'
-                  )}
-                </span>
-              ) : (
-                <span className="text-gray-500 dark:text-gray-400">
-                  {t(
-                    'Example: s3://my-bucket/nova-reel-videos/',
-                    'Example: s3://my-bucket/nova-reel-videos/'
-                  )}
-                </span>
-              )
-            }
           />
+          <HelperText color={!isValidUri ? 'failure' : 'gray'}>
+            {!isValidUri ? (
+              <span>
+                {t(
+                  'S3 URI must start with s3:// and include a bucket name',
+                  'S3 URI must start with s3:// and include a bucket name'
+                )}
+              </span>
+            ) : (
+              <span className="text-gray-500 dark:text-gray-400">
+                {t(
+                  'Example: s3://my-bucket/nova-reel-videos/',
+                  'Example: s3://my-bucket/nova-reel-videos/'
+                )}
+              </span>
+            )}
+          </HelperText>
         </div>
 
-        {/* モデル情報 */}
+        {/* Model Information */}
+        {/* Translation: モデル情報 */}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 dark:border dark:border-blue-700 rounded-md">
           <h5 className="font-medium mb-2 dark:text-blue-300">
             {t('Model Information', 'Model Information')}
