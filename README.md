@@ -10,6 +10,11 @@ Bedrock Engineer is Autonomous software development agent apps using [Amazon Bed
 
 https://github.com/user-attachments/assets/f6ed028d-f3c3-4e2c-afff-de2dd9444759
 
+## Deck
+
+- [English](https://speakerdeck.com/gawa/introducing-bedrock-engineer-en)
+- [Japanese](https://speakerdeck.com/gawa/introducing-bedrock-engineer)
+
 ## 🍎 Getting Started
 
 Bedrock Engineer is a native app, you can download the app or build the source code to use it.
