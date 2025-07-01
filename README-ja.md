@@ -10,6 +10,11 @@ Bedrock Engineer は、[Amazon Bedrock](https://aws.amazon.com/bedrock/) を活�
 
 https://github.com/user-attachments/assets/f6ed028d-f3c3-4e2c-afff-de2dd9444759
 
+## Deck
+
+- [English](https://speakerdeck.com/gawa/introducing-bedrock-engineer-en)
+- [Japanese](https://speakerdeck.com/gawa/introducing-bedrock-engineer)
+
 ## 🍎 はじめに
 
 Bedrock Engineer はネイティブアプリです。アプリをダウンロードするか、ソースコードをビルドして使用してください。
