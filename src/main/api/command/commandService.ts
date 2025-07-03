@@ -58,11 +58,74 @@ export class CommandService {
     'command not found',
     'Failed to compile',
     'Syntax error:',
-    'TypeError:'
+    'TypeError:',
+    // Windows固有のエラーパターン
+    'The system cannot find the file specified',
+    'Access is denied',
+    'The filename, directory name, or volume label syntax is incorrect',
+    'is not recognized as an internal or external command',
+    'The process cannot access the file because it is being used by another process',
+    'ENOENT',
+    'EACCES'
   ]
 
   constructor(config: CommandConfig) {
     this.config = config
+  }
+
+  /**
+   * Electron環境で適切な環境変数を取得
+   * Windows特有のPATH問題を解決
+   */
+  private getEnhancedEnvironment(isWindows: boolean): NodeJS.ProcessEnv {
+    const env = { ...process.env }
+
+    if (isWindows) {
+      // Windows固有の環境変数とPATHの強化
+      const systemPaths = [
+        'C:\\Windows\\System32',
+        'C:\\Windows',
+        'C:\\Windows\\System32\\Wbem',
+        'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\',
+        'C:\\Program Files\\Amazon\\AWSCLIV2', // AWS CLI v2
+        'C:\\Program Files (x86)\\Amazon\\AWSCLIV2',
+        'C:\\Program Files\\Git\\cmd', // Git
+        'C:\\Program Files\\nodejs', // Node.js
+        'C:\\Users\\Public\\chocolatey\\bin', // Chocolatey
+        'C:\\ProgramData\\chocolatey\\bin'
+      ]
+
+      // 既存のPATHに追加
+      const currentPath = env.PATH || env.Path || ''
+      const enhancedPath = [currentPath, ...systemPaths].filter(Boolean).join(';')
+
+      env.PATH = enhancedPath
+      env.Path = enhancedPath // Windowsでは両方設定
+
+      // Windows固有の環境変数
+      env.COMSPEC = env.COMSPEC || 'C:\\Windows\\System32\\cmd.exe'
+      env.PATHEXT = env.PATHEXT || '.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC'
+      env.SYSTEMROOT = env.SYSTEMROOT || 'C:\\Windows'
+      env.WINDIR = env.WINDIR || 'C:\\Windows'
+    } else {
+      // Unix系の場合
+      const systemPaths = [
+        '/usr/local/bin',
+        '/usr/bin',
+        '/bin',
+        '/usr/sbin',
+        '/sbin',
+        '/opt/homebrew/bin', // macOS Homebrew (Apple Silicon)
+        '/usr/local/aws-cli/v2/current/bin' // AWS CLI v2
+      ]
+
+      const currentPath = env.PATH || ''
+      const enhancedPath = [currentPath, ...systemPaths].filter(Boolean).join(':')
+
+      env.PATH = enhancedPath
+    }
+
+    return env
   }
 
   private parseCommandPattern(commandStr: string): CommandPattern {
@@ -162,25 +225,77 @@ export class CommandService {
 
   async executeCommand(input: CommandInput): Promise<CommandExecutionResult> {
     return new Promise((resolve, reject) => {
+      // 入力値の事前検証
+      if (!input.command || typeof input.command !== 'string' || input.command.trim() === '') {
+        reject(new Error('Invalid command: Command cannot be empty'))
+        return
+      }
+
+      if (!input.cwd || typeof input.cwd !== 'string') {
+        reject(new Error('Invalid working directory: cwd must be a valid string'))
+        return
+      }
+
+      // シェルの存在確認（Windows環境での追加チェック）
+      if (!this.config.shell) {
+        reject(new Error('Shell configuration is missing'))
+        return
+      }
+
       if (!this.isCommandAllowed(input.command)) {
         reject(new Error(`Command not allowed: ${input.command}`))
         return
       }
 
-      // 設定されたシェルを使用
-      const process = spawn(this.config.shell, ['-ic', input.command], {
-        cwd: input.cwd,
-        detached: true,
-        stdio: ['pipe', 'pipe', 'pipe']
-      })
+      // プラットフォーム別の設定
+      const isWindows = process.platform === 'win32'
 
-      if (typeof process.pid === 'undefined') {
-        console.log(process)
-        reject(new Error('Failed to start process: PID is undefined'))
+      // Electron特有の環境変数問題を解決
+      const spawnEnv = this.getEnhancedEnvironment(isWindows)
+
+      let childProcess
+
+      if (isWindows) {
+        // Windows: shell=trueを使用してコマンドを直接実行
+        // Node.js公式推奨方法: spawn(command, {shell: true})
+        childProcess = spawn(input.command, {
+          cwd: input.cwd,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: true, // Windowsでは必須
+          env: spawnEnv,
+          windowsHide: true // コンソールウィンドウを隠す
+        })
+      } else {
+        // Unix系: 従来通りシェルに引数を渡す
+        childProcess = spawn(this.config.shell, ['-ic', input.command], {
+          cwd: input.cwd,
+          detached: true,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: spawnEnv
+        })
+      }
+
+      if (typeof childProcess.pid === 'undefined') {
+        const errorMessage = `Failed to start process: PID is undefined
+Platform: ${process.platform}
+Shell: ${this.config.shell}
+Command: ${input.command}
+Working Directory: ${input.cwd}
+Spawn Method: ${isWindows ? 'shell=true' : 'shell+args'}`
+        console.error('Process spawn failed:', {
+          platform: process.platform,
+          shell: this.config.shell,
+          command: input.command,
+          cwd: input.cwd,
+          spawnMethod: isWindows ? 'shell=true' : 'shell+args',
+          spawnfile: childProcess.spawnfile,
+          spawnargs: childProcess.spawnargs
+        })
+        reject(new Error(errorMessage))
         return
       }
 
-      const pid = process.pid
+      const pid = childProcess.pid
 
       // プロセス情報を初期化
       this.initializeProcessState(pid)
@@ -191,7 +306,7 @@ export class CommandService {
       })
 
       // プロセスの状態を保存
-      this.updateProcessState(pid, { process })
+      this.updateProcessState(pid, { process: childProcess })
 
       let currentOutput = ''
       let currentError = ''
@@ -267,7 +382,7 @@ export class CommandService {
         }
       }
 
-      process.stdout.on('data', (data) => {
+      childProcess.stdout.on('data', (data) => {
         const chunk = data.toString()
         currentOutput += chunk
 
@@ -292,7 +407,7 @@ export class CommandService {
         }
       })
 
-      process.stderr.on('data', (data) => {
+      childProcess.stderr.on('data', (data) => {
         const chunk = data.toString()
         currentError += chunk
 
@@ -310,13 +425,24 @@ export class CommandService {
         }
       })
 
-      process.on('error', (error) => {
-        completeWithError(
-          `Command execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-        )
+      childProcess.on('error', (error) => {
+        let errorMessage = `Command execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+
+        // Windows固有のエラーの詳細情報を追加
+        if (process.platform === 'win32' && error instanceof Error) {
+          if (error.message.includes('ENOENT')) {
+            errorMessage +=
+              '\nHint: The command or shell may not be found. Please check if the command exists and the shell path is correct.'
+          } else if (error.message.includes('EACCES')) {
+            errorMessage +=
+              '\nHint: Permission denied. Please check if you have the necessary permissions to execute this command.'
+          }
+        }
+
+        completeWithError(errorMessage)
       })
 
-      process.on('exit', (code) => {
+      childProcess.on('exit', (code) => {
         const state = this.processStates.get(pid)
         if (state) {
           this.updateProcessState(pid, {
@@ -364,16 +490,16 @@ export class CommandService {
     }
 
     return new Promise((resolve, reject) => {
-      const { process } = state
+      const { process: childProcess } = state
       let currentOutput = state.output.stdout
       let currentError = state.output.stderr
       let isCompleted = false
 
       // 既存のリスナーを削除
-      process.stdout.removeAllListeners('data')
-      process.stderr.removeAllListeners('data')
-      process.removeAllListeners('error')
-      process.removeAllListeners('exit')
+      childProcess.stdout.removeAllListeners('data')
+      childProcess.stderr.removeAllListeners('data')
+      childProcess.removeAllListeners('error')
+      childProcess.removeAllListeners('exit')
 
       const completeWithError = (error: string) => {
         if (!isCompleted) {
@@ -395,7 +521,7 @@ export class CommandService {
             exitCode: 0,
             processInfo: {
               pid: input.pid,
-              command: state.process.spawnargs.join(' '),
+              command: childProcess.spawnargs.join(' '),
               detached: true
             },
             requiresInput: isWaiting,
@@ -404,7 +530,7 @@ export class CommandService {
         }
       }
 
-      process.stdout.on('data', (data) => {
+      childProcess.stdout.on('data', (data) => {
         const chunk = data.toString()
         currentOutput += chunk
 
@@ -426,7 +552,7 @@ export class CommandService {
         }
       })
 
-      process.stderr.on('data', (data) => {
+      childProcess.stderr.on('data', (data) => {
         const chunk = data.toString()
         currentError += chunk
 
@@ -440,13 +566,13 @@ export class CommandService {
         }
       })
 
-      process.on('error', (error) => {
+      childProcess.on('error', (error) => {
         completeWithError(
           `Command execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`
         )
       })
 
-      process.on('exit', (code) => {
+      childProcess.on('exit', (code) => {
         this.updateProcessState(input.pid, {
           isRunning: false,
           output: { ...state.output, code: code || 0 }
@@ -464,7 +590,7 @@ export class CommandService {
       })
 
       // 標準入力を送信
-      process.stdin.write(input.stdin + '\n')
+      childProcess.stdin.write(input.stdin + '\n')
 
       // タイムアウト処理
       setTimeout(() => {
