@@ -24,17 +24,20 @@ docs/windows-on-ec2/
 - macOS環境
 - AWSアカウントとIAM権限
 - AWS CLIの設定
-- 既存のEC2キーペア
+- **既存のEC2キーペア** (事前にAWS EC2コンソールで作成が必要)
 - Microsoft Remote Desktop (App Storeから入手可能)
+
+> **📝 EC2キーペアについて** > `--key-name` で指定するキーペアは、デプロイ先のAWSリージョンに事前に作成されている必要があります。
+> AWS EC2コンソール → 「ネットワーク & セキュリティ」→ 「キーペア」から作成してください。
 
 ### 最速デプロイ
 
 ```bash
 # スクリプトに実行権限を付与
-chmod +x docs/deploy-windows-ec2.sh
+chmod +x docs/windows-on-ec2/deploy-windows-ec2.sh
 
 # デプロイ実行
-cd docs
+cd docs/windows-on-ec2
 ./deploy-windows-ec2.sh --key-name YOUR_KEY_NAME --allowed-cidr YOUR_IP/32
 ```
 
