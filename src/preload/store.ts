@@ -3,7 +3,8 @@ import { LLM, InferenceParameters, ThinkingMode, ThinkingModeBudget } from '../t
 import { AgentChatConfig, KnowledgeBase, SendMsgKey, ToolState } from '../types/agent-chat'
 import { CustomAgent } from '../types/agent-chat'
 import { BedrockAgent } from '../types/agent'
-import { AWSCredentials } from '../main/api/bedrock/types'
+// Use AwsClientConfig for storing AWS settings, OldAWSCredentialsConfig is being phased out
+import { AwsClientConfig, OldAWSCredentialsConfig } from '../main/api/bedrock/types'
 import { CodeInterpreterContainerConfig } from './tools/handlers/interpreter/types'
 
 const DEFAULT_SHELL =
@@ -117,7 +118,7 @@ type StoreScheme = {
   }
 
   /** AWS認証情報とリージョン設定 */
-  aws: AWSCredentials
+  aws: AwsClientConfig // Changed from AWSCredentials to AwsClientConfig
 
   /** ユーザーが作成したカスタムエージェントの一覧 */
   customAgents: CustomAgent[]
@@ -199,12 +200,21 @@ const init = () => {
 
   // Initialize AWS settings if not present
   const awsConfig = electronStore.get('aws')
-  if (!awsConfig) {
+  // Check if awsConfig exists and if it might be in the old format (containing accessKeyId)
+  if (!awsConfig || 'accessKeyId' in awsConfig || 'secretAccessKey' in awsConfig) {
+    // If it's old format or doesn't exist, initialize with new AwsClientConfig structure
+    // Existing region or proxyConfig might be preserved if they exist, otherwise defaults are used.
+    const existingRegion = (awsConfig as OldAWSCredentialsConfig)?.region || 'us-west-2'
+    const existingProxyConfig = (awsConfig as OldAWSCredentialsConfig)?.proxyConfig
+    const existingProfile = (awsConfig as OldAWSCredentialsConfig)?.profile
+
     electronStore.set('aws', {
-      region: 'us-west-2',
-      accessKeyId: '',
-      secretAccessKey: ''
+      region: existingRegion,
+      profile: existingProfile, // Will be undefined if not previously set
+      proxyConfig: existingProxyConfig // Will be undefined if not previously set
+      // No accessKeyId or secretAccessKey are stored
     })
+    console.log('Migrated/Initialized AWS config in store to new format (without explicit credentials). Old config:', awsConfig)
   }
 
   // Initialize inference parameters if not present

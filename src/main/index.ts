@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, Menu, MenuItem } from 'electron'
+import { app, shell, BrowserWindow, Menu, MenuItem, dialog, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../build/icon.ico?asset'
@@ -394,6 +394,27 @@ app.whenReady().then(async () => {
 
   // ログハンドラーの登録
   registerLogHandler()
+
+  // Confirmation dialog for destructive commands
+  ipcMain.handle('confirm-destructive-command', async (_event, command: string) => {
+    if (!mainWindow) {
+      log.error('Cannot show confirmation dialog, mainWindow is null')
+      return { confirmed: false, error: 'Main window not available' }
+    }
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      buttons: ['Cancel', 'Proceed'],
+      defaultId: 0, // Index of 'Cancel'
+      title: 'Confirm Destructive Command',
+      message: 'A potentially destructive command is about to be executed:',
+      detail: `Command: ${command}\n\nAre you sure you want to proceed? This action might alter your file system or other resources.`,
+      cancelId: 0,
+      noLink: true, // Recommended for security dialogs
+    })
+
+    // response is 0 for 'Cancel', 1 for 'Proceed'
+    return { confirmed: result.response === 1 }
+  })
 
   // Initial load of shared agents (optional - for logging purposes only)
   agentHandlers['read-shared-agents'](null as any)

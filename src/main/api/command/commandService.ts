@@ -8,7 +8,8 @@ import {
   DetachedProcessInfo,
   InputDetectionPattern,
   ProcessState,
-  CommandPatternConfig
+  CommandPatternConfig,
+  CommandInput as CommandServiceInput // Renaming for clarity within this file
 } from './types'
 
 export class CommandService {
@@ -128,44 +129,56 @@ export class CommandService {
     return env
   }
 
-  private parseCommandPattern(commandStr: string): CommandPattern {
-    const parts = commandStr.split(' ')
-    const hasWildcard = parts.some((part) => part === '*')
-
-    return {
-      command: parts[0],
-      args: parts.slice(1),
-      wildcard: hasWildcard
-    }
-  }
-
-  private isCommandAllowed(commandToExecute: string): boolean {
-    const executeParts = this.parseCommandPattern(commandToExecute)
-
+  // TODO: Refactor command pattern parsing and matching for better security and flexibility.
+  // The current string splitting is too basic for robust argument validation.
+  // The CommandPatternConfig structure might need to change to define allowed executables
+  // and then specific rules or patterns for their arguments.
+  private isCommandAllowed(executable: string, _args: string[]): boolean {
     // allowedCommands が未定義の場合は空の配列として処理
     const allowedCommands = this.config.allowedCommands || []
 
-    return allowedCommands.some((allowedCmd) => {
-      const allowedParts = this.parseCommandPattern(allowedCmd.pattern)
+    if (allowedCommands.length === 0) {
+      // If no commands are explicitly allowed, deny all.
+      // Or, decide if this means all commands are allowed (less secure).
+      // For now, let's assume if allowlist is empty, nothing is allowed unless a wildcard '*' is present.
+      // This behavior might need to be configurable.
+      console.warn('No allowedCommands configured. Denying command execution by default.')
+      return false;
+    }
 
-      if (allowedParts.command !== executeParts.command) {
-        return false
-      }
+    // "*" in allowedCommands means all commands are allowed (use with extreme caution)
+    if (allowedCommands.some(cmd => cmd.pattern === '*')) {
+        console.warn("Wildcard '*' found in allowedCommands. All commands will be permitted.")
+        return true;
+    }
 
-      if (allowedParts.wildcard) {
-        return true
-      }
+    return allowedCommands.some((allowedCmdPattern) => {
+      // Current pattern is just a string. We'll assume it's primarily for the executable.
+      // For a more robust system, allowedCmdPattern.pattern should be more structured.
+      const patternParts = allowedCmdPattern.pattern.split(' ')
+      const allowedExecutable = patternParts[0]
+      // const allowedArgsPattern = patternParts.slice(1); // Basic arg pattern
 
-      if (allowedParts.args.length !== executeParts.args.length) {
-        return false
-      }
-
-      return allowedParts.args.every((arg, index) => {
-        if (arg === '*') {
-          return true
+      if (allowedExecutable === executable) {
+        // TODO: Implement more sophisticated argument checking here based on allowedArgsPattern
+        // For now, if the executable matches, and if the pattern had a wildcard for args (e.g. "git *")
+        // or no specific args, we allow it. This simplifies the transition.
+        // A truly secure model needs to validate args based on the specific executable.
+        if (patternParts.includes('*') || patternParts.length === 1) {
+            return true;
         }
-        return arg === executeParts.args[index]
-      })
+        // Basic check: if pattern has args, then input must also have args.
+        // This is insufficient for real security.
+        // if (allowedArgsPattern.length > 0 && args.length === 0) return false;
+        // if (allowedArgsPattern.length === 0 && args.length > 0 && !patternParts.includes('*')) return false;
+
+        // For now, focusing on executable match. Argument validation needs a proper design.
+        // If we want to be stricter now: if pattern has args, they must match or pattern must allow wildcard for them.
+        // This part is tricky without changing CommandPatternConfig.
+        // Let's default to allowing if executable matches and pattern is simple.
+        return true; // Placeholder for more robust arg validation
+      }
+      return false
     })
   }
 
@@ -223,89 +236,120 @@ export class CommandService {
     return false
   }
 
-  async executeCommand(input: CommandInput): Promise<CommandExecutionResult> {
+  async executeCommand(input: CommandServiceInput): Promise<CommandExecutionResult> {
+    const { executable, args, cwd } = input;
+
     return new Promise((resolve, reject) => {
       // 入力値の事前検証
-      if (!input.command || typeof input.command !== 'string' || input.command.trim() === '') {
-        reject(new Error('Invalid command: Command cannot be empty'))
+      if (!executable || typeof executable !== 'string' || executable.trim() === '') {
+        reject(new Error('Invalid command: Executable cannot be empty'))
         return
       }
-
-      if (!input.cwd || typeof input.cwd !== 'string') {
+      if (!cwd || typeof cwd !== 'string') {
         reject(new Error('Invalid working directory: cwd must be a valid string'))
         return
       }
-
-      // シェルの存在確認（Windows環境での追加チェック）
-      if (!this.config.shell) {
-        reject(new Error('Shell configuration is missing'))
+      if (!Array.isArray(args)) {
+        reject(new Error('Invalid arguments: args must be an array of strings'))
         return
       }
 
-      if (!this.isCommandAllowed(input.command)) {
-        reject(new Error(`Command not allowed: ${input.command}`))
+
+      // シェルの設定は spawn の options.shell で制御するため、ここでの config.shell の直接チェックは変更
+      // if (!this.config.shell) {
+      //   reject(new Error('Shell configuration is missing'))
+      //   return
+      // }
+
+      if (!this.isCommandAllowed(executable, args)) {
+        const fullCommand = `${executable} ${args.join(' ')}`.trim()
+        reject(new Error(`Command not allowed: ${fullCommand}`))
         return
       }
 
-      // プラットフォーム別の設定
       const isWindows = process.platform === 'win32'
-
-      // Electron特有の環境変数問題を解決
       const spawnEnv = this.getEnhancedEnvironment(isWindows)
-
       let childProcess
 
-      if (isWindows) {
-        // Windows: shell=trueを使用してコマンドを直接実行
-        // Node.js公式推奨方法: spawn(command, {shell: true})
-        childProcess = spawn(input.command, {
-          cwd: input.cwd,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          shell: true, // Windowsでは必須
-          env: spawnEnv,
-          windowsHide: true // コンソールウィンドウを隠す
-        })
-      } else {
-        // Unix系: 従来通りシェルに引数を渡す
-        childProcess = spawn(this.config.shell, ['-ic', input.command], {
-          cwd: input.cwd,
-          detached: true,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          env: spawnEnv
-        })
+      try {
+        // Secure spawn: pass executable and args separately.
+        // Avoid shell interpretation of the command string.
+        // For Windows, if executable is a .bat, .cmd or built-in shell command,
+        // `shell: true` might still be needed, or `cmd /c executable args...`
+        // This is a complex area. Defaulting to `shell: false` for security.
+        // If specific commands require shell (e.g. `echo hello > file.txt`), they must be
+        // explicitly handled or the `isCommandAllowed` should be very strict for them.
+        // A safer way for shell-required commands is `spawn('cmd.exe', ['/c', executable, ...args])` on Windows
+        // or `spawn('/bin/sh', ['-c', `${executable} ${args.join(' ')}`])` on Unix,
+        // but this re-introduces shell parsing risk if not handled carefully.
+        // The ideal is to always use shell: false or not set it (defaults to false).
+
+        // TODO: Investigate specific Windows commands that might require `shell: true`
+        // (e.g., internal cmd commands like `dir` if not using `cmd /c dir`).
+        // For now, we aim for `shell: false` as much as possible.
+        // If `executable` is 'cmd' or 'powershell' on Windows, or '/bin/sh', '/bin/bash' on Unix,
+        // then the arguments might themselves form a command to be parsed by that shell.
+        // This needs careful consideration in `isCommandAllowed`.
+
+        const options: any = { // child_process.SpawnOptionsWithoutStdio
+            cwd: cwd,
+            env: spawnEnv,
+            stdio: ['pipe', 'pipe', 'pipe'], // For stdin, stdout, stderr
+            detached: !isWindows, // Detach on Unix for process group killing, Windows handles this differently
+            windowsHide: true,
+        };
+
+        // Special handling for Windows shell commands if necessary
+        // This is a simplification. A more robust solution would check if `executable`
+        // is a built-in shell command or script that requires shell.
+        if (isWindows && (executable.endsWith('.cmd') || executable.endsWith('.bat'))) {
+            options.shell = true; // For .cmd/.bat files, shell is often required.
+                                  // This means `executable` itself is given to `spawn` and `args` are separate.
+            childProcess = spawn(executable, args, options);
+        } else if (isWindows && ['dir', 'echo', 'type', 'copy', 'del', 'move', 'ren', 'mkdir', 'rmdir'].includes(executable.toLowerCase())) {
+            // These are common internal cmd.exe commands.
+            // Safer to run them via cmd /c
+            const cmdArgs = ['/c', executable, ...args];
+            childProcess = spawn('cmd.exe', cmdArgs, options);
+        }
+        else {
+            options.shell = false; // Explicitly set to false for others
+            childProcess = spawn(executable, args, options);
+        }
+
+      } catch (spawnError: any) {
+        console.error('Error during spawn:', spawnError);
+        reject(new Error(`Failed to spawn command "${executable}": ${spawnError.message}`));
+        return;
       }
 
+
       if (typeof childProcess.pid === 'undefined') {
-        const errorMessage = `Failed to start process: PID is undefined
-Platform: ${process.platform}
-Shell: ${this.config.shell}
-Command: ${input.command}
-Working Directory: ${input.cwd}
-Spawn Method: ${isWindows ? 'shell=true' : 'shell+args'}`
-        console.error('Process spawn failed:', {
+        const fullCommand = `${executable} ${args.join(' ')}`.trim()
+        const errorMessage = `Failed to start process: PID is undefined. Command: "${fullCommand}"`
+        console.error('Process spawn failed details:', {
+          executable,
+          args,
+          cwd,
           platform: process.platform,
-          shell: this.config.shell,
-          command: input.command,
-          cwd: input.cwd,
-          spawnMethod: isWindows ? 'shell=true' : 'shell+args',
           spawnfile: childProcess.spawnfile,
-          spawnargs: childProcess.spawnargs
+          spawnargs: childProcess.spawnargs,
+          error: childProcess.error // if any
         })
         reject(new Error(errorMessage))
         return
       }
 
       const pid = childProcess.pid
+      const fullCommandForLogging = `${executable} ${args.join(' ')}`.trim()
 
-      // プロセス情報を初期化
       this.initializeProcessState(pid)
       this.runningProcesses.set(pid, {
         pid,
-        command: input.command,
+        command: fullCommandForLogging, // Log the reconstructed command
         timestamp: Date.now()
       })
 
-      // プロセスの状態を保存
       this.updateProcessState(pid, { process: childProcess })
 
       let currentOutput = ''

@@ -1,0 +1,92 @@
+name: Security Pipeline
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  trivy_config_scan:
+    name: Trivy Config Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner for configuration files
+        uses: aquasecurity/trivy-action@0.20.0 # Using a specific version for stability
+        with:
+          scan-type: 'config'
+          scan-ref: '/github/workspace/' # Scan the whole workspace for config files
+          format: 'sarif'
+          output: 'trivy-results-config.sarif'
+          severity: 'HIGH,CRITICAL' # Scan for high and critical vulnerabilities
+          exit-code: '1' # Fail the job if vulnerabilities are found
+          # Adding ignore-unfixed true for now, as fixing all might be out of scope
+          # and we want the pipeline to pass if only unfixed vulns are found.
+          # This can be adjusted based on policy.
+          ignore-unfixed: true
+
+      - name: Upload Trivy config scan results to GitHub Security Tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() # Always run this step to upload results, even if previous steps failed
+        with:
+          sarif_file: 'trivy-results-config.sarif'
+          category: 'trivy-config'
+
+  codeql_scan:
+    name: CodeQL SAST Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # Required to upload SARIF results
+      actions: read # Required for a private repository to allow access to the CodeQL Action
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Initializes the CodeQL tools for scanning.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: typescript # Specify the language to analyze
+          # Optional: config-file: './.github/codeql/codeql-config.yml' # For custom queries or configurations
+
+      # For TypeScript, an explicit build step is usually not needed for CodeQL if all TS files are present.
+      # If there were a transpile step to JS that CodeQL should analyze, it would go here.
+      # For this project, assuming direct TypeScript analysis is sufficient.
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "codeql-typescript" # Category for the SARIF results
+
+  gitleaks_scan:
+    name: Gitleaks Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches all history so Gitleaks can scan it
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # If you want to upload results as an artifact or to a security dashboard,
+          # you might need additional configuration here, like GITHUB_TOKEN.
+          # For basic scanning and failing the job, this is often sufficient.
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # If using a licensed version
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Recommended for uploading results to GHAS
+        with:
+          # Example: Fail if leaks are found
+          # exit-code: '1' # This is often the default behavior if leaks are found.
+          # The action itself will fail if leaks are detected by default.
+          # To upload results to GitHub Advanced Security (GHAS):
+          report_format: 'sarif'
+          report_path: 'gitleaks-report.sarif'
+
+      - name: Upload Gitleaks results to GitHub Security Tab
+        if: always() # Upload report even if leaks are found (and job fails)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'gitleaks-report.sarif'
+          category: 'gitleaks'

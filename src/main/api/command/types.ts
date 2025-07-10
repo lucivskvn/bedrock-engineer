@@ -21,7 +21,9 @@ export interface DetachedProcessInfo {
 }
 
 export interface CommandInput {
-  command: string
+  // command: string // Old structure
+  executable: string // The command or executable to run
+  args: string[] // Arguments for the command
   cwd: string
 }
 

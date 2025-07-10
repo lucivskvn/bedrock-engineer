@@ -29,10 +29,25 @@ export type ProxySettings = {
   proxyConfig?: ProxyConfiguration
 }
 
-export type AWSCredentials = {
-  accessKeyId: string
-  secretAccessKey: string
-  sessionToken?: string
+// This type holds non-credential configuration needed for AWS clients and general AWS settings.
+// It is used by the SDK client factory functions and for storing AWS-related settings in electron-store.
+export type AwsClientConfig = {
+  region: string
+  profile?: string // User might specify a profile name
+  // useProfile is implicitly true if 'profile' is set by the user, SDK handles this.
+  proxyConfig?: ProxyConfiguration
+}
+
+// The AWSCredentials type is being phased out for storing actual credentials.
+// For the store, we will use AwsClientConfig.
+// If other parts of the app were hypothetically handling raw credentials before SDK involvement,
+// they would need significant refactoring. Our goal is to remove such patterns.
+// For clarity during transition, I'm renaming AWSCredentials to OldAWSCredentialsConfig
+// and will remove its usages where it implies storing actual keys.
+export type OldAWSCredentialsConfig = {
+  accessKeyId: string // To be removed from active use
+  secretAccessKey: string // To be removed from active use
+  sessionToken?: string // To be removed from active use
   region: string
   profile?: string
   useProfile?: boolean

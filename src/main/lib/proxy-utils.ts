@@ -250,11 +250,13 @@ export function createProxyAgents(
 
 /**
  * AWS Bedrock用のHTTPオプションを作成する便利関数
- * @param awsCredentials AWS認証情報
+ * @param clientConfig AWSクライアント設定（リージョンやプロキシ情報を含む）
  * @returns HTTPオプション
  */
-export function createHttpOptions(awsCredentials: AWSCredentials): object {
-  const proxyAgents = createProxyAgents(awsCredentials, { includeNodeHandler: true })
+export function createHttpOptions(clientConfig: AwsClientConfig): object {
+  // createProxyAgents expects a structure with proxyConfig, so we pass clientConfig which has it.
+  // If createProxyAgents is refactored to directly take ProxyConfiguration, this can be simplified.
+  const proxyAgents = createProxyAgents(clientConfig as any, { includeNodeHandler: true })
 
   if (!proxyAgents?.requestHandler) {
     return {}

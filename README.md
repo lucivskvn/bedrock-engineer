@@ -38,10 +38,24 @@ It is optimized for MacOS, but can also be built and used on Windows and Linux O
 
 ### Installation
 
-1. Download the latest release
-2. Open the DMG file and drag the app to your Applications folder
-3. Launch the app and configure your AWS credentials
-4. Open System Preferences, click Security & Privacy, then put a checkmark to "Allow apps downloaded from anywhere" -> Click OK and enter your password
+1. Download the latest release.
+2. Open the DMG file and drag the app to your Applications folder.
+3. **Important:** Configure your AWS credentials using standard AWS methods before launching the app (see "AWS Credential Configuration" section below).
+4. Open System Preferences, click Security & Privacy, then put a checkmark to "Allow apps downloaded from anywhere" -> Click OK and enter your password.
+
+### AWS Credential Configuration
+
+Bedrock Engineer uses the standard AWS SDK, which automatically and securely resolves credentials via the default credential provider chain. This means you should configure your AWS credentials using one of the standard methods:
+
+*   **Environment Variables:** Set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`.
+*   **AWS Credentials File:** Configure your credentials in the `~/.aws/credentials` file (and `~/.aws/config` for region and profile information). You can use named profiles by setting the `AWS_PROFILE` environment variable.
+*   **IAM Roles for Amazon EC2/ECS:** If running on an EC2 instance or ECS task, the SDK can automatically use IAM roles assigned to the instance/task.
+
+The application no longer stores AWS access keys directly. Upon first launch with these changes, any previously stored keys in the application's configuration will be ignored. You must ensure your credentials are set up externally for the application to access AWS services.
+
+For more details on configuring credentials, please refer to the official AWS documentation:
+*   [AWS SDK for JavaScript Developer Guide - Setting Credentials](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/setting-credentials.html)
+*   [AWS CLI User Guide - Configuration Basics](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html)
 
 ### Opening the Application
 
@@ -162,7 +176,7 @@ The supported tools are:
 
 | Tool Name         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `executeCommand`  | Manages command execution and process input handling. Features two operational modes: 1) initiating new processes with command and working directory specification, 2) sending standard input to existing processes using process ID. For security reasons, only allowed commands can be executed, using the configured shell. Unregistered commands cannot be executed. The agent's capabilities can be extended by registering commands that connect to databases, execute APIs, or invoke other AI agents.                    |
+| `executeCommand`  | Manages command execution and process input handling. Features two operational modes: 1) initiating new processes with a command string (e.g., "npm install") and working directory, 2) sending standard input to an existing process using its process ID. <br/> **Security Enhancements**: To mitigate risks like command injection, the input command string is parsed into an executable and arguments before execution, avoiding direct shell interpretation of the full string. Potentially destructive commands (e.g., file deletion, `git push`, package installations) will trigger a UI confirmation dialog, requiring explicit user approval before proceeding. Only commands configured in the agent's allowed list can be attempted. The agent's capabilities can be extended by carefully registering commands that connect to databases, execute APIs, or invoke other AI agents, keeping security implications in mind. |
 | `codeInterpreter` | Executes Python code in a secure Docker environment with pre-installed data science libraries. Provides isolated code execution with no internet access for security. Supports two environments: "basic" (numpy, pandas, matplotlib, requests) and "datascience" (full ML stack including scikit-learn, scipy, seaborn, etc.). Input files can be mounted read-only at /data/ directory for analysis. Generated files are automatically detected and reported. Perfect for data analysis, visualization, and ML experimentation. |
 | `screenCapture`   | Captures the current screen and saves as PNG image file. Optionally analyzes the captured image with AI using vision models (Claude/Nova) to extract text content, identify UI elements, and provide detailed visual descriptions for debugging and documentation purposes. Platform-specific permissions required (macOS: Screen Recording permission in System Preferences required).                                                                                                                                          |
 | `cameraCapture`   | Captures images from PC camera using HTML5 getUserMedia API and saves as an image file. Supports different quality settings (low, medium, high) and formats (JPG, PNG). Optionally analyzes the captured image with AI to extract text content, identify objects, and provide detailed visual descriptions for analysis and documentation purposes. Camera access permission is required in your browser settings.                                                                                                               |

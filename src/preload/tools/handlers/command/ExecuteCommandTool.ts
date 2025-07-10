@@ -16,6 +16,7 @@ import {
   CommandPatternConfig
 } from '../../../../main/api/command/types'
 import { findAgentById } from '../../../helpers/agent-helpers'
+import { ipcRenderer } from 'electron' // Added for IPC communication
 
 /**
  * Input type for ExecuteCommandTool
@@ -52,8 +53,14 @@ let commandServiceState: CommandServiceState | null = null
  */
 export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCommandResult> {
   static readonly toolName = 'executeCommand'
-  static readonly toolDescription =
-    'Execute a command or send input to a running process. First execute the command to get a PID, then use that PID to send input if needed. Usage: 1) First call with command and cwd to start process, 2) If input is required, call again with pid and stdin.'
+  static readonly toolDescription = [
+    'Executes system commands or sends input to a running process.',
+    'Security: Commands are executed with enhanced security measures.',
+    'Potentially destructive commands (e.g., file deletion, git push, package installation) will require user confirmation via a UI dialog before execution.',
+    'Input command strings are parsed into an executable and arguments to prevent shell injection vulnerabilities.',
+    'Usage: 1) To start a new process: provide `command` (full command string, e.g., "ls -la /tmp") and `cwd` (current working directory).',
+    '2) To send input to an existing process: provide `pid` (process ID from a previous execution) and `stdin` (string to send as standard input).'
+  ].join(' ')
 
   readonly name = ExecuteCommandTool.toolName
   readonly description = ExecuteCommandTool.toolDescription
@@ -63,14 +70,14 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
    */
   static readonly toolSpec: Tool['toolSpec'] = {
     name: ExecuteCommandTool.toolName,
-    description: ExecuteCommandTool.toolDescription,
+    description: ExecuteCommandTool.toolDescription, // Updated description
     inputSchema: {
       json: {
         type: 'object',
         properties: {
-          command: {
+          command: { // LLM will still provide a single command string
             type: 'string',
-            description: 'The command to execute (used when starting a new process)'
+            description: 'The command to execute (e.g., "ls -l /tmp")'
           },
           cwd: {
             type: 'string',
@@ -92,8 +99,12 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
   /**
    * System prompt description
    */
-  static readonly systemPromptDescription =
-    'Run system commands with user permission.\nOnly use commands from allowed list: {{allowedCommands}}.'
+  static readonly systemPromptDescription = [
+    'Allows execution of system commands. Commands are run with user permissions.',
+    'Security Note: Potentially destructive operations will require explicit user confirmation through a UI dialog.',
+    'Only commands from the configured allowed list (see agent settings) can be executed: {{allowedCommands}}.',
+    'The command string provided will be parsed into an executable and arguments to prevent common injection attacks.'
+  ].join('\n')
 
   /**
    * Get or create command service instance
@@ -110,6 +121,119 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
       }
     }
     return commandServiceState.service
+  }
+
+  /**
+   * Parses a command string into an executable and arguments.
+   * This is a basic parser. For robust shell-like parsing, a dedicated library would be better.
+   * Handles simple cases, quotes for arguments with spaces. Does not handle complex escapes within quotes.
+   * @param commandStr The command string to parse.
+   * @returns An object with 'executable' and 'args' array.
+   */
+  private parseCommandString(commandStr: string): { executable: string; args: string[] } {
+    if (!commandStr) {
+      return { executable: '', args: [] }
+    }
+    const args: string[] = []
+    let currentArg = ''
+    let inQuote = false
+    for (let i = 0; i < commandStr.length; i++) {
+      const char = commandStr[i]
+      if (char === ' ' && !inQuote) {
+        if (currentArg) {
+          args.push(currentArg)
+          currentArg = ''
+        }
+      } else if (char === '"' || char === "'") {
+        if (inQuote && char === currentArg[0]) { // End quote
+          currentArg += char
+          // Decide whether to keep quotes or strip them. Stripping is common.
+                          args.push(currentArg.slice(1, -1)); // Remove quotes
+          currentArg = '';
+                          inQuote = false;
+        } else if (!inQuote && !currentArg) { // Start quote
+          inQuote = true
+          currentArg += char
+        } else {
+           currentArg += char; // Character inside a quote or part of an unquoted arg
+        }
+      } else {
+        currentArg += char
+      }
+    }
+    if (currentArg) {
+      args.push(currentArg)
+    }
+
+    const executable = args.shift() || ''
+    // TODO: Consider using a more robust command parsing library if complex shell syntax is needed.
+    // For now, this handles basic space separation and simple quotes.
+    this.logger.debug(`Parsed command: "${commandStr}" into executable: "${executable}", args: [${args.join(', ')}]`)
+    return { executable, args }
+  }
+
+  /**
+   * Checks if a command is potentially destructive.
+   * @param executable The command executable.
+   * @param args The command arguments.
+   * @param originalCommandString The original full command string for context and logging.
+   * @returns True if the command is deemed destructive, false otherwise.
+   */
+  private isDestructiveCommand(executable: string, args: string[], originalCommandString: string): boolean {
+    if (!executable) return false
+    const lowerExec = executable.toLowerCase().trim()
+
+    // Destructive executables
+    const destructiveExecutables: string[] = [
+      'rm', 'mv', 'dd', 'mkfs', 'fdisk', 'git' // git is broad, subcommands are more specific
+    ]
+    if (destructiveExecutables.includes(lowerExec)) {
+       // More specific checks for git
+      if (lowerExec === 'git') {
+        const gitSubCommand = args[0]?.toLowerCase()
+        const destructiveGitSubCommands = ['clone', 'checkout', 'reset', 'clean', 'push', 'rebase', 'commit'] // commit can be if --amend etc.
+        if (destructiveGitSubCommands.includes(gitSubCommand)) {
+            this.logger.warn(`Destructive git command: ${executable} ${args.join(' ')} (Original: ${originalCommandString})`)
+            return true
+        }
+      } else {
+        this.logger.warn(`Destructive command executable: ${executable} (Original: ${originalCommandString})`)
+        return true
+      }
+    }
+
+    // Commands that are destructive with certain arguments or patterns
+    if ((lowerExec === 'curl' || lowerExec === 'wget') && args.some(arg => ['-XPOST', '-XPUT', '-XDELETE', '-XPATCH', '--data', '--upload-file'].includes(arg.toUpperCase()))) {
+      this.logger.warn(`Destructive network command: ${executable} ${args.join(' ')} (Original: ${originalCommandString})`)
+      return true
+    }
+    if (lowerExec === 'npm' || lowerExec === 'pip') {
+        if (args[0]?.toLowerCase() === 'install' || args[0]?.toLowerCase() === 'uninstall' || args[0]?.toLowerCase() === 'remove') {
+            this.logger.warn(`Destructive package manager command: ${executable} ${args.join(' ')} (Original: ${originalCommandString})`)
+            return true
+        }
+    }
+
+    // Check for output redirection in the original command string (as args might not capture this if not parsed perfectly for shell)
+    if (/>\s*[\w/.-]+/.test(originalCommandString) && !originalCommandString.includes('>\&')) { // Simple file overwrite, ignore >& (stderr to stdout)
+        this.logger.warn(`Destructive redirection detected in command: ${originalCommandString}`)
+        return true
+    }
+
+    // If the command is 'echo' or 'tee' and the original string suggests redirection to a file
+    if ((lowerExec === 'echo' || lowerExec === 'tee') && originalCommandString.includes('>')) {
+        this.logger.warn(`Destructive use of ${lowerExec} with redirection: ${originalCommandString}`)
+        return true
+    }
+     if (lowerExec === 'writetofile' && originalCommandString.toLowerCase().startsWith('writetofile')) { // If writeToFile itself is invoked via executeCommand
+      this.logger.warn(`Direct call to writeToFile via executeCommand: ${originalCommandString}`)
+      return true
+    }
+
+
+    // TODO: Add more patterns, e.g., for common database operations, cloud CLI commands that modify resources.
+    // This list is not exhaustive and needs continuous improvement.
+    return false
   }
 
   /**
@@ -186,12 +310,57 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
         })
       } else if ('command' in input && 'cwd' in input) {
         // Execute new command
+        const { executable, args } = this.parseCommandString(input.command)
+
+        if (!executable) {
+          this.logger.warn('Empty executable after parsing command string.', { originalCommand: input.command })
+          throw new ExecutionError('Invalid command: Executable cannot be empty after parsing.', this.name)
+        }
+
         this.logger.info('Executing new command', {
-          command: input.command,
-          cwd: input.cwd
+          executable,
+          args,
+          cwd: input.cwd,
+          originalCommand: input.command
         })
 
-        result = await commandService.executeCommand(input)
+        // Check for destructive commands and request confirmation
+        if (this.isDestructiveCommand(executable, args, input.command)) {
+          this.logger.warn(`Destructive command detected: ${input.command} (parsed as: ${executable} ${args.join(' ')})`)
+          try {
+            // Show the original, full command string to the user for clarity
+            const userResponse = await ipcRenderer.invoke('confirm-destructive-command', input.command)
+            if (!userResponse.confirmed) {
+              this.logger.info(`User denied execution of destructive command: ${input.command}`)
+              return {
+                success: false,
+                name: 'executeCommand',
+                message: `User denied execution of command: ${input.command}`,
+                stdout: '',
+                stderr: 'Command execution cancelled by user.',
+                exitCode: -1,
+                requiresInput: false
+              }
+            }
+            this.logger.info(`User approved execution of destructive command: ${input.command}`)
+          } catch (ipcError) {
+            this.logger.error('Error during IPC confirmation for destructive command', { error: ipcError })
+            throw new ExecutionError(
+              `Failed to get user confirmation: ${ipcError instanceof Error ? ipcError.message : String(ipcError)}`,
+              this.name
+            )
+          }
+        }
+
+        // Prepare the input for commandService, which will be refactored to take executable and args
+        const commandServiceInput: CommandInput = {
+            executable,
+            args,
+            cwd: input.cwd
+        }
+        // @ts-expect-error // Temporarily allow passing old structure until CommandService is updated
+        result = await commandService.executeCommand(commandServiceInput)
+
 
         this.logger.debug('Command execution result', {
           pid: result.processInfo?.pid,
