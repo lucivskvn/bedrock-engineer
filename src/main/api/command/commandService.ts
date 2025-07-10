@@ -75,15 +75,20 @@ export class CommandService {
   }
 
   /**
-   * Electron環境で適切な環境変数を取得
-   * Windows特有のPATH問題を解決
+   * Retrieves and enhances environment variables for command execution.
+   * This method is particularly important for ensuring commands can find necessary executables,
+   * resolving common PATH issues, especially in packaged Electron applications or diverse OS environments.
+   * @param isWindows Indicates if the current platform is Windows.
+   * @returns A NodeJS.ProcessEnv object with potentially augmented PATH and other relevant variables.
    */
   private getEnhancedEnvironment(isWindows: boolean): NodeJS.ProcessEnv {
     const env = { ...process.env }
 
+    // Common system paths that might be missing in some environments.
+    // These are added to the existing PATH to increase chances of finding common CLIs.
     if (isWindows) {
-      // Windows固有の環境変数とPATHの強化
       const systemPaths = [
+        // Standard Windows paths
         'C:\\Windows\\System32',
         'C:\\Windows',
         'C:\\Windows\\System32\\Wbem',
@@ -101,16 +106,17 @@ export class CommandService {
       const enhancedPath = [currentPath, ...systemPaths].filter(Boolean).join(';')
 
       env.PATH = enhancedPath
-      env.Path = enhancedPath // Windowsでは両方設定
+      env.Path = enhancedPath // Ensure both casings are covered for Windows PATH
 
-      // Windows固有の環境変数
+      // Set essential Windows environment variables if not already present.
       env.COMSPEC = env.COMSPEC || 'C:\\Windows\\System32\\cmd.exe'
       env.PATHEXT = env.PATHEXT || '.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC'
-      env.SYSTEMROOT = env.SYSTEMROOT || 'C:\\Windows'
+      env.SYSTEMROOT = env.SYSTEMROOT || 'C:\\Windows' // Often required by system utilities
       env.WINDIR = env.WINDIR || 'C:\\Windows'
     } else {
-      // Unix系の場合
+      // For Unix-like systems (Linux, macOS)
       const systemPaths = [
+        // Standard Unix paths
         '/usr/local/bin',
         '/usr/bin',
         '/bin',
@@ -129,60 +135,104 @@ export class CommandService {
     return env
   }
 
-  // TODO: Refactor command pattern parsing and matching for better security and flexibility.
-  // The current string splitting is too basic for robust argument validation.
-  // The CommandPatternConfig structure might need to change to define allowed executables
-  // and then specific rules or patterns for their arguments.
-  private isCommandAllowed(executable: string, _args: string[]): boolean {
-    // allowedCommands が未定義の場合は空の配列として処理
+  /**
+   * Validates if the given executable and arguments are permitted based on the configured allowlist.
+   * @param executable The command executable (e.g., "git", "npm").
+   * @param args An array of arguments for the executable.
+   * @returns True if the command is allowed, false otherwise.
+   */
+  private isCommandAllowed(executable: string, args: string[]): boolean {
     const allowedCommands = this.config.allowedCommands || []
 
     if (allowedCommands.length === 0) {
-      // If no commands are explicitly allowed, deny all.
-      // Or, decide if this means all commands are allowed (less secure).
-      // For now, let's assume if allowlist is empty, nothing is allowed unless a wildcard '*' is present.
-      // This behavior might need to be configurable.
-      console.warn('No allowedCommands configured. Denying command execution by default.')
-      return false;
-    }
-
-    // "*" in allowedCommands means all commands are allowed (use with extreme caution)
-    if (allowedCommands.some(cmd => cmd.pattern === '*')) {
-        console.warn("Wildcard '*' found in allowedCommands. All commands will be permitted.")
-        return true;
-    }
-
-    return allowedCommands.some((allowedCmdPattern) => {
-      // Current pattern is just a string. We'll assume it's primarily for the executable.
-      // For a more robust system, allowedCmdPattern.pattern should be more structured.
-      const patternParts = allowedCmdPattern.pattern.split(' ')
-      const allowedExecutable = patternParts[0]
-      // const allowedArgsPattern = patternParts.slice(1); // Basic arg pattern
-
-      if (allowedExecutable === executable) {
-        // TODO: Implement more sophisticated argument checking here based on allowedArgsPattern
-        // For now, if the executable matches, and if the pattern had a wildcard for args (e.g. "git *")
-        // or no specific args, we allow it. This simplifies the transition.
-        // A truly secure model needs to validate args based on the specific executable.
-        if (patternParts.includes('*') || patternParts.length === 1) {
-            return true;
-        }
-        // Basic check: if pattern has args, then input must also have args.
-        // This is insufficient for real security.
-        // if (allowedArgsPattern.length > 0 && args.length === 0) return false;
-        // if (allowedArgsPattern.length === 0 && args.length > 0 && !patternParts.includes('*')) return false;
-
-        // For now, focusing on executable match. Argument validation needs a proper design.
-        // If we want to be stricter now: if pattern has args, they must match or pattern must allow wildcard for them.
-        // This part is tricky without changing CommandPatternConfig.
-        // Let's default to allowing if executable matches and pattern is simple.
-        return true; // Placeholder for more robust arg validation
-      }
+      // It's crucial to default to deny if no rules are set.
+      console.warn('CommandService: No allowedCommands configured. Denying all command execution by default.')
       return false
-    })
+    }
+
+    for (const pattern of allowedCommands) {
+      // Check if the executable matches. A pattern with executable '*' is a wildcard for any executable.
+      if (pattern.executable === '*' || pattern.executable === executable) {
+
+        // If pattern.allowedArgs is undefined or empty, it means this pattern doesn't restrict arguments.
+        if (!pattern.allowedArgs || pattern.allowedArgs.length === 0) {
+          // If no specific args are defined in pattern, then:
+          // - If allowSubsequentArgs is true, any arguments are fine.
+          // - If allowSubsequentArgs is false/undefined, only no arguments are fine.
+          if (pattern.allowSubsequentArgs || args.length === 0) {
+            return true // Command allowed by this pattern
+          }
+          // If subsequent args are not allowed, but args were provided, this pattern does not match.
+          // Continue to the next pattern.
+          if (!pattern.allowSubsequentArgs && args.length > 0) {
+            continue
+          }
+        } else {
+          // Specific arguments are defined in the pattern. Validate them.
+          if (args.length < pattern.allowedArgs.length && !pattern.allowSubsequentArgs) {
+            // Not enough arguments provided by the command to match the pattern,
+            // and subsequent arguments are not allowed.
+            continue // Try next pattern
+          }
+
+          let  argsPatternMatch = true
+          for (let i = 0; i < pattern.allowedArgs.length; i++) {
+            const patternArgRule = pattern.allowedArgs[i]
+            const actualArg = args[i]
+
+            if (actualArg === undefined) {
+              // Command provided fewer arguments than this pattern expects.
+              argsPatternMatch = false;
+              break;
+            }
+
+            if (typeof patternArgRule === 'string') {
+              if (patternArgRule !== actualArg) {
+                argsPatternMatch = false
+                break
+              }
+            } else if (patternArgRule instanceof RegExp) {
+              if (!patternArgRule.test(actualArg)) {
+                argsPatternMatch = false
+                break
+              }
+            } else {
+              // Should not happen if CommandPatternConfig is correctly typed and used.
+              console.warn(`CommandService: Invalid type in allowedArgs for pattern: ${pattern.executable}`)
+              argsPatternMatch = false
+              break
+            }
+          }
+
+          if (argsPatternMatch) {
+            // All arguments defined in pattern.allowedArgs have matched.
+            // Now, check if subsequent arguments are allowed or if the count must be exact.
+            if (pattern.allowSubsequentArgs) {
+              return true // Command allowed by this pattern
+            } else {
+              // Not allowing subsequent arguments, so the number of actual args must exactly match pattern's args.
+              if (args.length === pattern.allowedArgs.length) {
+                return true // Command allowed by this pattern
+              } else {
+                // Exact number of arguments mismatch.
+                continue // Try next pattern
+              }
+            }
+          }
+          // Arguments did not match this pattern's rules. Continue to the next pattern.
+        }
+      }
+    }
+    // If no pattern matched after checking all of them.
+    console.warn(`CommandService: Command not allowed: '${executable} ${args.join(' ')}'. No matching allowlist pattern.`)
+    return false
   }
 
-  // 入力待ち状態かどうかを判定
+  /**
+   * Detects if the process output indicates it's waiting for user input.
+   * @param output The process output string.
+   * @returns An object with `isWaiting` (boolean) and an optional `prompt` string.
+   */
   private isWaitingForInput(output: string): { isWaiting: boolean; prompt?: string } {
     for (const pattern of this.inputDetectionPatterns) {
       if (output.match(pattern.pattern)) {
@@ -193,6 +243,10 @@ export class CommandService {
     return { isWaiting: false }
   }
 
+  /**
+   * Initializes the state for a new process.
+   * @param pid The process ID.
+   */
   private initializeProcessState(pid: number): void {
     this.processStates.set(pid, {
       isRunning: true,
@@ -212,18 +266,27 @@ export class CommandService {
     }
   }
 
-  // サーバーが正常に起動しているかチェック
+  /**
+   * Checks if the process output suggests a server or development process is ready.
+   * @param output The process output string.
+   * @returns True if a ready pattern is found, false otherwise.
+   */
   private isServerReady(output: string): boolean {
     return this.serverReadyPatterns.some((pattern) =>
       output.toLowerCase().includes(pattern.toLowerCase())
     )
   }
 
-  // エラーチェック
+  /**
+   * Checks for common error indicators in process output.
+   * @param stdout Standard output string.
+   * @param stderr Standard error string.
+   * @returns True if an error pattern is matched, false otherwise.
+   */
   private checkForErrors(stdout: string, stderr: string): boolean {
-    // エラーパターンのチェック
+    const combinedOutput = `${stdout}\n${stderr}`.toLowerCase();
     if (
-      this.errorPatterns.some((pattern) => stdout.includes(pattern) || stderr.includes(pattern))
+      this.errorPatterns.some((pattern) => combinedOutput.includes(pattern.toLowerCase()))
     ) {
       return true
     }
@@ -240,30 +303,21 @@ export class CommandService {
     const { executable, args, cwd } = input;
 
     return new Promise((resolve, reject) => {
-      // 入力値の事前検証
+      // Validate input parameters
       if (!executable || typeof executable !== 'string' || executable.trim() === '') {
-        reject(new Error('Invalid command: Executable cannot be empty'))
-        return
+        return reject(new Error('Invalid command: Executable cannot be empty.'))
       }
       if (!cwd || typeof cwd !== 'string') {
-        reject(new Error('Invalid working directory: cwd must be a valid string'))
-        return
+        return reject(new Error('Invalid working directory: CWD must be a valid string.'))
       }
-      if (!Array.isArray(args)) {
-        reject(new Error('Invalid arguments: args must be an array of strings'))
-        return
+      if (!Array.isArray(args) || !args.every(arg => typeof arg === 'string')) {
+        return reject(new Error('Invalid arguments: Args must be an array of strings.'))
       }
 
-
-      // シェルの設定は spawn の options.shell で制御するため、ここでの config.shell の直接チェックは変更
-      // if (!this.config.shell) {
-      //   reject(new Error('Shell configuration is missing'))
-      //   return
-      // }
-
+      // Check if the command is allowed by the configured patterns
       if (!this.isCommandAllowed(executable, args)) {
         const fullCommand = `${executable} ${args.join(' ')}`.trim()
-        reject(new Error(`Command not allowed: ${fullCommand}`))
+        return reject(new Error(`Command not allowed by security configuration: ${fullCommand}`))
         return
       }
 
@@ -272,54 +326,44 @@ export class CommandService {
       let childProcess
 
       try {
-        // Secure spawn: pass executable and args separately.
-        // Avoid shell interpretation of the command string.
-        // For Windows, if executable is a .bat, .cmd or built-in shell command,
-        // `shell: true` might still be needed, or `cmd /c executable args...`
-        // This is a complex area. Defaulting to `shell: false` for security.
-        // If specific commands require shell (e.g. `echo hello > file.txt`), they must be
-        // explicitly handled or the `isCommandAllowed` should be very strict for them.
-        // A safer way for shell-required commands is `spawn('cmd.exe', ['/c', executable, ...args])` on Windows
-        // or `spawn('/bin/sh', ['-c', `${executable} ${args.join(' ')}`])` on Unix,
-        // but this re-introduces shell parsing risk if not handled carefully.
-        // The ideal is to always use shell: false or not set it (defaults to false).
-
-        // TODO: Investigate specific Windows commands that might require `shell: true`
-        // (e.g., internal cmd commands like `dir` if not using `cmd /c dir`).
-        // For now, we aim for `shell: false` as much as possible.
-        // If `executable` is 'cmd' or 'powershell' on Windows, or '/bin/sh', '/bin/bash' on Unix,
-        // then the arguments might themselves form a command to be parsed by that shell.
-        // This needs careful consideration in `isCommandAllowed`.
-
-        const options: any = { // child_process.SpawnOptionsWithoutStdio
+        // Spawn the process.
+        // The primary security measure here is that `executable` and `args` are passed separately,
+        // and `shell: false` (or its default behavior) is used for most cases, preventing the OS
+        // from interpreting the command string as a whole through a shell.
+        const spawnOptions: any = {
             cwd: cwd,
             env: spawnEnv,
-            stdio: ['pipe', 'pipe', 'pipe'], // For stdin, stdout, stderr
-            detached: !isWindows, // Detach on Unix for process group killing, Windows handles this differently
+            stdio: 'pipe', // ['pipe', 'pipe', 'pipe'] is equivalent for stdin, stdout, stderr
+            detached: !isWindows,
             windowsHide: true,
+            shell: false // Default to false for security, override below if necessary
         };
 
-        // Special handling for Windows shell commands if necessary
-        // This is a simplification. A more robust solution would check if `executable`
-        // is a built-in shell command or script that requires shell.
-        if (isWindows && (executable.endsWith('.cmd') || executable.endsWith('.bat'))) {
-            options.shell = true; // For .cmd/.bat files, shell is often required.
-                                  // This means `executable` itself is given to `spawn` and `args` are separate.
-            childProcess = spawn(executable, args, options);
-        } else if (isWindows && ['dir', 'echo', 'type', 'copy', 'del', 'move', 'ren', 'mkdir', 'rmdir'].includes(executable.toLowerCase())) {
-            // These are common internal cmd.exe commands.
-            // Safer to run them via cmd /c
+        // Platform-specific considerations for shell usage:
+        // Certain commands on Windows (batch files, internal cmd commands) might require a shell.
+        // On Unix, `shell: false` is generally safer.
+        if (isWindows) {
+          if (executable.endsWith('.cmd') || executable.endsWith('.bat')) {
+            // Batch/cmd scripts typically require a shell to interpret them.
+            // Spawning the script directly with `shell: true` is one way.
+            // Args are still passed separately to the script itself.
+            spawnOptions.shell = true;
+            childProcess = spawn(executable, args, spawnOptions);
+          } else if (['dir', 'echo', 'type', 'copy', 'del', 'move', 'ren', 'mkdir', 'rmdir'].includes(executable.toLowerCase())) {
+            // For common internal cmd.exe commands, it's safer to explicitly invoke cmd.exe.
             const cmdArgs = ['/c', executable, ...args];
-            childProcess = spawn('cmd.exe', cmdArgs, options);
+            childProcess = spawn('cmd.exe', cmdArgs, spawnOptions); // shell:false is fine here as cmd.exe is the executable
+          } else {
+            // For other executables on Windows, attempt direct execution.
+            childProcess = spawn(executable, args, spawnOptions);
+          }
+        } else {
+          // On Unix-like systems, direct execution without a shell is preferred.
+          childProcess = spawn(executable, args, spawnOptions);
         }
-        else {
-            options.shell = false; // Explicitly set to false for others
-            childProcess = spawn(executable, args, options);
-        }
-
       } catch (spawnError: any) {
-        console.error('Error during spawn:', spawnError);
-        reject(new Error(`Failed to spawn command "${executable}": ${spawnError.message}`));
+        console.error(`CommandService: Error during process spawn for "${executable}"`, { error: spawnError });
+        reject(new Error(`Failed to spawn command "${executable}": ${spawnError.message || 'Unknown spawn error'}`));
         return;
       }
 
@@ -341,19 +385,18 @@ export class CommandService {
       }
 
       const pid = childProcess.pid
-      const fullCommandForLogging = `${executable} ${args.join(' ')}`.trim()
+      const fullCommandForLogging = `${executable} ${args.join(' ')}`.trim() // For logging and messages
 
       this.initializeProcessState(pid)
       this.runningProcesses.set(pid, {
         pid,
-        command: fullCommandForLogging, // Log the reconstructed command
+        command: fullCommandForLogging,
         timestamp: Date.now()
       })
-
       this.updateProcessState(pid, { process: childProcess })
 
-      let currentOutput = ''
-      let currentError = ''
+      let currentOutput = '' // Accumulates stdout
+      let currentError = '' // Accumulates stderr
       let isCompleted = false
 
       const cleanup = () => {
@@ -386,7 +429,7 @@ export class CommandService {
               exitCode: 0,
               processInfo: {
                 pid,
-                command: input.command,
+                command: fullCommandForLogging, // Use the reconstructed command for info
                 detached: true
               },
               requiresInput: true,
@@ -403,7 +446,7 @@ export class CommandService {
               exitCode: 0,
               processInfo: {
                 pid,
-                command: input.command,
+                command: fullCommandForLogging, // Use the reconstructed command for info
                 detached: true
               }
             })
@@ -419,7 +462,7 @@ export class CommandService {
             exitCode: state.output.code || 0,
             processInfo: {
               pid,
-              command: input.command,
+              command: fullCommandForLogging, // Use the reconstructed command for info
               detached: true
             }
           })

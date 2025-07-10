@@ -1,6 +1,13 @@
 export interface CommandPatternConfig {
-  pattern: string
-  description: string
+  // pattern: string; // Old structure
+  executable: string; // The specific command executable, e.g., "git", "npm", "ls"
+  description: string; // Description of what this allowed command pattern does
+  // Defines allowed arguments. Each element can be a string for an exact match
+  // or a RegExp for pattern matching. The order matters.
+  allowedArgs?: (string | RegExp)[];
+  // If true, allows any arguments to follow after those matched by allowedArgs.
+  // If false or undefined, only arguments matching allowedArgs (and no more) are permitted.
+  allowSubsequentArgs?: boolean;
 }
 
 export interface CommandConfig {
