@@ -112,17 +112,16 @@ export class ImageService {
   ]
 
   constructor(private context: ServiceContext) {
-    const awsCredentials = this.context.store.get('aws')
+    const awsConfig = this.context.store.get('aws')
 
-    if (
-      !awsCredentials.region ||
-      (!awsCredentials.useProfile &&
-        (!awsCredentials.accessKeyId || !awsCredentials.secretAccessKey))
-    ) {
-      console.warn('AWS credentials not configured properly')
+    // The AWS SDK's default credential provider chain will handle profile/credentials.
+    // We just need to ensure region is present for the client.
+    if (!awsConfig || !awsConfig.region) {
+      console.warn('AWS region is not configured. BedrockRuntimeClient might default or fail.')
+      // Potentially throw an error here if region is strictly required and no default can be assumed
     }
 
-    this.runtimeClient = createRuntimeClient(awsCredentials)
+    this.runtimeClient = createRuntimeClient(awsConfig)
   }
 
   private getModelType(modelId: ImageGeneratorModel): ModelType {

@@ -4,7 +4,7 @@ import {
   TranslateTextRequest
 } from '@aws-sdk/client-translate'
 import { createCategoryLogger } from '../../../../common/logger'
-import type { AWSCredentials } from '../types'
+import type { AwsClientConfig } from '../types' // Changed AWSCredentials to AwsClientConfig
 import { createTranslateClient } from '../client'
 
 export interface TranslateTextOptions {
@@ -42,8 +42,8 @@ export class TranslateService {
   private maxCacheSize = 1000
   private readonly logger = createCategoryLogger('TranslateService')
 
-  constructor(awsCredentials: AWSCredentials) {
-    this.client = createTranslateClient(awsCredentials)
+  constructor(awsConfig: AwsClientConfig) { // Changed parameter name and type
+    this.client = createTranslateClient(awsConfig)
     this.logger.info('TranslateService initialized')
   }
 
