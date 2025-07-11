@@ -1,5 +1,5 @@
-import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts'
-import type { AWSCredentials } from '../types'
+import { STSClient, GetCallerIdentityCommand, STSClientConfig } from '@aws-sdk/client-sts' // Added STSClientConfig
+import type { AwsClientConfig } from '../types' // Changed AWSCredentials to AwsClientConfig
 import { allModels } from '../models'
 import type { LLM } from '../../../../types/llm'
 import { fromIni } from '@aws-sdk/credential-providers'
@@ -50,23 +50,20 @@ export function getAlternateRegionOnThrottling(
   return availableRegions[randomIndex]
 }
 
-export async function getAccountId(awsCredentials: AWSCredentials) {
+export async function getAccountId(awsConfig: AwsClientConfig) { // Changed parameter name and type
   try {
-    const { region, useProfile, profile } = awsCredentials
+    const { region, profile } = awsConfig; // useProfile is implicit if profile is set
 
-    const sts = new STSClient({
-      credentials:
-        useProfile && profile
-          ? fromIni({ profile })
-          : {
-              accessKeyId: awsCredentials.accessKeyId,
-              secretAccessKey: awsCredentials.secretAccessKey,
-              sessionToken: awsCredentials?.sessionToken
-            },
-      region
-    })
+    const stsClientOptions: STSClientConfig = { region };
 
-    const command = new GetCallerIdentityCommand({})
+    if (profile) {
+      stsClientOptions.credentials = fromIni({ profile });
+    }
+    // If no profile, credentials option remains undefined, SDK uses default chain.
+
+    const sts = new STSClient(stsClientOptions);
+
+    const command = new GetCallerIdentityCommand({});
     const res = await sts.send(command)
     return res.Account
   } catch (error) {

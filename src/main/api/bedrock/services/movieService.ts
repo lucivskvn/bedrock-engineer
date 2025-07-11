@@ -34,17 +34,16 @@ export class VideoService {
   private region: string
 
   constructor(private context: ServiceContext) {
-    const awsCredentials = this.context.store.get('aws')
+    const awsConfig = this.context.store.get('aws')
 
-    if (
-      !awsCredentials.region ||
-      (!awsCredentials.useProfile &&
-        (!awsCredentials.accessKeyId || !awsCredentials.secretAccessKey))
-    ) {
-      console.warn('AWS credentials not configured properly')
+    // The AWS SDK's default credential provider chain will handle profile/credentials.
+    // We just need to ensure region is present for the client.
+    if (!awsConfig || !awsConfig.region) {
+      console.warn('AWS region is not configured. Services might default or fail.')
+      this.region = 'us-east-1'; // Default if not configured
+    } else {
+      this.region = awsConfig.region;
     }
-
-    this.region = awsCredentials.region || 'us-east-1' // Default to us-east-1
 
     // Validate that Nova Reel is supported in the selected region
     if (!isNovaReelSupportedInRegion(this.region)) {
@@ -53,12 +52,11 @@ export class VideoService {
           NOVA_REEL_REGION_SUPPORT
         ).join(', ')}`
       )
+      // Potentially throw an error or disable functionality if region is critical
     }
 
-    this.runtimeClient = createRuntimeClient(awsCredentials)
-
-    // S3 client for downloading generated videos
-    this.s3Client = createS3Client(awsCredentials)
+    this.runtimeClient = createRuntimeClient(awsConfig)
+    this.s3Client = createS3Client(awsConfig)
   }
 
   private validateRequest(request: GenerateMovieRequest): void {
