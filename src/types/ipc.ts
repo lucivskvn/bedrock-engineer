@@ -1,3 +1,5 @@
+import { ToolInput, ToolResult } from './tools'
+
 // IPC通信の型定義を一元管理
 export interface IPCChannelDefinitions {
   // Bedrock関連
@@ -157,6 +159,137 @@ export interface IPCChannelDefinitions {
     result: { size: number; maxSize: number; hitRate?: number }
   }
 
+  // Preloadツール実行関連（IPC経由 - 新しいパターン）
+  'preload-tool-request': {
+    params: {
+      requestId: string
+      toolInput: ToolInput
+    }
+    result: void
+  }
+  'preload-tool-response': {
+    params: {
+      requestId: string
+      result: ToolResult
+    }
+    result: void
+  }
+
+  // 背景エージェント関連
+  'background-agent:chat': {
+    params: {
+      sessionId: string
+      config: {
+        modelId: string
+        systemPrompt?: string
+        agentId?: string
+        tools?: any[]
+      }
+      userMessage: string
+    }
+    result: {
+      response: {
+        id: string
+        role: string
+        content: any[]
+        timestamp: number
+      }
+      toolExecutions?: Array<{
+        toolName: string
+        input: any
+        output: any
+        success: boolean
+        error?: string
+      }>
+    }
+  }
+  'background-agent:task-notification': {
+    params: {
+      taskId: string
+      taskName: string
+      success: boolean
+      error?: string
+      aiMessage?: string
+      executedAt: number
+    }
+    result: void
+  }
+  'background-agent:create-session': {
+    params: {
+      sessionId: string
+    }
+    result: {
+      success: boolean
+      sessionId: string
+    }
+  }
+  'background-agent:delete-session': {
+    params: {
+      sessionId: string
+    }
+    result: {
+      success: boolean
+      sessionId: string
+    }
+  }
+  'background-agent:list-sessions': {
+    params: void
+    result: {
+      sessions: string[]
+    }
+  }
+  'background-agent:get-session-history': {
+    params: {
+      sessionId: string
+    }
+    result: {
+      history: Array<{
+        id: string
+        role: string
+        content: any[]
+        timestamp: number
+      }>
+    }
+  }
+  'background-agent:get-session-stats': {
+    params: {
+      sessionId: string
+    }
+    result: {
+      exists: boolean
+      messageCount: number
+      userMessages: number
+      assistantMessages: number
+    }
+  }
+  'background-agent:continue-session': {
+    params: {
+      sessionId: string
+      taskId: string
+      userMessage: string
+      options?: {
+        enableToolExecution?: boolean
+        maxToolExecutions?: number
+        timeoutMs?: number
+      }
+    }
+    result: {
+      response: {
+        id: string
+        role: string
+        content: any[]
+        timestamp: number
+      }
+      toolExecutions?: Array<{
+        toolName: string
+        input: any
+        output: any
+        success: boolean
+        error?: string
+      }>
+    }
+  }
+
   // ファイル操作関連
   'open-file': {
     params: void
@@ -169,6 +302,14 @@ export interface IPCChannelDefinitions {
   'get-local-image': {
     params: string // ファイルパス
     result: string // base64画像
+  }
+  'read-project-ignore': {
+    params: { projectPath: string }
+    result: { content: string; exists: boolean }
+  }
+  'write-project-ignore': {
+    params: { projectPath: string; content: string }
+    result: { success: boolean }
   }
 
   // ウィンドウ関連
@@ -228,6 +369,35 @@ export interface IPCChannelDefinitions {
       [key: string]: any
     }
     result: void
+  }
+
+  // Pub-Sub システム関連
+  'pubsub:subscribe': {
+    params: {
+      channel: string
+    }
+    result: void
+  }
+  'pubsub:unsubscribe': {
+    params: {
+      channel: string
+    }
+    result: void
+  }
+  'pubsub:publish': {
+    params: {
+      channel: string
+      data: any
+    }
+    result: void
+  }
+  'pubsub:stats': {
+    params: void
+    result: {
+      totalChannels: number
+      totalSubscribers: number
+      channels: Array<{ channel: string; subscriberCount: number }>
+    }
   }
 
   // 画面キャプチャ関連

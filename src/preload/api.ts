@@ -1,6 +1,5 @@
 import { Message, ToolConfiguration, ApplyGuardrailRequest } from '@aws-sdk/client-bedrock-runtime'
 import { ipcRenderer } from 'electron'
-import { executeTool } from './tools'
 import { store } from './store'
 import { BedrockService } from '../main/api/bedrock'
 import { getMcpToolSpecs, testMcpServerConnection, testAllMcpServerConnections } from './mcp'
@@ -13,6 +12,7 @@ import {
   getSystemPromptDescriptions,
   getToolUsageDescription
 } from './tools/common/ToolMetadataHelper'
+import { executeTool } from './tools'
 
 export type CallConverseAPIProps = {
   modelId: string
@@ -22,6 +22,150 @@ export type CallConverseAPIProps = {
 }
 
 export const api = {
+  backgroundAgent: {
+    chat: async (params: {
+      sessionId: string
+      config: {
+        modelId: string
+        systemPrompt?: string
+        agentId?: string
+        projectDirectory?: string
+        tools?: any[]
+      }
+      userMessage: string
+      options?: any
+    }) => {
+      return ipcRenderer.invoke('background-agent:chat', params)
+    },
+    // 通知イベントリスナー（拡張された詳細情報を含む）
+    onTaskNotification: (
+      callback: (params: {
+        taskId: string
+        taskName: string
+        success: boolean
+        error?: string
+        aiMessage?: string
+        executedAt: number
+        executionTime?: number
+        sessionId?: string
+        messageCount?: number
+        toolExecutions?: number
+        runCount?: number
+        nextRun?: number
+      }) => void
+    ) => {
+      const handler = (_event: any, params: any) => callback(params)
+      ipcRenderer.on('background-agent:task-notification', handler)
+
+      // クリーンアップ関数を返す
+      return () => {
+        ipcRenderer.removeListener('background-agent:task-notification', handler)
+      }
+    },
+    // 実行開始通知リスナー
+    onTaskExecutionStart: (
+      callback: (params: { taskId: string; taskName: string; executedAt: number }) => void
+    ) => {
+      const handler = (_event: any, params: any) => callback(params)
+      ipcRenderer.on('background-agent:task-execution-start', handler)
+
+      // クリーンアップ関数を返す
+      return () => {
+        ipcRenderer.removeListener('background-agent:task-execution-start', handler)
+      }
+    },
+    // タスクスキップ通知リスナー（重複実行防止など）
+    onTaskSkipped: (
+      callback: (params: {
+        taskId: string
+        taskName: string
+        reason: string
+        executionTime?: number
+      }) => void
+    ) => {
+      const handler = (_event: any, params: any) => callback(params)
+      ipcRenderer.on('background-agent:task-skipped', handler)
+
+      // クリーンアップ関数を返す
+      return () => {
+        ipcRenderer.removeListener('background-agent:task-skipped', handler)
+      }
+    },
+    createSession: async (
+      sessionId: string,
+      options?: {
+        projectDirectory?: string
+        agentId?: string
+        modelId?: string
+      }
+    ) => {
+      return ipcRenderer.invoke('background-agent:create-session', { sessionId, options })
+    },
+    deleteSession: async (sessionId: string) => {
+      return ipcRenderer.invoke('background-agent:delete-session', { sessionId })
+    },
+    listSessions: async () => {
+      return ipcRenderer.invoke('background-agent:list-sessions')
+    },
+    getSessionHistory: async (sessionId: string) => {
+      return ipcRenderer.invoke('background-agent:get-session-history', { sessionId })
+    },
+    getSessionStats: async (sessionId: string) => {
+      return ipcRenderer.invoke('background-agent:get-session-stats', { sessionId })
+    },
+    getAllSessionsMetadata: async () => {
+      return ipcRenderer.invoke('background-agent:get-all-sessions-metadata')
+    },
+    getSessionsByProject: async (projectDirectory: string) => {
+      return ipcRenderer.invoke('background-agent:get-sessions-by-project', { projectDirectory })
+    },
+    getSessionsByAgent: async (agentId: string) => {
+      return ipcRenderer.invoke('background-agent:get-sessions-by-agent', { agentId })
+    },
+    // スケジューリング機能
+    scheduleTask: async (config: any) => {
+      return ipcRenderer.invoke('background-agent:schedule-task', { config })
+    },
+    updateTask: async (taskId: string, config: any) => {
+      return ipcRenderer.invoke('background-agent:update-task', { taskId, config })
+    },
+    cancelTask: async (taskId: string) => {
+      return ipcRenderer.invoke('background-agent:cancel-task', { taskId })
+    },
+    toggleTask: async (taskId: string, enabled: boolean) => {
+      return ipcRenderer.invoke('background-agent:toggle-task', { taskId, enabled })
+    },
+    listTasks: async () => {
+      return ipcRenderer.invoke('background-agent:list-tasks')
+    },
+    getTask: async (taskId: string) => {
+      return ipcRenderer.invoke('background-agent:get-task', { taskId })
+    },
+    getTaskExecutionHistory: async (taskId: string) => {
+      return ipcRenderer.invoke('background-agent:get-task-execution-history', { taskId })
+    },
+    executeTaskManually: async (taskId: string) => {
+      return ipcRenderer.invoke('background-agent:execute-task-manually', { taskId })
+    },
+    getSchedulerStats: async () => {
+      return ipcRenderer.invoke('background-agent:get-scheduler-stats')
+    },
+    continueSession: async (params: {
+      sessionId: string
+      taskId: string
+      userMessage: string
+      options?: {
+        enableToolExecution?: boolean
+        maxToolExecutions?: number
+        timeoutMs?: number
+      }
+    }) => {
+      return ipcRenderer.invoke('background-agent:continue-session', params)
+    },
+    getTaskSystemPrompt: async (taskId: string) => {
+      return ipcRenderer.invoke('background-agent:get-task-system-prompt', { taskId })
+    }
+  },
   bedrock: {
     executeTool,
     applyGuardrail: async (request: ApplyGuardrailRequest) => {
@@ -69,6 +213,9 @@ export const api = {
     },
     getTranslationCacheStats: async () => {
       return ipcRenderer.invoke('bedrock:getTranslationCacheStats')
+    },
+    getModelMaxTokens: async (modelId: string) => {
+      return ipcRenderer.invoke('bedrock:getModelMaxTokens', { modelId })
     }
   },
   contextMenu: {
@@ -80,6 +227,15 @@ export const api = {
   },
   images: {
     getLocalImage: (path: string) => ipcRenderer.invoke('get-local-image', path)
+  },
+  openDirectory: async () => {
+    return ipcRenderer.invoke('open-directory')
+  },
+  readProjectIgnore: async (projectPath: string) => {
+    return ipcRenderer.invoke('read-project-ignore', { projectPath })
+  },
+  writeProjectIgnore: async (projectPath: string, content: string) => {
+    return ipcRenderer.invoke('write-project-ignore', { projectPath, content })
   },
   mcp: {
     getToolSpecs: async (mcpServers?: any) => {
@@ -156,6 +312,40 @@ export const api = {
     },
     getAllToolMetadata: () => {
       return ToolMetadataCollector.getAllToolMetadata()
+    }
+  },
+  pubsub: {
+    subscribe: (channel: string, callback: (data: any) => void) => {
+      // Listen for messages on the channel
+      const handler = (_event: any, data: any) => callback(data)
+      ipcRenderer.on(channel, handler)
+
+      // Register subscription with main process
+      ipcRenderer.invoke('pubsub:subscribe', { channel })
+
+      // Return unsubscribe function
+      return () => {
+        ipcRenderer.removeListener(channel, handler)
+        ipcRenderer.invoke('pubsub:unsubscribe', { channel })
+      }
+    },
+    unsubscribe: (channel: string) => {
+      ipcRenderer.removeAllListeners(channel)
+      return ipcRenderer.invoke('pubsub:unsubscribe', { channel })
+    },
+    publish: (channel: string, data: any) => {
+      return ipcRenderer.invoke('pubsub:publish', { channel, data })
+    },
+    stats: () => {
+      return ipcRenderer.invoke('pubsub:stats')
+    }
+  },
+  window: {
+    isFocused: async () => {
+      return ipcRenderer.invoke('window:isFocused')
+    },
+    openTaskHistory: async (taskId: string) => {
+      return ipcRenderer.invoke('window:openTaskHistory', taskId)
     }
   }
 }

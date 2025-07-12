@@ -418,6 +418,352 @@ const FileChanges = {
   collapse: '折りたたむ'
 }
 
+const BackgroundAgent = {
+  title: 'バックグラウンドエージェントスケジューラー',
+  description: '指定した時間にAIエージェントを自動実行するスケジュール機能',
+  pageDescription: 'スケジュールされたタスクを管理し、自動実行を設定できます',
+  createTask: 'タスク作成',
+  editTask: 'タスク編集',
+  sessionContinuation: 'セッション継続',
+  continueSessionPrompt: 'セッション継続プロンプト',
+
+  // Sessions
+  sessions: {
+    title: 'セッション',
+    newSession: '新規セッション',
+    noSessions: 'セッションがありません',
+    createNewSession: '新規セッションを作成してください',
+    confirmDelete: 'このセッションを削除しますか？',
+    deleteSession: 'セッション削除'
+  },
+
+  // New Session Modal
+  newSession: {
+    title: '新規セッション作成',
+    modelSelection: 'モデル選択',
+    agentSelection: 'エージェント選択',
+    noAgent: 'エージェントなし',
+    selectAgent: 'エージェントを選択してください。',
+    cancel: 'キャンセル',
+    create: '作成'
+  },
+
+  // CRON Presets
+  cronPresets: {
+    everyMinute: '毎分',
+    every5Minutes: '5分ごと',
+    everyHour: '毎時',
+    dailyAt9AM: '毎日午前9時',
+    weekdaysAt9AM: '平日午前9時',
+    weeklyMondayAt9AM: '毎週月曜午前9時',
+    monthlyFirst9AM: '毎月1日午前9時'
+  },
+
+  // Help Modal
+  help: {
+    title: 'Background Agent 作成ガイド',
+    subtitle: '効果的な Background Agent を作成するためのベストプラクティス',
+    tooltip: 'Background Agent について',
+
+    concepts: {
+      title: '基本概念',
+      description: 'Background Agent は定期実行に適したタスクを自動化するための機能です：',
+      item1: '明確で具体的な目標を持つタスクに最適',
+      item2: 'ユーザーの入力を必要としない自動化可能なタスク',
+      item3: '定期的な実行により価値を提供するタスク',
+      item4: '結果を適切に記録・レポートできるタスク'
+    },
+
+    useCases: {
+      title: '推奨されるユースケース',
+      development: {
+        title: '開発タスク',
+        description:
+          'プロジェクトの品質向上に役立つタスクです。コードベースの静的解析を行い、未使用のimportやコーディング規約違反を特定したり、テストスイートを定期実行してレグレッションを早期発見することができます。また、READMEやAPIドキュメントの更新チェックなど、開発チーム全体の生産性向上につながる作業の自動化が可能です。'
+      },
+      maintenance: {
+        title: 'メンテナンスタスク',
+        description:
+          'システムの安定稼働を支援するタスクです。アプリケーションログやエラーログを定期的に分析し、潜在的な問題や異常なパターンを検出して早期対応を可能にします。定期的なヘルスチェックによってシステムのパフォーマンス監視を行ったり、データのバックアップ状態やストレージ使用量の確認など、運用面での安心を提供する作業を自動化できます。'
+      },
+      workflow: {
+        title: 'ワークフロー支援',
+        description:
+          '日常業務を効率化するタスクです。業務開始前にメールをチェックして重要な案件を抽出し、優先順位付きの1日の作業計画を自動作成したり、週次でプロジェクトのタスクボードを確認して未完了タスクや期限間近なアイテムをレビューすることができます。会議前の資料準備や議題整理、定期的な進捗レポートの作成など、チーム全体の生産性向上を支援します。'
+      },
+      business: {
+        title: '日常業務自動化',
+        description:
+          'ルーチンワークを自動化するタスクです。顧客からの問い合わせパターンを分析してFAQの更新提案を行ったり、営業データやプロジェクト指標を定期的に集計してダッシュボードを更新することができます。また、チームメンバーの稼働状況や成果物の進捗を確認してマネジメント向けのサマリーレポートを作成するなど、管理業務の効率化にも役立ちます。'
+      }
+    },
+
+    prompts: {
+      title: 'プロンプト設計のコツ',
+      description:
+        '効果的なBackgroundAgentを作成するためには、明確で具体的なプロンプトが重要です。「何を」「どのように」「どこで」「いつまでに」を明示し、期待する出力形式（レポート、サマリー、チェックリストなど）を指定してください。また、エラーが発生した場合の対応方法や、作業範囲の境界を明確に定義することで、予期しない動作を防ぎ、一貫した結果を得ることができます。'
+    },
+
+    bestPractices: {
+      title: 'ベストプラクティス',
+      item1: '小さく始めて段階的に改善する - 最初はシンプルなタスクから',
+      item2: '明確な成功指標を設定する - 何を達成すべきかを定義',
+      item3: '適切な実行頻度を選択する - 過度な実行を避ける',
+      item4: 'ログとレポートを活用する - 実行結果を定期的に確認'
+    }
+  },
+
+  // Tabs
+  tabs: {
+    tasks: 'タスク',
+    stats: '統計'
+  },
+
+  // Form
+  form: {
+    title: 'スケジュールタスクの作成',
+    taskName: 'タスク名',
+    taskNamePlaceholder: 'タスク名を入力してください...',
+    schedule: 'スケジュール',
+    agent: 'エージェント',
+    selectAgent: 'エージェントを選択',
+    model: 'モデル',
+    projectDirectory: 'プロジェクトディレクトリ',
+    projectDirectoryPlaceholder: 'プロジェクトディレクトリのパスを入力してください...',
+    projectDirectoryHelp: 'オプション: エージェントの作業ディレクトリを指定',
+    selectProjectDirectory: 'プロジェクトディレクトリを選択',
+    wakeWord: 'ウェイクワード（プロンプト）',
+    wakeWordPlaceholder: 'エージェントに送信するプロンプトを入力してください...',
+    maxTokens: '最大出力トークン',
+    maxTokensHelp: 'モデルが生成できるトークンの最大数（選択されたモデルに依存）',
+    wakeWordHelp: 'このメッセージがタスク実行時にエージェントに送信されます',
+    cronHelp: 'Cron表記フォーマット: 分 時 日 月 曜日',
+    enableTask: 'タスクを即座に有効にする',
+    continueSession: 'セッションを継続する',
+    continueSessionHelp:
+      '有効にすると、前回のセッションに追加でメッセージを送信します。無効の場合は常に新しいセッションを開始します。',
+    continueSessionPrompt: 'セッション継続時のプロンプト',
+    continueSessionPromptPlaceholder: '前回の作業の続きを行ってください...',
+    continueSessionPromptHelp:
+      'セッション継続時に送信される専用プロンプト。空の場合は通常のウェイクワードが使用されます。',
+
+    errors: {
+      nameRequired: 'タスク名は必須です',
+      cronRequired: 'スケジュールは必須です',
+      agentRequired: 'エージェントの選択は必須です',
+      modelRequired: 'モデルの選択は必須です',
+      wakeWordRequired: 'ウェイクワードは必須です',
+      invalidMaxTokens: '無効な最大トークン数です（1-64000）'
+    }
+  },
+
+  // Task List
+  scheduledTasks: 'スケジュールタスク',
+  noTasks: 'スケジュールタスクがありません',
+  noTasksDescription: '最初のスケジュールタスクを作成して開始しましょう',
+  wakeWord: 'ウェイクワード',
+  executions: '実行回数',
+  lastRun: '最後の実行',
+  nextRun: '次回実行',
+  created: '作成日時',
+  never: 'なし',
+
+  // Task Actions
+  executeManually: '今すぐ実行',
+  testExecution: 'テスト実行',
+  enable: '有効にする',
+  disable: '無効にする',
+  enableTask: 'タスクを有効にする',
+  disableTask: 'タスクを無効にする',
+  deleteTask: 'タスクを削除',
+  confirmDeleteTask: 'このタスクを削除してもよろしいですか？',
+  taskDetails: 'タスク詳細',
+
+  // Status
+  status: {
+    active: '有効',
+    disabled: '無効',
+    error: 'エラー'
+  },
+
+  // Messages
+  messages: {
+    taskCreated: 'タスクを作成しました',
+    taskUpdated: 'タスクを更新しました',
+    taskCancelled: 'タスクを削除しました',
+    taskEnabled: 'タスクを有効にしました',
+    taskDisabled: 'タスクを無効にしました',
+    taskExecuted: 'タスクを実行しました',
+    taskExecutionFailed: 'タスクの実行に失敗しました',
+    taskSkipped: 'タスクの実行をスキップしました（{{reason}}）',
+    taskSkippedDuplicateExecution: 'タスクの実行をスキップしました（{{executionTime}}秒間実行中）',
+    sessionContinued: 'セッションでの会話を継続しました'
+  },
+
+  // Execution details
+  executionTime: '実行時間',
+  messagesLabel: 'メッセージ',
+  toolExecutions: 'ツール実行',
+  error: 'エラー',
+
+  // Statistics
+  stats: {
+    title: 'スケジューラー統計',
+    totalTasks: '総タスク数',
+    enabledTasks: '有効タスク数',
+    disabledTasks: '無効タスク数',
+    totalExecutions: '総実行回数',
+    tasksWithErrors: 'エラーのあるタスク数',
+    activeCronJobs: 'アクティブCronジョブ数',
+    healthOverview: 'ヘルス概要',
+    executionRate: '実行レート',
+    successRate: '成功率',
+    activeRate: 'アクティブ率',
+    summary: '概要',
+    active: 'アクティブ',
+    errors: 'エラー',
+    disabled: '無効'
+  },
+
+  lastError: '最後のエラー',
+
+  // History
+  viewExecutionHistory: '実行履歴を表示',
+  history: {
+    title: '実行履歴',
+    viewHistory: '実行履歴を表示',
+    totalExecutions: '総実行回数',
+    successful: '成功',
+    failed: '失敗',
+    successRate: '成功率',
+    filterStatus: 'ステータス',
+    filterDate: '期間',
+    all: 'すべて',
+    successOnly: '成功のみ',
+    failureOnly: '失敗のみ',
+    allTime: '全期間',
+    today: '今日',
+    thisWeek: '今週',
+    thisMonth: '今月',
+    noHistory: '実行履歴がありません',
+    executionSuccess: '実行成功',
+    executionFailure: '実行失敗',
+    duration: '実行時間',
+    messages: 'メッセージ数',
+    messageCount: 'メッセージ数',
+    unknown: '不明',
+    sessionHistory: 'セッション履歴',
+    noMessages: 'メッセージがありません',
+    user: 'ユーザー',
+    assistant: 'アシスタント',
+    executionHistoryList: '実行履歴',
+    executionDetails: '実行詳細',
+    sessionId: 'セッションID',
+    toolExecution: 'ツール実行',
+    toolResult: 'ツール結果',
+    continueConversation: '会話を継続',
+    showHistoryOnly: '履歴のみ表示',
+    loadingMessages: 'メッセージを読み込み中...',
+    enterMessage: 'メッセージを入力してください...',
+    send: '送信',
+    sendInstruction: 'Enterで送信、Shift+Enterで改行',
+    selectExecutionHistory: '実行履歴を選択してください',
+    success: '成功',
+    failure: '失敗',
+    running: '実行中'
+  },
+
+  // System Prompt
+  systemPrompt: {
+    title: 'システムプロンプト',
+    show: 'システムプロンプトを表示',
+    loading: 'システムプロンプトを読み込み中...',
+    error: 'システムプロンプトの読み込みに失敗しました',
+    empty: 'システムプロンプトがありません'
+  },
+
+  // Table View
+  table: {
+    name: 'タスク名',
+    schedule: 'スケジュール',
+    agent: 'エージェント',
+    status: 'ステータス',
+    lastRun: '最終実行',
+    actions: 'アクション'
+  },
+
+  // UI Labels
+  ui: {
+    error: 'エラー',
+    continuation: '継続',
+    executionCount: '回実行',
+    lastRun: '最終',
+    details: '詳細',
+    wakeWord: 'ウェイクワード',
+    continuationPrompt: '継続プロンプト',
+    created: '作成'
+  },
+
+  // Error messages
+  errors: {
+    fetchTasks: 'タスクの読み込みに失敗しました',
+    fetchStats: '統計の読み込みに失敗しました',
+    createTask: 'タスクの作成に失敗しました',
+    cancelTask: 'タスクの削除に失敗しました',
+    toggleTask: 'タスクの切り替えに失敗しました',
+    executeTask: 'タスクの実行に失敗しました',
+    fetchHistory: '実行履歴の読み込みに失敗しました',
+    fetchSessionHistory: 'セッション履歴の読み込みに失敗しました',
+    continueSession: 'セッションの継続に失敗しました',
+    getSystemPrompt: 'システムプロンプトの取得に失敗しました'
+  }
+}
+
+const IgnoreSettings = {
+  title: 'ファイル除外設定',
+  globalTab: 'グローバル設定',
+  projectTab: 'プロジェクト固有設定',
+  globalDescription: 'アプリ全体で適用される除外パターンを設定します。',
+  globalPlaceholder: '.git\nnode_modules\n.vscode\n*.log\n.DS_Store\n...',
+  projectDescription:
+    'このプロジェクトでのみ適用される除外パターンを設定します。設定は .bedrock-engineer/.ignore ファイルに保存されます。',
+  projectPath: 'プロジェクトパス',
+  projectPlaceholder: 'node_modules\n.git\n*.log\n.DS_Store\ndist/\nbuild/\n...',
+  loading: '読み込み中...',
+  saving: '保存中...',
+  save: '保存',
+  loadError: 'ファイルの読み込みに失敗しました',
+  saveError: 'ファイルの保存に失敗しました'
+}
+
+const ProjectIgnore = {
+  title: 'プロジェクト固有の除外設定',
+  description:
+    'このプロジェクトで無視するファイルやフォルダのパターンを設定します。設定は .bedrock-engineer/.ignore ファイルに保存されます。',
+  projectPath: 'プロジェクトパス',
+  placeholder: 'node_modules\n.git\n*.log\n.DS_Store\n...',
+  loading: '読み込み中...',
+  saving: '保存中...',
+  save: '保存',
+  loadError: 'ファイルの読み込みに失敗しました',
+  saveError: 'ファイルの保存に失敗しました'
+}
+
+const Common = {
+  refresh: '更新',
+  close: '閉じる',
+  cancel: 'キャンセル',
+  create: '作成',
+  creating: '作成中...',
+  update: '更新',
+  updating: '更新中...',
+  executing: '実行中...',
+  enabled: '有効',
+  disabled: '無効',
+  minutes: '分',
+  seconds: '秒'
+}
+
 const ja = {
   ...HomePage,
   ...SettingPage,
@@ -442,7 +788,11 @@ const ja = {
   ...thinkingMode.ja,
   ...agentDirectory.ja,
   ...AgentFormTabs,
-  ...planActMode.ja
+  ...planActMode.ja,
+  backgroundAgent: BackgroundAgent,
+  ignoreSettings: IgnoreSettings,
+  projectIgnore: ProjectIgnore,
+  common: Common
 }
 
 export default ja

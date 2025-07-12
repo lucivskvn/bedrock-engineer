@@ -394,6 +394,355 @@ const FileChanges = {
   collapse: 'Collapse'
 }
 
+const BackgroundAgent = {
+  title: 'Background Agent Scheduler',
+  description: 'Schedule AI agents to run automatically at specified times',
+  pageDescription: 'Manage scheduled tasks and configure automatic execution',
+  createTask: 'Create Task',
+  editTask: 'Edit Task',
+  sessionContinuation: 'Session Continuation',
+  continueSessionPrompt: 'Continue Session Prompt',
+
+  // Sessions
+  sessions: {
+    title: 'Sessions',
+    newSession: 'New Session',
+    noSessions: 'No sessions',
+    createNewSession: 'Create new session',
+    confirmDelete: 'Are you sure you want to delete this session?',
+    deleteSession: 'Delete Session'
+  },
+
+  // New Session Modal
+  newSession: {
+    title: 'Create New Session',
+    modelSelection: 'Model Selection',
+    agentSelection: 'Agent Selection',
+    noAgent: 'No Agent',
+    selectAgent: 'Please select an agent.',
+    cancel: 'Cancel',
+    create: 'Create'
+  },
+
+  // CRON Presets
+  cronPresets: {
+    everyMinute: 'Every minute',
+    every5Minutes: 'Every 5 minutes',
+    everyHour: 'Every hour',
+    dailyAt9AM: 'Daily at 9 AM',
+    weekdaysAt9AM: 'Weekdays at 9 AM',
+    weeklyMondayAt9AM: 'Weekly on Monday at 9 AM',
+    monthlyFirst9AM: 'Monthly on 1st at 9 AM'
+  },
+
+  // Help Modal
+  help: {
+    title: 'BackgroundAgent Creation Guide',
+    subtitle: 'Best practices for creating effective BackgroundAgents',
+    tooltip: 'Learn about BackgroundAgents',
+
+    concepts: {
+      title: 'Basic Concepts',
+      description:
+        'BackgroundAgent is designed to automate tasks suitable for scheduled execution:',
+      item1: 'Ideal for tasks with clear and specific objectives',
+      item2: "Automatable tasks that don't require user input",
+      item3: 'Tasks that provide value through regular execution',
+      item4: 'Tasks that can properly log and report results'
+    },
+
+    useCases: {
+      title: 'Recommended Use Cases',
+      development: {
+        title: 'Development Tasks',
+        description:
+          'Tasks that help improve project quality. Perform static analysis of the codebase to identify unused imports and coding standard violations, or run test suites periodically to detect regressions early. You can also automate tasks that improve the productivity of the entire development team, such as checking for updates to README files and API documentation.'
+      },
+      maintenance: {
+        title: 'Maintenance Tasks',
+        description:
+          'Tasks that support stable system operation. Regularly analyze application logs and error logs to detect potential problems and abnormal patterns, enabling early response. Perform periodic health checks to monitor system performance, and automate operations-related tasks such as checking data backup status and storage usage to provide peace of mind.'
+      },
+      workflow: {
+        title: 'Workflow Support',
+        description:
+          'Tasks that streamline daily work operations. Check emails before business hours to extract important matters and automatically create prioritized daily work plans, or review project task boards weekly to identify incomplete tasks and items nearing deadlines. Support team productivity improvement through meeting preparation, agenda organization, and regular progress report creation.'
+      },
+      business: {
+        title: 'Business Automation',
+        description:
+          'Tasks that automate routine work. Analyze customer inquiry patterns to propose FAQ updates, or regularly aggregate sales data and project metrics to update dashboards. Also helpful for management efficiency by checking team member workload and deliverable progress to create summary reports for management.'
+      }
+    },
+
+    prompts: {
+      title: 'Prompt Design Tips',
+      description:
+        'Clear and specific prompts are crucial for creating effective BackgroundAgents. Specify "what," "how," "where," and "by when," and define the expected output format (reports, summaries, checklists, etc.). Also, by clearly defining how to handle errors and the boundaries of the work scope, you can prevent unexpected behavior and achieve consistent results.'
+    },
+
+    bestPractices: {
+      title: 'Best Practices',
+      item1: 'Start small and improve gradually - begin with simple tasks',
+      item2: 'Set clear success metrics - define what should be achieved',
+      item3: 'Choose appropriate execution frequency - avoid excessive runs',
+      item4: 'Utilize logs and reports - regularly review execution results'
+    }
+  },
+
+  // Tabs
+  tabs: {
+    tasks: 'Tasks',
+    stats: 'Statistics'
+  },
+
+  // Form
+  form: {
+    title: 'Create Scheduled Task',
+    taskName: 'Task Name',
+    taskNamePlaceholder: 'Enter task name...',
+    schedule: 'Schedule',
+    agent: 'Agent',
+    selectAgent: 'Select an agent',
+    model: 'Model',
+    projectDirectory: 'Project Directory',
+    projectDirectoryPlaceholder: 'Enter project directory path...',
+    projectDirectoryHelp: 'Optional: Specify the working directory for the agent',
+    selectProjectDirectory: 'Select Project Directory',
+    wakeWord: 'Wake Word (Prompt)',
+    wakeWordPlaceholder: 'Enter the prompt to send to the agent...',
+    maxTokens: 'Max Output Tokens',
+    maxTokensHelp:
+      'Maximum number of tokens the model can generate (depends on the selected model)',
+    wakeWordHelp: 'This message will be sent to the agent when the task runs',
+    cronHelp: 'Cron expression format: minute hour day month day-of-week',
+    enableTask: 'Enable task immediately',
+    continueSession: 'Continue Session',
+    continueSessionHelp:
+      'When enabled, sends additional messages to the previous session. When disabled, always starts a new session.',
+    continueSessionPrompt: 'Session Continuation Prompt',
+    continueSessionPromptPlaceholder: 'Continue with the previous work...',
+    continueSessionPromptHelp:
+      'Dedicated prompt sent when continuing a session. If left empty, the regular wake word will be used.',
+
+    errors: {
+      nameRequired: 'Task name is required',
+      cronRequired: 'Schedule is required',
+      agentRequired: 'Agent selection is required',
+      modelRequired: 'Model selection is required',
+      wakeWordRequired: 'Wake word is required',
+      invalidMaxTokens: 'Invalid max tokens value (1-64000)'
+    }
+  },
+
+  // Task List
+  scheduledTasks: 'Scheduled Tasks',
+  noTasks: 'No Scheduled Tasks',
+  noTasksDescription: 'Create your first scheduled task to get started',
+  wakeWord: 'Wake Word',
+  executions: 'Executions',
+  lastRun: 'Last Run',
+  nextRun: 'Next Run',
+  created: 'Created',
+  never: 'Never',
+
+  // Task Actions
+  executeManually: 'Execute Now',
+  testExecution: 'Test Execution',
+  enable: 'Enable',
+  disable: 'Disable',
+  enableTask: 'Enable task',
+  disableTask: 'Disable task',
+  deleteTask: 'Delete Task',
+  confirmDeleteTask: 'Are you sure you want to delete this task?',
+  taskDetails: 'Task Details',
+
+  // Status
+  status: {
+    active: 'Active',
+    disabled: 'Disabled',
+    error: 'Error'
+  },
+
+  // Messages
+  messages: {
+    taskCreated: 'Task created successfully',
+    taskUpdated: 'Task updated successfully',
+    taskCancelled: 'Task deleted successfully',
+    taskEnabled: 'Task enabled',
+    taskDisabled: 'Task disabled',
+    taskExecuted: 'Task executed successfully',
+    taskExecutionFailed: 'Task execution failed',
+    taskSkipped: 'Task execution skipped ({{reason}})',
+    taskSkippedDuplicateExecution:
+      'Task execution skipped (already running for {{executionTime}}s)',
+    sessionContinued: 'Session conversation continued'
+  },
+
+  // Execution details
+  executionTime: 'Execution Time',
+  messagesLabel: 'Messages',
+  toolExecutions: 'Tool Executions',
+  error: 'Error',
+
+  // Statistics
+  stats: {
+    title: 'Scheduler Statistics',
+    totalTasks: 'Total Tasks',
+    enabledTasks: 'Enabled Tasks',
+    disabledTasks: 'Disabled Tasks',
+    totalExecutions: 'Total Executions',
+    tasksWithErrors: 'Tasks with Errors',
+    activeCronJobs: 'Active Cron Jobs',
+    healthOverview: 'Health Overview',
+    executionRate: 'Execution Rate',
+    successRate: 'Success Rate',
+    activeRate: 'Active Rate',
+    summary: 'Summary',
+    active: 'Active',
+    errors: 'Errors',
+    disabled: 'Disabled'
+  },
+
+  lastError: 'Last Error',
+
+  // History
+  viewExecutionHistory: 'Execution History',
+  history: {
+    title: 'Execution History',
+    viewHistory: 'Execution History',
+    totalExecutions: 'Total Executions',
+    successful: 'Successful',
+    failed: 'Failed',
+    successRate: 'Success Rate',
+    filterStatus: 'Filter Status',
+    filterDate: 'Filter Date',
+    all: 'All',
+    successOnly: 'Success Only',
+    failureOnly: 'Failure Only',
+    allTime: 'All Time',
+    today: 'Today',
+    thisWeek: 'This Week',
+    thisMonth: 'This Month',
+    noHistory: 'No execution history',
+    executionSuccess: 'Execution Success',
+    executionFailure: 'Execution Failure',
+    duration: 'Duration',
+    messages: 'Messages',
+    messageCount: 'Message Count',
+    unknown: 'Unknown',
+    sessionHistory: 'Session History',
+    noMessages: 'No messages',
+    user: 'User',
+    assistant: 'Assistant',
+    executionHistoryList: 'Execution History',
+    executionDetails: 'Execution Details',
+    sessionId: 'Session ID',
+    toolExecution: 'Tool Execution',
+    toolResult: 'Tool Result',
+    continueConversation: 'Continue Conversation',
+    showHistoryOnly: 'Show History Only',
+    loadingMessages: 'Loading messages...',
+    enterMessage: 'Enter your message...',
+    send: 'Send',
+    sendInstruction: 'Press Enter to send, Shift+Enter for new line',
+    selectExecutionHistory: 'Select an execution history',
+    success: 'Success',
+    failure: 'Failure',
+    running: 'Running'
+  },
+
+  // System Prompt
+  systemPrompt: {
+    title: 'System Prompt',
+    show: 'Show system prompt',
+    loading: 'Loading system prompt...',
+    error: 'Failed to load system prompt',
+    empty: 'No system prompt available'
+  },
+
+  // Table View
+  table: {
+    name: 'Task Name',
+    schedule: 'Schedule',
+    agent: 'Agent',
+    status: 'Status',
+    lastRun: 'Last Run',
+    actions: 'Actions'
+  },
+
+  // UI Labels
+  ui: {
+    error: 'Error',
+    continuation: 'Continue',
+    executionCount: ' executions',
+    lastRun: 'Last',
+    details: 'Details',
+    wakeWord: 'Wake Word',
+    continuationPrompt: 'Continuation Prompt',
+    created: 'Created'
+  },
+
+  // Error messages
+  errors: {
+    fetchTasks: 'Failed to load tasks',
+    fetchStats: 'Failed to load statistics',
+    createTask: 'Failed to create task',
+    cancelTask: 'Failed to delete task',
+    toggleTask: 'Failed to toggle task',
+    executeTask: 'Failed to execute task',
+    fetchHistory: 'Failed to load execution history',
+    fetchSessionHistory: 'Failed to load session history',
+    continueSession: 'Failed to continue session',
+    getSystemPrompt: 'Failed to get system prompt'
+  }
+}
+
+const IgnoreSettings = {
+  title: 'File Exclusion Settings',
+  globalTab: 'Global Settings',
+  projectTab: 'Project-specific Settings',
+  globalDescription: 'Configure exclusion patterns that apply across the entire application.',
+  globalPlaceholder: '.git\nnode_modules\n.vscode\n*.log\n.DS_Store\n...',
+  projectDescription:
+    'Configure exclusion patterns that apply only to this project. Settings are saved in the .bedrock-engineer/.ignore file.',
+  projectPath: 'Project Path',
+  projectPlaceholder: 'node_modules\n.git\n*.log\n.DS_Store\ndist/\nbuild/\n...',
+  loading: 'Loading...',
+  saving: 'Saving...',
+  save: 'Save',
+  loadError: 'Failed to load file',
+  saveError: 'Failed to save file'
+}
+
+const ProjectIgnore = {
+  title: 'Project-specific Exclusion Settings',
+  description:
+    'Configure patterns for files and folders to ignore in this project. Settings are saved in the .bedrock-engineer/.ignore file.',
+  projectPath: 'Project Path',
+  placeholder: 'node_modules\n.git\n*.log\n.DS_Store\n...',
+  loading: 'Loading...',
+  saving: 'Saving...',
+  save: 'Save',
+  loadError: 'Failed to load file',
+  saveError: 'Failed to save file'
+}
+
+const Common = {
+  refresh: 'Refresh',
+  close: 'Close',
+  cancel: 'Cancel',
+  create: 'Create',
+  creating: 'Creating...',
+  update: 'Update',
+  updating: 'Updating...',
+  executing: 'Executing...',
+  enabled: 'Enabled',
+  disabled: 'Disabled',
+  minutes: 'min',
+  seconds: 's'
+}
+
 const en = {
   ...HomePage,
   ...SettingPage,
@@ -418,7 +767,11 @@ const en = {
   ...thinkingMode.en,
   ...agentDirectory.en,
   ...AgentFormTabs,
-  ...planActMode.en
+  ...planActMode.en,
+  backgroundAgent: BackgroundAgent,
+  ignoreSettings: IgnoreSettings,
+  projectIgnore: ProjectIgnore,
+  common: Common
 }
 
 export default en

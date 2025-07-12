@@ -9,8 +9,11 @@ import WebsiteGeneratorPage from './pages/WebsiteGeneratorPage/WebsiteGeneratorP
 import ChatPage from './pages/ChatPage/ChatPage'
 import DiagramGeneratorPage from './pages/DiagramGeneratorPage/DiagramGeneratorPage'
 import { AgentDirectoryPage } from './pages/AgentDirectoryPage/AgentDirectoryPage'
+import BackgroundAgentPage from './pages/BackgroundAgentPage/BackgroundAgentPage'
+import TaskExecutionHistoryPage from './pages/BackgroundAgentPage/TaskExecutionHistoryPage'
 import SpeakPage from './pages/SpeakPage'
 import { LuBookDown } from 'react-icons/lu'
+import { PiPulse } from 'react-icons/pi'
 
 export const routes = [
   {
@@ -42,6 +45,13 @@ export const routes = [
     element: <AgentDirectoryPage />
   },
   {
+    name: 'Background Agent',
+    href: '/background-agent',
+    icon: PiPulse,
+    position: 'top',
+    element: <BackgroundAgentPage />
+  },
+  {
     name: 'Website Generator',
     href: '/generative-ui',
     icon: FiFeather,
@@ -68,6 +78,13 @@ export const routes = [
     icon: FiSettings,
     position: 'top',
     element: <SettingPage />
+  },
+  {
+    name: 'Task History',
+    href: '/background-agent/task-history/:taskId',
+    icon: PiPulse,
+    position: 'hidden', // Hidden from navigation menu
+    element: <TaskExecutionHistoryPage />
   }
   // for debug
   // {

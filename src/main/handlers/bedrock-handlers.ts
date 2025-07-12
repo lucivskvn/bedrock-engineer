@@ -1,5 +1,7 @@
 import { IpcMainInvokeEvent } from 'electron'
+import { promises as fs } from 'fs'
 import { bedrock } from '../api'
+import { getModelMaxTokens } from '../api/bedrock/models'
 import { createCategoryLogger } from '../../common/logger'
 
 const bedrockLogger = createCategoryLogger('bedrock:ipc')
@@ -230,7 +232,6 @@ export const bedrockHandlers = {
     const downloadedPath = await bedrock.downloadVideoFromS3(params.s3Uri, params.localPath)
 
     // Get file size for response
-    const fs = await import('fs/promises')
     const stats = await fs.stat(downloadedPath)
 
     bedrockLogger.info('Video downloaded successfully', {
@@ -242,5 +243,17 @@ export const bedrockHandlers = {
       downloadedPath,
       fileSize: stats.size
     }
+  },
+
+  'bedrock:getModelMaxTokens': async (_event: IpcMainInvokeEvent, params: { modelId: string }) => {
+    bedrockLogger.debug('Getting model max tokens', { modelId: params.modelId })
+
+    const maxTokens = getModelMaxTokens(params.modelId)
+
+    bedrockLogger.debug('Retrieved model max tokens', {
+      modelId: params.modelId,
+      maxTokens
+    })
+    return { maxTokens }
   }
 } as const
