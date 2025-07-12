@@ -11,8 +11,9 @@ import {
 import { createRuntimeClient } from '../client'
 import { processImageContent } from '../utils/imageUtils'
 import { getAlternateRegionOnThrottling } from '../utils/awsUtils'
-import { getThinkingSupportedModelIds } from '../models'
+import { getThinkingSupportedModelIds, getContextWindow } from '../models' // Added getContextWindow
 import type { CallConverseAPIProps, ServiceContext } from '../types'
+import { get_encoding } from 'tiktoken' // Added tiktoken
 import { createCategoryLogger } from '../../../../common/logger'
 
 // Create category logger for converse service
@@ -72,8 +73,11 @@ export class ConverseService {
   }
 
   /**
-   * APIリクエスト用のパラメータを準備
-   * メッセージの処理とコマンドパラメータの作成を行う
+   * Prepares the parameters for the Converse API call.
+   * This includes processing messages, handling image content, normalizing messages,
+   * managing token limits via truncation, and setting model-specific fields.
+   * @param props The properties for the Converse API call.
+   * @returns A promise that resolves to the prepared command parameters.
    */
   private async prepareCommandParameters(props: CallConverseAPIProps): Promise<{
     commandParams: ConverseCommandInput | ConverseStreamCommandInput
@@ -95,6 +99,75 @@ export class ConverseService {
 
     const thinkingMode = this.context.store.get('thinkingMode')
     const interleaveThinking = this.context.store.get('interleaveThinking')
+
+    // Tokenizer and context limit
+    const modelContextWindow = getContextWindow(modelId);
+    const OPERATIONAL_TOKEN_LIMIT = Math.floor(modelContextWindow * 0.9); // Use 90% of model's context window
+    let textForTokenCounting = "";
+
+    if (system && system.length > 0) {
+      system.forEach(s => { if (s.text) textForTokenCounting += s.text + "\n"; });
+    }
+
+    // Initial pass for token counting with all messages
+    const IMAGE_TOKEN_COST = 1300; // Heuristic: fixed token cost per image
+    let tempMessagesForCounting = [...sanitizedMessages];
+    tempMessagesForCounting.forEach(msg => {
+      if (Array.isArray(msg.content)) {
+        msg.content.forEach(block => {
+          if (block.text) {
+            textForTokenCounting += block.text + "\n";
+          } else if (block.image) {
+            // Add fixed token cost for each image
+            textForTokenCounting += ' '.repeat(IMAGE_TOKEN_COST); // Rough approximation by adding spaces
+          }
+        });
+      }
+    });
+
+    const encoder = get_encoding("cl100k_base");
+    let currentTokenCount = encoder.encode(textForTokenCounting).length;
+    converseLogger.debug(`Initial estimated token count: ${currentTokenCount}`);
+
+    let finalMessagesForRequest = [...sanitizedMessages];
+
+    if (currentTokenCount > OPERATIONAL_TOKEN_LIMIT) {
+      converseLogger.warn(`Token count (${currentTokenCount}) exceeds operational limit (${OPERATIONAL_TOKEN_LIMIT}). Starting truncation.`);
+      // Truncate from the beginning, but preserve the last message (current user input)
+      while (currentTokenCount > OPERATIONAL_TOKEN_LIMIT && finalMessagesForRequest.length > 1) {
+        finalMessagesForRequest.shift(); // Remove the oldest message
+
+        textForTokenCounting = ""; // Recalculate text for token counting
+        if (system && system.length > 0) {
+          system.forEach(s => { if (s.text) textForTokenCounting += s.text + "\n"; });
+        }
+        finalMessagesForRequest.forEach(msg => { // Use the currently truncated list
+          if (Array.isArray(msg.content)) {
+            msg.content.forEach(block => {
+              if (block.text) {
+                textForTokenCounting += block.text + "\n";
+              } else if (block.image) {
+                textForTokenCounting += ' '.repeat(IMAGE_TOKEN_COST);
+              }
+            });
+          }
+        });
+        currentTokenCount = encoder.encode(textForTokenCounting).length;
+        converseLogger.debug(`After removing one message, new token count: ${currentTokenCount}, messages left: ${finalMessagesForRequest.length}`);
+      }
+
+      if (currentTokenCount > OPERATIONAL_TOKEN_LIMIT) {
+        converseLogger.error(`Token count still too high (${currentTokenCount}) after truncating most of history. The last message or system prompt might be too large.`);
+        // Consider further action: e.g., truncating the last message, or throwing an error.
+        // For now, we proceed with the (still too long) list if only one message remains.
+      }
+      converseLogger.info(`Truncation complete. Final messages for request: ${finalMessagesForRequest.length}, final token count: ${currentTokenCount}`);
+    }
+    // encoder.free(); // For long-running servers using tiktoken's WASM, managing the encoder lifecycle
+                     // (e.g., creating one per service instance and freeing it on shutdown) is important
+                     // to prevent memory leaks. For single-use or short-lived contexts like a CLI command,
+                     // this is less critical as the process will clean up memory on exit.
+
 
     // models.tsでsupportsThinking=trueと定義されたモデルでThinking Modeが有効な場合、additionalModelRequestFieldsを追加
     let additionalModelRequestFields: Record<string, any> | undefined = undefined
@@ -147,7 +220,7 @@ export class ConverseService {
     // コマンドパラメータを作成
     const commandParams: ConverseCommandInput | ConverseStreamCommandInput = {
       modelId,
-      messages: sanitizedMessages,
+      messages: finalMessagesForRequest, // Use the potentially truncated messages
       system,
       toolConfig,
       inferenceConfig,

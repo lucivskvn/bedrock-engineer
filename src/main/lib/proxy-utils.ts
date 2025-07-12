@@ -1,4 +1,4 @@
-import { ProxyConfiguration, AWSCredentials } from '../api/bedrock/types'
+import { ProxyConfiguration, AwsClientConfig, OldAWSCredentialsConfig } from '../api/bedrock/types' // Added AwsClientConfig, OldAWSCredentialsConfig
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { NodeHttpHandler } from '@smithy/node-http-handler'
 import { log } from '../../common/logger'
@@ -175,21 +175,21 @@ export interface ProxyAgentResult {
  * @returns プロキシエージェントまたはnull
  */
 export function createProxyAgents(
-  config: ProxyConfiguration | AWSCredentials,
+  config: ProxyConfiguration | AwsClientConfig | OldAWSCredentialsConfig,
   options: ProxyAgentOptions = { includeHttpsAgent: true }
 ): ProxyAgentResult | null {
   try {
     // ProxyConfigurationまたはAWSCredentialsからプロキシ設定を取得
     let proxyConfig: ProxyConfiguration | null = null
 
-    if ('proxyConfig' in config) {
-      // AWSCredentials の場合
+    if ('proxyConfig' in config && config.proxyConfig) {
+      // AwsClientConfig or OldAWSCredentialsConfig
       proxyConfig = resolveProxyConfig(config.proxyConfig)
-    } else {
+    } else if (!('proxyConfig' in config) && 'enabled' in config && config.enabled && config.host) {
       // ProxyConfiguration の場合
-      const proxyConf = config as ProxyConfiguration
-      proxyConfig = proxyConf.enabled && proxyConf.host ? proxyConf : null
+      proxyConfig = config as ProxyConfiguration
     }
+
 
     if (!proxyConfig?.enabled || !proxyConfig.host) {
       log.debug('Proxy agent not created: disabled or no host', {
@@ -255,8 +255,7 @@ export function createProxyAgents(
  */
 export function createHttpOptions(clientConfig: AwsClientConfig): object {
   // createProxyAgents expects a structure with proxyConfig, so we pass clientConfig which has it.
-  // If createProxyAgents is refactored to directly take ProxyConfiguration, this can be simplified.
-  const proxyAgents = createProxyAgents(clientConfig as any, { includeNodeHandler: true })
+  const proxyAgents = createProxyAgents(clientConfig, { includeNodeHandler: true })
 
   if (!proxyAgents?.requestHandler) {
     return {}

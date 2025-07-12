@@ -28,7 +28,8 @@ interface ModelDefinition {
   baseId: string
   name: string
   toolUse: boolean
-  maxTokensLimit: number
+  maxTokensLimit: number // Max output tokens
+  contextWindow?: number // Max context window (input + output) - Optional
   supportsThinking?: boolean
   availability: {
     base?: BedrockSupportRegion[]
@@ -44,6 +45,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Claude 3 Sonnet',
     toolUse: true,
     maxTokensLimit: 8192,
+    contextWindow: 200000,
     availability: {
       base: [],
       crossRegion: [
@@ -66,6 +68,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Claude 3 Haiku',
     toolUse: true,
     maxTokensLimit: 4096,
+    contextWindow: 200000,
     availability: {
       base: [
         'us-east-1',
@@ -91,6 +94,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Claude 3.5 Haiku',
     toolUse: true,
     maxTokensLimit: 8192,
+    contextWindow: 200000,
     availability: {
       base: ['us-west-2'],
       crossRegion: ['us-east-1', 'us-east-2', 'us-west-2']
@@ -102,6 +106,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Claude 3.5 Sonnet',
     toolUse: true,
     maxTokensLimit: 8192,
+    contextWindow: 200000,
     availability: {
       base: [
         'us-east-1',
@@ -124,6 +129,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Claude 3.5 Sonnet v2',
     toolUse: true,
     maxTokensLimit: 8192,
+    contextWindow: 200000,
     availability: {
       base: [],
       crossRegion: [
@@ -145,6 +151,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Claude 3.7 Sonnet',
     toolUse: true,
     maxTokensLimit: 64000,
+    contextWindow: 200000,
     supportsThinking: true,
     availability: {
       crossRegion: ['us-east-1', 'us-east-2', 'us-west-2', 'ap-northeast-1', 'ap-northeast-3']
@@ -156,6 +163,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Claude 3 Opus',
     toolUse: true,
     maxTokensLimit: 8192,
+    contextWindow: 200000,
     availability: {
       crossRegion: ['us-east-1', 'us-west-2']
     }
@@ -166,6 +174,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Claude Opus 4',
     toolUse: true,
     maxTokensLimit: 32768,
+    contextWindow: 1000000, // Example, adjust if known
     supportsThinking: true,
     availability: {
       crossRegion: ['us-east-1', 'us-east-2', 'us-west-2']
@@ -177,6 +186,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Claude Sonnet 4',
     toolUse: true,
     maxTokensLimit: 8192,
+    contextWindow: 200000, // Example, adjust if known
     supportsThinking: true,
     availability: {
       crossRegion: ['us-east-1', 'us-east-2', 'us-west-2', 'ap-northeast-1', 'ap-northeast-3']
@@ -191,6 +201,7 @@ const NOVA_MODELS: ModelDefinition[] = [
     name: 'Amazon Nova Premier',
     toolUse: true,
     maxTokensLimit: 32000,
+    contextWindow: 32768,
     availability: {
       crossRegion: ['us-east-1', 'us-east-2', 'us-west-2']
     }
@@ -262,6 +273,7 @@ const OTHER_MODELS: ModelDefinition[] = [
     name: 'DeepSeek R1',
     toolUse: false,
     maxTokensLimit: 32768,
+    contextWindow: 128000,
     availability: {
       crossRegion: ['us-east-1', 'us-east-2', 'us-west-2']
     }
@@ -375,6 +387,7 @@ function generateModelsFromDefinitions(): LLM[] {
         modelName: def.name,
         toolUse: def.toolUse,
         maxTokensLimit: def.maxTokensLimit,
+        contextWindow: def.contextWindow,
         supportsThinking: def.supportsThinking,
         regions: def.availability.base
       })
@@ -393,6 +406,7 @@ function generateModelsFromDefinitions(): LLM[] {
           modelName: `${def.name} (cross-region)`,
           toolUse: def.toolUse,
           maxTokensLimit: def.maxTokensLimit,
+          contextWindow: def.contextWindow,
           supportsThinking: def.supportsThinking,
           regions
         })
@@ -451,13 +465,27 @@ export const getDefaultPromptRouter = (accountId: string, region: string) => {
       modelId: `arn:aws:bedrock:${region}:${accountId}:default-prompt-router/anthropic.claude:1`,
       modelName: 'Claude Prompt Router',
       maxTokensLimit: 8192,
+      contextWindow: 200000, // Default for Claude routers
       toolUse: true
     },
     {
       modelId: `arn:aws:bedrock:${region}:${accountId}:default-prompt-router/meta.llama:1`,
       modelName: 'Meta Prompt Router',
       maxTokensLimit: 8192,
+      contextWindow: 8192, // Default for Llama routers
       toolUse: false
     }
   ]
+}
+
+/**
+ * Gets the context window size for a given model ID.
+ * @param modelId The ID of the model.
+ * @returns The context window size in tokens, or a default value.
+ */
+export const getContextWindow = (modelId: string): number => {
+  const model = allModels.find(m => m.modelId === modelId);
+  // Default to a safe, common context window if model not found or context window not specified.
+  const DEFAULT_CONTEXT_WINDOW = 8192;
+  return model?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
 }

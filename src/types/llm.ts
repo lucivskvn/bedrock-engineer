@@ -30,6 +30,7 @@ export interface LLM {
   readonly toolUse: boolean
   readonly regions: readonly BedrockSupportRegion[] // Use the specific region type
   readonly maxTokensLimit?: number // Optional parameter for model-specific limits
+  readonly contextWindow?: number // Optional: Max context window (input + output)
   readonly supportsThinking?: boolean // Whether the model supports extended thinking
   readonly isInferenceProfile?: boolean // Whether this is an inference profile
   readonly inferenceProfileArn?: string // ARN of the inference profile if applicable

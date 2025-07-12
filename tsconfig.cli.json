@@ -1,0 +1,39 @@
+{
+  "extends": "./tsconfig.node.json",
+  "include": [
+    "src/cli/**/*",
+    // Also explicitly include paths that cli depends on,
+    // even if they are in tsconfig.node.json, to be safe.
+    "src/main/api/bedrock/services/converseService.ts",
+    "src/main/api/bedrock/types.ts",
+    "src/main/api/bedrock/client.ts",
+    "src/main/api/bedrock/utils/*",
+    "src/main/api/bedrock/models.ts",
+    "src/preload/store.ts", // For ConfigStore type, though it's mocked
+    "src/common/logger/**/*"
+  ],
+  "compilerOptions": {
+    // Output to a subdirectory to keep it separate from electron app's "out"
+    "outDir": "dist",
+    // Ensure module system is compatible with Node.js execution
+    "module": "commonjs",
+    // Not building a library, so composite false is fine.
+    "composite": false,
+    // Ensure all declarations are generated if needed by outDir structure,
+    // though for a CLI entry point, it might not be strictly necessary.
+    // "declaration": true,
+    // "declarationMap": true,
+
+    // Make sure these are not enabled if they cause issues for CLI
+    "noEmit": false, // Crucial: we need to emit .js files
+    "skipLibCheck": true // Skip type checking of declaration files (e.g., for gpt-tokenizer)
+  },
+  "exclude": [
+    // Exclude test files and other non-essential files for the CLI build
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "src/renderer/**/*", // Definitely exclude renderer
+    "src/main/index.ts", // Exclude electron main entry
+    "src/preload/index.ts" // Exclude electron preload entry
+  ]
+}
