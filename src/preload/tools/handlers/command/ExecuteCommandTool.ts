@@ -224,6 +224,29 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
         input: JSON.stringify(input)
       })
 
+      if (
+        error instanceof Error &&
+        error.message.startsWith('DESTRUCTIVE_COMMAND_CONFIRMATION_REQUIRED')
+      ) {
+        const command = error.message.replace('DESTRUCTIVE_COMMAND_CONFIRMATION_REQUIRED: ', '')
+        const confirmed = await this.requestUserConfirmation(
+          `Are you sure you want to execute the following destructive command?\n\n${command}`
+        )
+
+        if (confirmed) {
+          const commandService = this.getCommandService(config)
+          const result = await commandService.executeCommand({ ...input, bypassConfirmation: true })
+          return {
+            success: true,
+            name: 'executeCommand',
+            message: `Command executed: ${JSON.stringify(input)}`,
+            ...result
+          }
+        } else {
+          throw new PermissionDeniedError('User denied execution of destructive command', this.name)
+        }
+      }
+
       // Check if it's a permission error
       if (error instanceof Error && error.message.includes('not allowed')) {
         throw new PermissionDeniedError(
