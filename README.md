@@ -85,6 +85,16 @@ npm run build:linux
 
 Use the application stored in the `dist` directory.
 
+### AWS Credentials
+
+This application uses the standard AWS credential provider chain. This means you can configure your credentials in any of the following ways:
+
+- **Environment variables**: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`
+- **Shared credentials file**: `~/.aws/credentials`
+- **IAM role for an EC2 instance or ECS task**
+
+For more information, see the [AWS SDK for JavaScript Developer Guide](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/setting-credentials-node.html).
+
 ## Agent Chat
 
 The autonomous AI agent capable of development assists your development process. It provides functionality similar to AI assistants like [Cline](https://github.com/cline/cline), but with its own UI that doesn't depend on editors like VS Code. This enables richer diagramming and interactive experiences in Bedrock Engineer's agent chat feature. Additionally, with agent customization capabilities, you can utilize agents for use cases beyond development.
