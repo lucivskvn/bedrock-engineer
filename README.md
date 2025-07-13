@@ -336,6 +336,10 @@ For detailed setup instructions and examples, see:
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
 
+### Dependabot
+
+This repository uses Dependabot to keep its dependencies up to date. Please enable Dependabot security updates in the repository settings to be notified of vulnerabilities in your dependencies.
+
 ## License
 
 This library is licensed under the MIT-0 License. See the LICENSE file.
