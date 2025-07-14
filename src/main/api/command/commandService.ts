@@ -236,7 +236,9 @@ export class CommandService {
     return false
   }
 
-  async executeCommand(input: CommandInput & { bypassConfirmation?: boolean }): Promise<CommandExecutionResult> {
+  async executeCommand(
+    input: CommandInput & { bypassConfirmation?: boolean }
+  ): Promise<CommandExecutionResult> {
     return new Promise((resolve, reject) => {
       // 入力値の事前検証
       if (!input.command || typeof input.command !== 'string' || input.command.trim() === '') {

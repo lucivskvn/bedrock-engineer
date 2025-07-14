@@ -53,4 +53,5 @@ export type InferenceParams = {
 
 export type ServiceContext = {
   store: ConfigStore
+  getI18nValue: (key: string) => string
 }
