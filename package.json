@@ -25,7 +25,11 @@
     "build:mac": "electron-vite build && electron-builder --mac --universal",
     "sign": "codesign --force --deep --sign - /path/to/YourApp.dmg",
     "sign:mac": "codesign --force --deep --sign - \"/Applications/Bedrock Engineer.app\"",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "build:cli": "electron-vite build --out-dir out/cli"
+  },
+  "bin": {
+    "bedrock-engineer-cli": "out/cli/index.js"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.782.0",
@@ -48,6 +52,7 @@
     "@types/node-cron": "^3.0.11",
     "axios": "^1.9.0",
     "chart.js": "^4.4.8",
+    "commander": "^14.0.0",
     "cors": "2.8.5",
     "diff": "6.0.0",
     "electron-store": "8.2.0",
