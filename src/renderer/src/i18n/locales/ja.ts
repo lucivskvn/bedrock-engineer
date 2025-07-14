@@ -65,6 +65,13 @@ const Translation = {
   'Error testing proxy connection': 'プロキシ接続テストエラー'
 }
 
+const Notification = {
+  'Background Agent Task Completed': 'バックグラウンドエージェントのタスクが完了しました',
+  'Task completed successfully': 'タスクが正常に完了しました',
+  'Background Agent Task Failed': 'バックグラウンドエージェントのタスクが失敗しました',
+  'Task execution failed': 'タスクの実行に失敗しました'
+}
+
 const SettingPage = {
   Setting: '設定',
   'Proxy Settings': 'プロキシ設定',
@@ -789,6 +796,7 @@ const ja = {
   ...agentDirectory.ja,
   ...AgentFormTabs,
   ...planActMode.ja,
+  notification: Notification,
   backgroundAgent: BackgroundAgent,
   ignoreSettings: IgnoreSettings,
   projectIgnore: ProjectIgnore,
