@@ -15,7 +15,9 @@ import { checkNovaSonicRegionSupport, testBedrockConnectivity } from './sonic/re
 const apiLogger = createCategoryLogger('api:express')
 const bedrockLogger = createCategoryLogger('api:bedrock')
 
-export const bedrock = new BedrockService({ store })
+import { getI18nValue } from '../lib/i18n'
+
+export const bedrock = new BedrockService({ store, getI18nValue })
 
 interface PromiseRequestHandler {
   (req: Request, res: Response, next: NextFunction): Promise<unknown>

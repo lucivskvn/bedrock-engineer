@@ -85,12 +85,12 @@ export class MainNotificationService {
 
       if (success) {
         // 成功通知
-        title = 'Background Agent Task Completed' // TODO: i18n対応
-        body = aiMessage || 'Task completed successfully'
+        title = this.context.getI18nValue('notification.Background Agent Task Completed')
+        body = aiMessage || this.context.getI18nValue('notification.Task completed successfully')
       } else {
         // エラー通知
-        title = 'Background Agent Task Failed' // TODO: i18n対応
-        body = error || 'Task execution failed'
+        title = this.context.getI18nValue('notification.Background Agent Task Failed')
+        body = error || this.context.getI18nValue('notification.Task execution failed')
       }
 
       // 通知設定をstoreから取得
