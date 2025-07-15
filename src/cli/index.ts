@@ -2,6 +2,8 @@
 import { Command } from 'commander';
 import * as readline from 'readline';
 import Agent from '../main/lib/agent';
+import path from 'path';
+import os from 'os';
 
 const program = new Command();
 
@@ -9,7 +11,10 @@ program
   .version('1.0.0')
   .description('A CLI for interacting with the Bedrock Agent')
   .action(async () => {
-    const agent = new Agent();
+    const vectorStorePath = path.join(os.homedir(), '.bedrock-agent-memory');
+    const agent = new Agent(vectorStorePath);
+    await agent.initialize();
+
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
