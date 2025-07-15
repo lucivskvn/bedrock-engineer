@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "outDir": "./out/cli"
+  },
+  "include": ["src/cli/**/*.ts", "src/main/lib/agent.ts"]
+}
