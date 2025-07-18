@@ -29,6 +29,8 @@ import { ThinkTool } from './handlers/thinking/ThinkTool'
 import { CodeInterpreterTool } from './handlers/interpreter/CodeInterpreterTool'
 import { ScreenCaptureTool } from './handlers/system/ScreenCaptureTool'
 import { CameraCaptureTool } from './handlers/system/CameraCaptureTool'
+import { TodoInitTool } from './handlers/todo/TodoInitTool'
+import { TodoUpdateTool } from './handlers/todo/TodoUpdateTool'
 
 /**
  * Registry for managing tools
@@ -157,7 +159,7 @@ export class ToolRegistry {
   /**
    * Execute a tool
    */
-  async execute(input: ToolInput): Promise<string | ToolResult> {
+  async execute(input: ToolInput, context?: any): Promise<string | ToolResult> {
     const toolName = this.resolveToolName(input.type)
 
     // JSON Parse Error の事前チェック
@@ -196,7 +198,7 @@ export class ToolRegistry {
         throw new ToolNotFoundError(toolName)
       }
 
-      return await tool.execute(input)
+      return await tool.execute(input, context)
     } catch (error) {
       // Log the error
       toolSystemLogger.error(`Tool execution failed: ${toolName}`, {
@@ -448,128 +450,15 @@ export class ToolMetadataCollector {
       specs.push({ toolSpec: CameraCaptureTool.toolSpec })
     }
 
+    // Phase 7: Todo Tools
+    if (TodoInitTool.toolSpec) {
+      specs.push({ toolSpec: TodoInitTool.toolSpec })
+    }
+
+    if (TodoUpdateTool.toolSpec) {
+      specs.push({ toolSpec: TodoUpdateTool.toolSpec })
+    }
+
     return specs
-  }
-
-  /**
-   * Collect system prompt descriptions from tool classes
-   */
-  static getSystemPromptDescriptions(): Record<string, string> {
-    const descriptions: Record<string, string> = {}
-
-    // Add CreateFolderTool description
-    if (CreateFolderTool.systemPromptDescription) {
-      descriptions.createFolder = CreateFolderTool.systemPromptDescription
-    }
-
-    // Add WriteToFileTool description
-    if (WriteToFileTool.systemPromptDescription) {
-      descriptions.writeToFile = WriteToFileTool.systemPromptDescription
-    }
-
-    // Add ReadFilesTool description
-    if (ReadFilesTool.systemPromptDescription) {
-      descriptions.readFiles = ReadFilesTool.systemPromptDescription
-    }
-
-    // Add ListFilesTool description
-    if (ListFilesTool.systemPromptDescription) {
-      descriptions.listFiles = ListFilesTool.systemPromptDescription
-    }
-
-    // Add ApplyDiffEditTool description
-    if (ApplyDiffEditTool.systemPromptDescription) {
-      descriptions.applyDiffEdit = ApplyDiffEditTool.systemPromptDescription
-    }
-
-    // Add MoveFileTool description
-    if (MoveFileTool.systemPromptDescription) {
-      descriptions.moveFile = MoveFileTool.systemPromptDescription
-    }
-
-    // Add CopyFileTool description
-    if (CopyFileTool.systemPromptDescription) {
-      descriptions.copyFile = CopyFileTool.systemPromptDescription
-    }
-
-    // Phase 2: Web Tools
-    if (TavilySearchTool.systemPromptDescription) {
-      descriptions.tavilySearch = TavilySearchTool.systemPromptDescription
-    }
-
-    if (FetchWebsiteTool.systemPromptDescription) {
-      descriptions.fetchWebsite = FetchWebsiteTool.systemPromptDescription
-    }
-
-    // Phase 3: Bedrock Tools
-    if (GenerateImageTool.systemPromptDescription) {
-      descriptions.generateImage = GenerateImageTool.systemPromptDescription
-    }
-
-    if (GenerateVideoTool.systemPromptDescription) {
-      descriptions.generateVideo = GenerateVideoTool.systemPromptDescription
-    }
-
-    if (CheckVideoStatusTool.systemPromptDescription) {
-      descriptions.checkVideoStatus = CheckVideoStatusTool.systemPromptDescription
-    }
-
-    if (DownloadVideoTool.systemPromptDescription) {
-      descriptions.downloadVideo = DownloadVideoTool.systemPromptDescription
-    }
-
-    if (RecognizeImageTool.systemPromptDescription) {
-      descriptions.recognizeImage = RecognizeImageTool.systemPromptDescription
-    }
-
-    if (RetrieveTool.systemPromptDescription) {
-      descriptions.retrieve = RetrieveTool.systemPromptDescription
-    }
-
-    if (InvokeBedrockAgentTool.systemPromptDescription) {
-      descriptions.invokeBedrockAgent = InvokeBedrockAgentTool.systemPromptDescription
-    }
-
-    if (InvokeFlowTool.systemPromptDescription) {
-      descriptions.invokeFlow = InvokeFlowTool.systemPromptDescription
-    }
-
-    // Phase 4: Command & Thinking Tools
-    if (ExecuteCommandTool.systemPromptDescription) {
-      descriptions.executeCommand = ExecuteCommandTool.systemPromptDescription
-    }
-
-    if (ThinkTool.systemPromptDescription) {
-      descriptions.think = ThinkTool.systemPromptDescription
-    }
-
-    // Phase 5: Interpreter Tools
-    if (CodeInterpreterTool.systemPromptDescription) {
-      descriptions.codeInterpreter = CodeInterpreterTool.systemPromptDescription
-    }
-
-    // Phase 6: System Tools
-    if (ScreenCaptureTool.systemPromptDescription) {
-      descriptions.screenCapture = ScreenCaptureTool.systemPromptDescription
-    }
-
-    if (CameraCaptureTool.systemPromptDescription) {
-      descriptions.cameraCapture = CameraCaptureTool.systemPromptDescription
-    }
-
-    return descriptions
-  }
-
-  /**
-   * Get all available tool metadata
-   */
-  static getAllToolMetadata(): {
-    toolSpecs: Tool[]
-    systemPromptDescriptions: Record<string, string>
-  } {
-    return {
-      toolSpecs: this.getToolSpecs(),
-      systemPromptDescriptions: this.getSystemPromptDescriptions()
-    }
   }
 }

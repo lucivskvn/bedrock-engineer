@@ -3,9 +3,21 @@
  */
 
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
+import { ZodSchema } from 'zod'
+import { zodToJsonSchema } from 'zod-to-json-schema'
 import { ToolInput, ToolResult, ToolName } from '../../../types/tools'
-import { ITool, ToolDependencies, ToolLogger, StoreManager, ValidationResult } from './types'
+import { ITool, ToolDependencies, ToolLogger, ValidationResult } from './types'
 import { wrapError, ValidationError } from './errors'
+import { ConfigStore } from '../../store'
+
+/**
+ * Utility function to convert Zod schema to JSON Schema body
+ */
+export const zodToJsonSchemaBody = (schema: ZodSchema) => {
+  const key = 'mySchema'
+  const jsonSchema = zodToJsonSchema(schema, key)
+  return jsonSchema.definitions?.[key] as any
+}
 
 /**
  * Abstract base class that all tools must extend
@@ -29,25 +41,20 @@ export abstract class BaseTool<TInput extends ToolInput = ToolInput, TResult = T
   static readonly toolSpec?: Tool['toolSpec']
 
   /**
-   * System prompt description - should be defined as static in each tool
-   */
-  static readonly systemPromptDescription?: string
-
-  /**
    * Dependencies injected into the tool
    */
   protected readonly logger: ToolLogger
-  protected readonly storeManager: StoreManager
+  protected readonly store: ConfigStore
 
   constructor(dependencies: ToolDependencies) {
     this.logger = dependencies.logger
-    this.storeManager = dependencies.storeManager
+    this.store = dependencies.store
   }
 
   /**
    * Execute the tool with the given input
    */
-  async execute(input: TInput): Promise<TResult> {
+  async execute(input: TInput, context?: any): Promise<TResult> {
     const startTime = Date.now()
 
     this.logger.info(`Executing tool: ${this.name}`, {
@@ -67,7 +74,7 @@ export abstract class BaseTool<TInput extends ToolInput = ToolInput, TResult = T
       }
 
       // Execute the tool
-      const result = await this.executeInternal(input)
+      const result = await this.executeInternal(input, context)
 
       // Log success
       const duration = Date.now() - startTime
@@ -101,7 +108,7 @@ export abstract class BaseTool<TInput extends ToolInput = ToolInput, TResult = T
   /**
    * Internal execution logic - must be implemented by subclasses
    */
-  protected abstract executeInternal(input: TInput): Promise<TResult>
+  protected abstract executeInternal(input: TInput, context?: any): Promise<TResult>
 
   /**
    * Handle errors in a consistent way
@@ -183,14 +190,15 @@ export abstract class BaseTool<TInput extends ToolInput = ToolInput, TResult = T
   /**
    * Helper method to get configuration from store
    */
-  protected getConfig<T>(key: string, defaultValue?: T): T | undefined {
-    return this.storeManager.get(key) ?? defaultValue
+  protected getConfig<T>(key: Parameters<ConfigStore['get']>[0], defaultValue?: T): T | undefined {
+    const value = this.store.get(key)
+    return value !== undefined ? (value as T) : defaultValue
   }
 
   /**
    * Helper method to check if a feature is enabled
    */
-  protected isFeatureEnabled(featureKey: string): boolean {
-    return this.storeManager.get(featureKey) === true
+  protected isFeatureEnabled(featureKey: Parameters<ConfigStore['get']>[0]): boolean {
+    return this.store.get(featureKey) === true
   }
 }

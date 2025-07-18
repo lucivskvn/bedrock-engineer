@@ -8,10 +8,6 @@ import { getImageGenerationModelsForRegion } from '../main/api/bedrock/models'
 import { BedrockSupportRegion } from '../types/llm'
 import { CodeInterpreterTool } from './tools/handlers/interpreter/CodeInterpreterTool'
 import { ToolMetadataCollector } from './tools/registry'
-import {
-  getSystemPromptDescriptions,
-  getToolUsageDescription
-} from './tools/common/ToolMetadataHelper'
 import { executeTool } from './tools'
 
 export type CallConverseAPIProps = {
@@ -167,7 +163,7 @@ export const api = {
     }
   },
   bedrock: {
-    executeTool,
+    executeTool: (toolInput: any, context?: any) => executeTool(toolInput, context),
     applyGuardrail: async (request: ApplyGuardrailRequest) => {
       const bedrock = new BedrockService({ store })
       const res = await bedrock.applyGuardrail(request)
@@ -303,15 +299,6 @@ export const api = {
   tools: {
     getToolSpecs: () => {
       return ToolMetadataCollector.getToolSpecs()
-    },
-    getSystemPromptDescriptions: () => {
-      return getSystemPromptDescriptions()
-    },
-    getToolUsageDescription: (toolName: string) => {
-      return getToolUsageDescription(toolName)
-    },
-    getAllToolMetadata: () => {
-      return ToolMetadataCollector.getAllToolMetadata()
     }
   },
   pubsub: {
@@ -346,6 +333,39 @@ export const api = {
     },
     openTaskHistory: async (taskId: string) => {
       return ipcRenderer.invoke('window:openTaskHistory', taskId)
+    }
+  },
+  todo: {
+    getTodoList: async (params?: { sessionId?: string }) => {
+      return ipcRenderer.invoke('get-todo-list', params)
+    },
+    initTodoList: async (params: { sessionId: string; items: string[] }) => {
+      return ipcRenderer.invoke('todo-init', params)
+    },
+    updateTodoList: async (params: {
+      sessionId: string
+      updates: Array<{
+        id: string
+        status?: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+        description?: string
+      }>
+    }) => {
+      return ipcRenderer.invoke('todo-update', params)
+    },
+    deleteTodoList: async (params: { sessionId: string }) => {
+      return ipcRenderer.invoke('delete-todo-list', params)
+    },
+    getRecentTodos: async () => {
+      return ipcRenderer.invoke('get-recent-todos')
+    },
+    getAllTodoMetadata: async () => {
+      return ipcRenderer.invoke('get-all-todo-metadata')
+    },
+    setActiveTodoList: async (params: { sessionId?: string }) => {
+      return ipcRenderer.invoke('set-active-todo-list', params)
+    },
+    getActiveTodoListId: async () => {
+      return ipcRenderer.invoke('get-active-todo-list-id')
     }
   }
 }
