@@ -3,6 +3,7 @@ import path from 'path'
 import os from 'os'
 import { execSync } from 'child_process'
 import { store } from '../store'
+import { log } from '../logger'
 
 /**
  * コマンド実行可能ファイルのパスを解決する
@@ -95,7 +96,7 @@ export function resolveCommand(command: string): string {
       }
     }
   } catch (error) {
-    console.error(`Error resolving command path for ${command}:`, error)
+    log.error(`Error resolving command path for ${command}: ${error}`)
   }
 
   // 最終的には元のコマンド名を返す

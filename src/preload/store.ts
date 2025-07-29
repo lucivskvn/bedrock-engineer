@@ -5,6 +5,7 @@ import { CustomAgent } from '../types/agent-chat'
 import { BedrockAgent } from '../types/agent'
 import { AWSCredentials } from '../main/api/bedrock/types'
 import { CodeInterpreterContainerConfig } from './tools/handlers/interpreter/types'
+import { log } from './logger'
 
 const DEFAULT_SHELL =
   process.platform === 'win32'
@@ -173,7 +174,7 @@ type StoreScheme = {
 }
 
 const electronStore = new Store<StoreScheme>()
-console.log('store path', electronStore.path)
+log.debug(`store path ${electronStore.path}`)
 
 const init = () => {
   // Initialize userDataPath if not present
