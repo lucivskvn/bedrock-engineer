@@ -238,6 +238,8 @@ export interface SettingsContextType {
   // Shell Settings
   shell: string
   setShell: (shell: string) => void
+  commandSearchPaths: string[]
+  setCommandSearchPaths: (paths: string[]) => void
 
   // Ignore Files Settings
   ignoreFiles: string[]
@@ -400,6 +402,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Shell Settings
   const [shell, setStateShell] = useState<string>('/bin/bash')
+  const [commandSearchPaths, setStateCommandSearchPaths] = useState<string[]>([])
 
   // Ignore Files Settings
   const [ignoreFiles, setStateIgnoreFiles] = useState<string[]>([
@@ -633,6 +636,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const shell = window.store.get('shell')
     if (shell) {
       setStateShell(shell)
+    }
+    const savedPaths = window.store.get('commandSearchPaths')
+    if (Array.isArray(savedPaths)) {
+      setStateCommandSearchPaths(savedPaths)
     }
 
     // Load Ignore Files Settings および Context Length
@@ -1231,6 +1238,11 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     window.store.set('shell', newShell)
   }
 
+  const setCommandSearchPaths = useCallback((paths: string[]) => {
+    setStateCommandSearchPaths(paths)
+    window.store.set('commandSearchPaths', paths)
+  }, [])
+
   const setIgnoreFiles = useCallback((files: string[]) => {
     setStateIgnoreFiles(files)
     const agentChatConfig = window.store.get('agentChatConfig') || {}
@@ -1812,6 +1824,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Shell Settings
     shell,
     setShell,
+    commandSearchPaths,
+    setCommandSearchPaths,
 
     // Ignore Files Settings
     ignoreFiles,
