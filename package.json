@@ -52,6 +52,7 @@
     "chart.js": "^4.4.8",
     "cors": "2.8.5",
     "diff": "6.0.0",
+    "dompurify": "^3.2.6",
     "electron-store": "8.2.0",
     "electron-updater": "^6.3.9",
     "express": "^4.21.2",

@@ -1,6 +1,7 @@
 import mermaid from 'mermaid'
 import React from 'react'
 import { useEffect, useState, useCallback } from 'react'
+import DOMPurify from 'dompurify'
 import { createPortal } from 'react-dom'
 import { IoIosClose } from 'react-icons/io'
 import { VscZoomIn, VscZoomOut, VscScreenFull } from 'react-icons/vsc'
@@ -15,7 +16,7 @@ mermaid.initialize({
   // syntax error が dom node に勝手に追加されないようにする
   // https://github.com/mermaid-js/mermaid/pull/4359
   suppressErrorRendering: true,
-  securityLevel: 'loose', // SVGのレンダリングを許可
+  securityLevel: 'strict', // SVGのレンダリングを許可
   theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
   fontFamily: 'monospace', // フォントファミリーを指定
   fontSize: 16, // フォントサイズを指定
@@ -30,7 +31,8 @@ export const MermaidCore: React.FC<Props> = (props) => {
     if (code) {
       try {
         // 一意な ID を指定する必要あり
-        const { svg } = await mermaid.render(`m${crypto.randomUUID()}`, code)
+        const sanitizedCode = DOMPurify.sanitize(code)
+        const { svg } = await mermaid.render(`m${crypto.randomUUID()}`, sanitizedCode)
         // SVG文字列をパースしてDOMオブジェクトに変換
         const parser = new DOMParser()
         const doc = parser.parseFromString(svg, 'image/svg+xml')
@@ -40,7 +42,10 @@ export const MermaidCore: React.FC<Props> = (props) => {
           // SVG要素に必要な属性を設定
           svgElement.setAttribute('width', '100%')
           svgElement.setAttribute('height', '100%')
-          setSvgContent(svgElement.outerHTML)
+          const sanitizedSvg = DOMPurify.sanitize(svgElement.outerHTML, {
+            USE_PROFILES: { svg: true }
+          })
+          setSvgContent(sanitizedSvg)
           // レンダリング成功時にコールバックを呼び出し
           onRenderComplete?.()
         }
