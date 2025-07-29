@@ -22,23 +22,18 @@ const sendLogToMain = (level: LogLevel, message: string, meta: Record<string, an
 export const preloadLogger = {
   error: (message: string, meta: Record<string, any> = {}) => {
     sendLogToMain('error', message, meta)
-    console.error(message, meta)
   },
   warn: (message: string, meta: Record<string, any> = {}) => {
     sendLogToMain('warn', message, meta)
-    console.warn(message, meta)
   },
   info: (message: string, meta: Record<string, any> = {}) => {
     sendLogToMain('info', message, meta)
-    console.info(message, meta)
   },
   debug: (message: string, meta: Record<string, any> = {}) => {
     sendLogToMain('debug', message, meta)
-    console.debug(message, meta)
   },
   verbose: (message: string, meta: Record<string, any> = {}) => {
     sendLogToMain('verbose', message, meta)
-    console.log(message, meta) // Use standard log for verbose as console.verbose isn't standard
   }
 }
 

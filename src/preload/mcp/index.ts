@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { MCPClient } from './mcp-client'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { McpServerConfig } from '../../types/agent-chat'
+import { log } from '../logger'
 
 const configSchema = z.object({
   mcpServers: z.record(
@@ -145,7 +146,7 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
       // configSchema によるバリデーション
       const { success, error } = configSchema.safeParse(configData)
       if (!success) {
-        console.error('Invalid MCP server configuration:', error)
+        log.error(`Invalid MCP server configuration: ${error}`)
         throw new Error('Invalid MCP server configuration')
       }
 
@@ -172,7 +173,7 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
 
     await initializationInProgress
   } catch (error) {
-    console.error('Error during MCP initialization:', error)
+    log.error(`Error during MCP initialization: ${error}`)
     // エラーが発生した場合はキャッシュをクリアして次回再試行できるようにする
     lastMcpServerConfigHash = null
     lastMcpServerLength = 0
