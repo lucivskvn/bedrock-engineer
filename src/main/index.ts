@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../build/icon.ico?asset'
 import { server } from './api'
+import type { Server as HTTPServer } from 'http'
 import Store from 'electron-store'
 import getRandomPort from '../preload/lib/random-port'
 import { store } from '../preload/store'
@@ -349,7 +350,7 @@ async function createWindow(): Promise<void> {
   const port = await getRandomPort()
   store.set('apiEndpoint', `http://localhost:${port}`)
 
-  server.listen(port, () => {
+  apiServer = server.listen(port, () => {
     apiLogger.info('API server started', {
       endpoint: `http://localhost:${port}`
     })
@@ -377,6 +378,8 @@ registerGlobalErrorHandlers()
 let mainWindow: BrowserWindow | null = null
 // Track app quit state for macOS
 let isQuitting = false
+// Reference to running API HTTP server
+let apiServer: HTTPServer | null = null
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -499,6 +502,19 @@ app.whenReady().then(async () => {
       log.error('Failed to force close task history window', {
         error: error instanceof Error ? error.message : String(error)
       })
+    }
+
+    // Close API server to release port
+    if (apiServer) {
+      try {
+        apiServer.close(() => {
+          log.info('API server closed')
+        })
+      } catch (error) {
+        log.error('Failed to close API server', {
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
     }
 
     // Background Agent Schedulerのシャットダウン処理（強化版）
