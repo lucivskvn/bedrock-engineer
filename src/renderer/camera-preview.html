@@ -251,11 +251,8 @@
             const deviceId = urlParams.get('deviceId') || 'default'
 
             try {
-              // 直接ipcRendererを使用してIPCハンドラーと通信
-              const { ipcRenderer } = require('electron')
-
               console.log('Attempting to close individual preview window:', deviceId)
-              const result = await ipcRenderer.invoke('camera:close-preview-window', deviceId)
+              const result = await window.cameraPreview.closePreviewWindow(deviceId)
 
               if (result.success) {
                 console.log('Individual window close result:', result.message)
@@ -486,8 +483,7 @@
         async fallbackClose() {
           try {
             console.log('Attempting fallback close using hidePreviewWindow')
-            const { ipcRenderer } = require('electron')
-            const result = await ipcRenderer.invoke('camera:hide-preview-window')
+            const result = await window.cameraPreview.hidePreviewWindow()
 
             if (result.success) {
               console.log('Fallback close successful:', result.message)
