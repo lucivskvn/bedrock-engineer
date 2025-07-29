@@ -104,7 +104,7 @@ export const todoHandlers = {
       }
 
       const manager = getTodoSessionManager()
-      const todoList = manager.getTodoList(params.sessionId)
+      const todoList = await manager.getTodoList(params.sessionId)
 
       log.debug('Retrieved TODO list from store', {
         todoList: todoList ? { id: todoList.id, itemCount: todoList.items.length } : null,

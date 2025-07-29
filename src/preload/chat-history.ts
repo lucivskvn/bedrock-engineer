@@ -13,8 +13,8 @@ export const chatHistory = {
     return await chatSessionManager.addMessage(sessionId, message)
   },
 
-  getSession(sessionId: string) {
-    return chatSessionManager.getSession(sessionId)
+  async getSession(sessionId: string) {
+    return await chatSessionManager.getSession(sessionId)
   },
 
   async updateSessionTitle(sessionId: string, title: string) {

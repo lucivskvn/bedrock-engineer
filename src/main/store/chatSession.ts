@@ -32,10 +32,10 @@ export class ChatSessionManager {
     })
 
     // 初回起動時またはメタデータが空の場合、既存のセッションからメタデータを生成
-    this.initializeMetadata()
+    void this.initializeMetadata()
   }
 
-  private initializeMetadata(): void {
+  private async initializeMetadata(): Promise<void> {
     const metadata = this.metadataStore.get('metadata')
     if (Object.keys(metadata).length === 0) {
       try {
@@ -44,7 +44,7 @@ export class ChatSessionManager {
 
         for (const file of sessionFiles) {
           const sessionId = file.replace('.json', '')
-          const session = this.readSessionFile(sessionId)
+          const session = await this.readSessionFile(sessionId)
           if (session) {
             this.updateMetadata(sessionId, session)
           }
@@ -61,10 +61,10 @@ export class ChatSessionManager {
     return path.join(this.sessionsDir, `${sessionId}.json`)
   }
 
-  private readSessionFile(sessionId: string): ChatSession | null {
+  private async readSessionFile(sessionId: string): Promise<ChatSession | null> {
     const filePath = this.getSessionFilePath(sessionId)
     try {
-      const data = fs.readFileSync(filePath, 'utf-8')
+      const data = await fs.promises.readFile(filePath, 'utf-8')
       return JSON.parse(data) as ChatSession
     } catch (error) {
       console.error(`Error reading session file ${sessionId}:`, error)
@@ -120,7 +120,7 @@ export class ChatSessionManager {
   }
 
   async addMessage(sessionId: string, message: ChatMessage): Promise<void> {
-    const session = this.readSessionFile(sessionId)
+    const session = await this.readSessionFile(sessionId)
     if (!session) return
 
     session.messages.push(message)
@@ -131,12 +131,12 @@ export class ChatSessionManager {
     this.updateRecentSessions(sessionId)
   }
 
-  getSession(sessionId: string): ChatSession | null {
-    return this.readSessionFile(sessionId)
+  async getSession(sessionId: string): Promise<ChatSession | null> {
+    return await this.readSessionFile(sessionId)
   }
 
   async updateSessionTitle(sessionId: string, title: string): Promise<void> {
-    const session = this.readSessionFile(sessionId)
+    const session = await this.readSessionFile(sessionId)
     if (!session) return
 
     session.title = title
@@ -232,7 +232,7 @@ export class ChatSessionManager {
     messageIndex: number,
     updatedMessage: ChatMessage
   ): Promise<void> {
-    const session = this.readSessionFile(sessionId)
+    const session = await this.readSessionFile(sessionId)
     if (!session) return
 
     // 指定されたインデックスが有効な範囲内かチェック
@@ -251,7 +251,7 @@ export class ChatSessionManager {
   }
 
   async deleteMessage(sessionId: string, messageIndex: number): Promise<void> {
-    const session = this.readSessionFile(sessionId)
+    const session = await this.readSessionFile(sessionId)
     if (!session) return
 
     // 指定されたインデックスが有効な範囲内かチェック

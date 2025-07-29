@@ -4,7 +4,7 @@ import { SessionMetadata, ChatSession, ChatMessage } from '@/types/chat/history'
 interface ChatHistoryContextType {
   sessions: SessionMetadata[]
   currentSessionId?: string
-  getSession: (sessionId: string) => ChatSession | null
+  getSession: (sessionId: string) => Promise<ChatSession | null>
   createSession: (agentId: string, modelId: string, systemPrompt?: string) => Promise<string>
   addMessage: (sessionId: string, message: ChatMessage) => Promise<void>
   updateSessionTitle: (sessionId: string, title: string) => Promise<void>
@@ -43,8 +43,8 @@ export const ChatHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [])
 
   // セッション情報を取得
-  const getSession = useCallback((sessionId: string) => {
-    return window.chatHistory.getSession(sessionId)
+  const getSession = useCallback(async (sessionId: string) => {
+    return await window.chatHistory.getSession(sessionId)
   }, [])
 
   // 新規セッションを作成

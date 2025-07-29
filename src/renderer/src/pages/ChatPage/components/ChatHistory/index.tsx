@@ -83,7 +83,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ onSessionSelect, curre
 
     try {
       // セッションの詳細を取得
-      const sessionDetails = getSession(session.id)
+      const sessionDetails = await getSession(session.id)
       if (!sessionDetails) {
         throw new Error('Session not found')
       }

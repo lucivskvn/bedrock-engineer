@@ -70,10 +70,10 @@ export class TodoSessionManager {
     })
 
     // 初回起動時またはメタデータが空の場合、既存のTODOリストからメタデータを生成
-    this.initializeMetadata()
+    void this.initializeMetadata()
   }
 
-  private initializeMetadata(): void {
+  private async initializeMetadata(): Promise<void> {
     const metadata = this.metadataStore.get('metadata')
     if (Object.keys(metadata).length === 0) {
       try {
@@ -82,7 +82,7 @@ export class TodoSessionManager {
 
         for (const file of todoFiles) {
           const fileId = file.replace('_todos.json', '')
-          const todoList = this.readTodoFile(fileId)
+          const todoList = await this.readTodoFile(fileId)
           if (todoList) {
             this.updateMetadata(fileId, todoList)
           }
@@ -103,10 +103,10 @@ export class TodoSessionManager {
     return path.join(this.todosDir, fileName)
   }
 
-  private readTodoFile(sessionId: string): TodoList | null {
+  private async readTodoFile(sessionId: string): Promise<TodoList | null> {
     const filePath = this.getTodoFilePath(sessionId)
     try {
-      const data = fs.readFileSync(filePath, 'utf-8')
+      const data = await fs.promises.readFile(filePath, 'utf-8')
       return JSON.parse(data) as TodoList
     } catch (error) {
       console.error(`Error reading todo file ${sessionId}:`, error)
@@ -168,7 +168,7 @@ export class TodoSessionManager {
 
   async updateTodoList(sessionId: string, updates: TodoItemUpdate[]): Promise<TodoUpdateResult> {
     try {
-      const todoList = this.readTodoFile(sessionId)
+      const todoList = await this.readTodoFile(sessionId)
       if (!todoList) {
         return {
           success: false,
@@ -220,8 +220,8 @@ export class TodoSessionManager {
     }
   }
 
-  getTodoList(sessionId: string): TodoList | null {
-    return this.readTodoFile(sessionId)
+  async getTodoList(sessionId: string): Promise<TodoList | null> {
+    return await this.readTodoFile(sessionId)
   }
 
   deleteTodoList(sessionId: string): void {

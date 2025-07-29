@@ -255,7 +255,7 @@ export const useAgentChat = (
   useEffect(() => {
     const initSession = async () => {
       if (sessionId) {
-        const session = getSession(sessionId)
+        const session = await getSession(sessionId)
         if (session) {
           // 既存の通信があれば中断
           abortCurrentRequest()
@@ -285,17 +285,21 @@ export const useAgentChat = (
 
   // currentSessionId が変わった時の処理
   useEffect(() => {
-    if (currentSessionId) {
-      // セッション切り替え時に進行中の通信を中断
-      abortCurrentRequest()
-      const session = getSession(currentSessionId)
-      if (session) {
-        setMessages(session.messages as Message[])
-        setActiveSession(currentSessionId)
-        // セッション切り替え時にキャッシュポイントをリセット
-        lastCachePoint.current = undefined
+    const fetchSession = async () => {
+      if (currentSessionId) {
+        // セッション切り替え時に進行中の通信を中断
+        abortCurrentRequest()
+        const session = await getSession(currentSessionId)
+        if (session) {
+          setMessages(session.messages as Message[])
+          setActiveSession(currentSessionId)
+          // セッション切り替え時にキャッシュポイントをリセット
+          lastCachePoint.current = undefined
+        }
       }
     }
+
+    fetchSession()
   }, [currentSessionId, getSession, setActiveSession, abortCurrentRequest])
 
   // メッセージの永続化を行うラッパー関数
@@ -1045,7 +1049,7 @@ export const useAgentChat = (
 
     try {
       // セッションの詳細を取得
-      const session = getSession(currentSessionId)
+      const session = await getSession(currentSessionId)
       if (!session) return
 
       // セッションのタイトルが既にカスタマイズされている場合は生成しない
