@@ -2,6 +2,7 @@ import { Notification, BrowserWindow } from 'electron'
 import { createCategoryLogger } from '../../../../common/logger'
 import { ServiceContext } from '../types'
 import { windowHandlers } from '../../../handlers/window-handlers'
+import { t } from '../../i18n'
 
 const logger = createCategoryLogger('notification-service')
 
@@ -83,14 +84,17 @@ export class MainNotificationService {
       let title: string
       let body: string
 
+      const language =
+        (this.context.store.get('language') as 'en' | 'ja') ?? 'en'
+
       if (success) {
         // 成功通知
-        title = 'Background Agent Task Completed' // TODO: i18n対応
-        body = aiMessage || 'Task completed successfully'
+        title = t('notification.backgroundAgent.success.title', language)
+        body = aiMessage || t('notification.backgroundAgent.success.body', language)
       } else {
         // エラー通知
-        title = 'Background Agent Task Failed' // TODO: i18n対応
-        body = error || 'Task execution failed'
+        title = t('notification.backgroundAgent.error.title', language)
+        body = error || t('notification.backgroundAgent.error.body', language)
       }
 
       // 通知設定をstoreから取得
