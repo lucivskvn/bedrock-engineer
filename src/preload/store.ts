@@ -131,6 +131,9 @@ type StoreScheme = {
   /** コマンド実行の設定（シェル設定） */
   shell: string
 
+  /** 追加のPATH設定 */
+  commandSearchPaths?: string[]
+
   /** 通知機能の有効/無効設定 */
   notification?: boolean
 
@@ -250,6 +253,10 @@ const init = () => {
   const shell = electronStore.get('shell')
   if (!shell) {
     electronStore.set('shell', DEFAULT_SHELL)
+  }
+  const commandSearchPaths = electronStore.get('commandSearchPaths')
+  if (!commandSearchPaths) {
+    electronStore.set('commandSearchPaths', [])
   }
 
   // Initialize bedrockSettings
