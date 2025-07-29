@@ -94,6 +94,18 @@ npm run build:linux
 ```
 
 Use the application stored in the `dist` directory.
+### Lint, Typecheck, and Test
+
+Install dependencies and run code checks:
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run test:integration
+```
+
 
 ## Agent Chat
 
