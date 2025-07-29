@@ -3,6 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { z } from 'zod'
 import { resolveCommand } from './command-resolver'
+import { log } from '../logger'
 
 // https://github.com/modelcontextprotocol/quickstart-resources/blob/main/mcp-client-typescript/index.ts
 export class MCPClient {
@@ -26,7 +27,7 @@ export class MCPClient {
     // コマンドパスを解決
     const resolvedCommand = resolveCommand(command)
     if (resolvedCommand !== command) {
-      console.log(`Using resolved command path: ${resolvedCommand} (original: ${command})`)
+      log.debug(`Using resolved command path: ${resolvedCommand} (original: ${command})`)
     }
     await client.connectToServer(resolvedCommand, args, env ?? {})
     return client
@@ -62,12 +63,13 @@ export class MCPClient {
           }
         }
       })
-      console.log(
-        'Connected to server with tools:',
-        this._tools.map(({ toolSpec }) => toolSpec!.name)
+      log.debug(
+        `Connected to server with tools: ${this._tools
+          .map(({ toolSpec }) => toolSpec!.name)
+          .join(', ')}`
       )
     } catch (e) {
-      console.log('Failed to connect to MCP server: ', e)
+      log.error(`Failed to connect to MCP server: ${e}`)
       throw e
     }
   }
