@@ -23,5 +23,9 @@ declare global {
       log: RendererLogger
       createCategoryLogger: (category: string) => RendererCategoryLogger
     }
+    cameraPreview: {
+      closeWindow: (deviceId: string) => Promise<any>
+      hidePreview: () => Promise<any>
+    }
   }
 }

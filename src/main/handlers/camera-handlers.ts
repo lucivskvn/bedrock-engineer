@@ -162,10 +162,10 @@ async function createPreviewWindow(
     transparent: true,
     title: deviceName,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      preload: path.join(__dirname, '../preload/index.js'),
-      webSecurity: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '../preload/cameraPreview.js'),
+      webSecurity: true,
       additionalArguments: [`--camera-device-id=${deviceId}`, `--camera-device-name=${deviceName}`]
     }
   })
