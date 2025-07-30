@@ -115,7 +115,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vitejs/plugin-react": "4.3.4",
     "autoprefixer": "10.4.20",
-    "babel-jest": "^30.0.5",
+    "babel-jest": "^29.7.0",
     "dotenv": "^16.4.5",
     "electron": "36.3.2",
     "electron-builder": "24.13.3",
