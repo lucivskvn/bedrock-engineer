@@ -1,6 +1,7 @@
 import { IpcMainInvokeEvent, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { log } from '../../common/logger'
 
 // グローバルなタスク履歴ウィンドウの参照
 let taskHistoryWindow: BrowserWindow | null = null
@@ -10,7 +11,7 @@ let taskHistoryWindow: BrowserWindow | null = null
  * アプリケーション終了時に呼び出される
  */
 export const forceCloseTaskHistoryWindow = (): void => {
-  console.log('Force closing task history window...')
+  log.info('Force closing task history window...')
 
   if (taskHistoryWindow && !taskHistoryWindow.isDestroyed()) {
     try {
@@ -20,22 +21,26 @@ export const forceCloseTaskHistoryWindow = (): void => {
       // ウィンドウを強制終了
       taskHistoryWindow.close()
 
-      console.log('Task history window force closed successfully')
+      log.info('Task history window force closed successfully')
     } catch (error) {
-      console.error('Failed to force close task history window:', error)
+      log.error('Failed to force close task history window', {
+        error: error instanceof Error ? error.message : String(error)
+      })
 
       // エラーが発生した場合はdestroy()で強制破棄
       try {
         taskHistoryWindow.destroy()
-        console.log('Task history window destroyed as fallback')
+        log.info('Task history window destroyed as fallback')
       } catch (destroyError) {
-        console.error('Failed to destroy task history window:', destroyError)
+        log.error('Failed to destroy task history window', {
+          error: destroyError instanceof Error ? destroyError.message : String(destroyError)
+        })
       }
     }
 
     taskHistoryWindow = null
   } else {
-    console.log('No task history window to close')
+    log.debug('No task history window to close')
   }
 }
 
@@ -44,12 +49,12 @@ export const forceCloseTaskHistoryWindow = (): void => {
  * アプリ起動時に非表示で事前作成しておく
  */
 export const preloadTaskHistoryWindow = async (): Promise<void> => {
-  console.log('Preloading task history window...')
+  log.info('Preloading task history window...')
 
   try {
     // すでにプリロード済みの場合はスキップ
     if (taskHistoryWindow && !taskHistoryWindow.isDestroyed()) {
-      console.log('Task history window already preloaded')
+      log.info('Task history window already preloaded')
       return
     }
 
@@ -84,7 +89,7 @@ export const preloadTaskHistoryWindow = async (): Promise<void> => {
 
     // ウィンドウが閉じられる時の処理（隠すのみ）
     taskHistoryWindow.on('close', (event) => {
-      console.log('Task history window close requested - hiding instead')
+      log.debug('Task history window close requested - hiding instead')
       event.preventDefault() // デフォルトの閉じる動作をキャンセル
       taskHistoryWindow!.hide()
       taskHistoryWindow!.setSkipTaskbar(true) // タスクバーからも隠す
@@ -92,18 +97,20 @@ export const preloadTaskHistoryWindow = async (): Promise<void> => {
 
     // ウィンドウが実際に破棄された時の処理
     taskHistoryWindow.on('closed', () => {
-      console.log('Task history window actually destroyed')
+      log.debug('Task history window actually destroyed')
       taskHistoryWindow = null
     })
 
     // プリロード完了のログ
     taskHistoryWindow.webContents.once('did-finish-load', () => {
-      console.log('Task history window preload completed')
+      log.info('Task history window preload completed')
     })
 
-    console.log('Task history window preload initiated')
+    log.info('Task history window preload initiated')
   } catch (error) {
-    console.error('Failed to preload task history window:', error)
+    log.error('Failed to preload task history window', {
+      error: error instanceof Error ? error.message : String(error)
+    })
     if (taskHistoryWindow) {
       taskHistoryWindow.destroy()
       taskHistoryWindow = null
@@ -118,7 +125,7 @@ export const windowHandlers = {
   },
 
   'window:openTaskHistory': async (_event: IpcMainInvokeEvent, taskId: string) => {
-    console.log('Opening task history window for taskId:', taskId)
+    log.info('Opening task history window for taskId', { taskId })
 
     // Build URL for the task history page
     const taskHistoryUrl =
@@ -126,11 +133,11 @@ export const windowHandlers = {
         ? `${process.env['ELECTRON_RENDERER_URL']}#/background-agent/task-history/${taskId}`
         : `file://${join(__dirname, '../renderer/index.html')}#/background-agent/task-history/${taskId}`
 
-    console.log('Target URL:', taskHistoryUrl)
+    log.debug('Target URL for task history window', { url: taskHistoryUrl })
 
     // Check if task history window already exists and is not destroyed
     if (taskHistoryWindow && !taskHistoryWindow.isDestroyed()) {
-      console.log('Using preloaded/existing task history window')
+      log.debug('Using preloaded/existing task history window')
 
       try {
         // If window was preloaded and hidden, enable taskbar display before showing
@@ -145,10 +152,12 @@ export const windowHandlers = {
         taskHistoryWindow.show()
         taskHistoryWindow.focus()
 
-        console.log('Preloaded window updated with new task:', taskId)
+        log.info('Preloaded window updated with new task', { taskId })
         return { success: true, windowId: taskHistoryWindow.id, reused: true, preloaded: true }
       } catch (error) {
-        console.error('Failed to update preloaded window:', error)
+        log.error('Failed to update preloaded window', {
+          error: error instanceof Error ? error.message : String(error)
+        })
         // If update fails, destroy the old window and create a new one
         taskHistoryWindow.destroy()
         taskHistoryWindow = null
@@ -156,7 +165,7 @@ export const windowHandlers = {
     }
 
     // Create new task history window (fallback if preload failed)
-    console.log('Creating new task history window (preload not available)')
+    log.info('Creating new task history window (preload not available)')
 
     taskHistoryWindow = new BrowserWindow({
       width: 1400,
@@ -180,9 +189,11 @@ export const windowHandlers = {
 
     try {
       await taskHistoryWindow.loadURL(taskHistoryUrl)
-      console.log('URL loaded successfully')
+      log.debug('Task history window URL loaded successfully')
     } catch (error) {
-      console.error('Failed to load URL:', error)
+      log.error('Failed to load task history window URL', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       taskHistoryWindow.destroy()
       taskHistoryWindow = null
       return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -198,7 +209,7 @@ export const windowHandlers = {
 
     // ウィンドウが閉じられる時の処理（隠すのみ）
     taskHistoryWindow.on('close', (event) => {
-      console.log('Task history window close requested - hiding instead')
+      log.debug('Task history window close requested - hiding instead')
       event.preventDefault() // デフォルトの閉じる動作をキャンセル
       taskHistoryWindow!.hide()
       taskHistoryWindow!.setSkipTaskbar(true) // タスクバーからも隠す
@@ -206,20 +217,22 @@ export const windowHandlers = {
 
     // ウィンドウが実際に破棄された時の処理
     taskHistoryWindow.on('closed', () => {
-      console.log('Task history window actually destroyed')
+      log.debug('Task history window actually destroyed')
       taskHistoryWindow = null
 
       // Preload a new window for next time (background task)
       setTimeout(() => {
         preloadTaskHistoryWindow().catch((err) => {
-          console.error('Failed to preload task history window after close:', err)
+          log.error('Failed to preload task history window after close', {
+            error: err instanceof Error ? err.message : String(err)
+          })
         })
       }, 2000) // 2秒後にプリロード
     })
 
     // Log when window is actually shown
     taskHistoryWindow.on('show', () => {
-      console.log('Task history window is now visible')
+      log.debug('Task history window is now visible')
     })
 
     return { success: true, windowId: taskHistoryWindow.id, reused: false, preloaded: false }
