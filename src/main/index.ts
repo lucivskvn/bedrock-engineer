@@ -44,7 +44,7 @@ import('fix-path')
     fixPathModule.default()
   })
   .catch((err) => {
-    console.error('Failed to load fix-path module:', err)
+    log.error('Failed to load fix-path module:', { error: err })
   })
 
 // No need to track project path anymore as we always read from disk
@@ -82,7 +82,7 @@ async function setupSessionProxy(window: BrowserWindow): Promise<void> {
 
     // プロキシ設定を決定
     const proxyConfig = resolveProxyConfig(awsConfig?.proxyConfig)
-    console.log({ proxyConfig })
+    log.debug('Resolved proxy configuration', { proxyConfig })
 
     if (proxyConfig) {
       const electronProxyRules = convertToElectronProxyConfig(proxyConfig)

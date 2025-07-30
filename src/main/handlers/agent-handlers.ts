@@ -87,7 +87,9 @@ async function loadSharedAgents(): Promise<{ agents: CustomAgent[]; error: strin
 
     return { agents, error: null }
   } catch (error) {
-    console.error('Error reading shared agents:', error)
+    agentsLogger.error('Error reading shared agents', {
+      error: error instanceof Error ? error.message : String(error)
+    })
     return { agents: [], error: error instanceof Error ? error.message : String(error) }
   }
 }
@@ -178,7 +180,9 @@ export const agentHandlers = {
 
       return { success: true, filePath, format }
     } catch (error) {
-      console.error('Error saving shared agent:', error)
+      agentsLogger.error('Error saving shared agent', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error)

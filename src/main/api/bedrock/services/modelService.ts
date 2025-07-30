@@ -2,6 +2,7 @@ import { getDefaultPromptRouter, getModelsForRegion } from '../models'
 import { getAccountId } from '../utils/awsUtils'
 import type { ServiceContext, AWSCredentials } from '../types'
 import { BedrockSupportRegion } from '../../../../types/llm'
+import { log } from '../../../../common/logger'
 
 export class ModelService {
   constructor(private context: ServiceContext) {}
@@ -12,7 +13,7 @@ export class ModelService {
 
     // AWS認証情報のバリデーション
     if (!region || (!useProfile && !accessKeyId)) {
-      console.warn('AWS credentials not configured properly')
+      log.warn('AWS credentials not configured properly')
       return []
     }
 
@@ -24,7 +25,7 @@ export class ModelService {
 
       return result
     } catch (error) {
-      console.error('Error in listModels:', error)
+      log.error('Error in listModels:', error)
       return []
     }
   }
