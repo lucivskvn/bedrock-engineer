@@ -1,5 +1,7 @@
 import express, { Request, Response, ErrorRequestHandler } from 'express'
 import cors from 'cors'
+import compression from 'compression'
+import helmet from 'helmet'
 import { RequestHandler, NextFunction } from 'express'
 import { RetrieveAndGenerateCommandInput } from '@aws-sdk/client-bedrock-agent-runtime'
 import { BedrockService, CallConverseAPIProps } from './bedrock'
@@ -61,6 +63,8 @@ api.use(
 )
 api.use(express.json({ limit: '10mb' }))
 api.use(express.urlencoded({ extended: true, limit: '10mb' }))
+api.use(compression())
+api.use(helmet())
 
 // Add request logging
 api.use((req, res, next) => {
