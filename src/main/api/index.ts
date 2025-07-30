@@ -298,7 +298,10 @@ io.on('connection', (socket) => {
           sessionState.initialized = true
           await sonicClient.initiateSession(sessionId)
         } catch (error) {
-          console.error(`Error initiating session ${sessionId}:`, error)
+          bedrockLogger.error('Error initiating session', {
+            sessionId,
+            error: error instanceof Error ? error.message : String(error)
+          })
           socket.emit('error', {
             message: 'Failed to initialize AWS streaming session',
             details: error instanceof Error ? error.message : String(error)
@@ -321,7 +324,7 @@ io.on('connection', (socket) => {
     })
 
     session.onEvent('error', (data) => {
-      console.error('Error in session:', data)
+      bedrockLogger.error('Error in session', { data })
       socket.emit('error', data)
     })
 
@@ -351,7 +354,9 @@ io.on('connection', (socket) => {
         // Stream the audio
         await session.streamAudio(audioBuffer)
       } catch (error) {
-        console.error('Error processing audio:', error)
+        bedrockLogger.error('Error processing audio', {
+          error: error instanceof Error ? error.message : String(error)
+        })
         socket.emit('error', {
           message: 'Error processing audio',
           details: error instanceof Error ? error.message : String(error)
@@ -365,7 +370,9 @@ io.on('connection', (socket) => {
         sessionState.promptStartSent = true
         await checkAndInitializeSession()
       } catch (error) {
-        console.error('Error processing prompt start:', error)
+        bedrockLogger.error('Error processing prompt start', {
+          error: error instanceof Error ? error.message : String(error)
+        })
         socket.emit('error', {
           message: 'Error processing prompt start',
           details: error instanceof Error ? error.message : String(error)
@@ -379,7 +386,9 @@ io.on('connection', (socket) => {
         sessionState.systemPromptSent = true
         await checkAndInitializeSession()
       } catch (error) {
-        console.error('Error processing system prompt:', error)
+        bedrockLogger.error('Error processing system prompt', {
+          error: error instanceof Error ? error.message : String(error)
+        })
         socket.emit('error', {
           message: 'Error processing system prompt',
           details: error instanceof Error ? error.message : String(error)
@@ -393,7 +402,9 @@ io.on('connection', (socket) => {
         sessionState.audioStartSent = true
         await checkAndInitializeSession()
       } catch (error) {
-        console.error('Error processing audio start:', error)
+        bedrockLogger.error('Error processing audio start', {
+          error: error instanceof Error ? error.message : String(error)
+        })
         socket.emit('error', {
           message: 'Error processing audio start',
           details: error instanceof Error ? error.message : String(error)
@@ -411,7 +422,9 @@ io.on('connection', (socket) => {
             .then(() => session.close())
         ])
       } catch (error) {
-        console.error('Error processing streaming end events:', error)
+        bedrockLogger.error('Error processing streaming end events', {
+          error: error instanceof Error ? error.message : String(error)
+        })
         socket.emit('error', {
           message: 'Error processing streaming end events',
           details: error instanceof Error ? error.message : String(error)
@@ -437,11 +450,17 @@ io.on('connection', (socket) => {
 
           await cleanupPromise
         } catch (error) {
-          console.error(`Error cleaning up session after disconnect: ${socket.id}`, error)
+          bedrockLogger.error('Error cleaning up session after disconnect', {
+            sessionId: socket.id,
+            error: error instanceof Error ? error.message : String(error)
+          })
           try {
             sonicClient.forceCloseSession(sessionId)
           } catch (e) {
-            console.error(`Failed even force close for session: ${sessionId}`, e)
+            bedrockLogger.error('Failed force close for session', {
+              sessionId,
+              error: e instanceof Error ? e.message : String(e)
+            })
           }
         } finally {
           // Make sure socket is fully closed in all cases
@@ -452,7 +471,9 @@ io.on('connection', (socket) => {
       }
     })
   } catch (error) {
-    console.error('Error creating session:', error)
+    bedrockLogger.error('Error creating session', {
+      error: error instanceof Error ? error.message : String(error)
+    })
     socket.emit('error', {
       message: 'Failed to initialize session',
       details: error instanceof Error ? error.message : String(error)
