@@ -10,6 +10,7 @@ import {
   ProcessState,
   CommandPatternConfig
 } from './types'
+import { log } from '../../../common/logger'
 
 export class CommandService {
   private config: CommandConfig
@@ -282,7 +283,7 @@ Shell: ${this.config.shell}
 Command: ${input.command}
 Working Directory: ${input.cwd}
 Spawn Method: ${isWindows ? 'shell=true' : 'shell+args'}`
-        console.error('Process spawn failed:', {
+        log.error('Process spawn failed:', {
           platform: process.platform,
           shell: this.config.shell,
           command: input.command,

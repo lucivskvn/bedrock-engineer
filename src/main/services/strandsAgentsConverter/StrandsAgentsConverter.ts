@@ -4,13 +4,9 @@ import { CodeGenerator } from './codeGenerator'
 import { TOOL_MAPPING } from './toolMapper'
 import { promises as fs } from 'fs'
 import * as path from 'path'
+import { createCategoryLogger } from '../../../common/logger'
 
-// Simple logger
-const logger = {
-  info: (message: string) => console.log(`[INFO] ${message}`),
-  warn: (message: string) => console.warn(`[WARN] ${message}`),
-  error: (message: string, error?: any) => console.error(`[ERROR] ${message}`, error || '')
-}
+const logger = createCategoryLogger('strands-converter')
 
 /**
  * Service to convert Bedrock Engineer's CustomAgent to Strands Agents code

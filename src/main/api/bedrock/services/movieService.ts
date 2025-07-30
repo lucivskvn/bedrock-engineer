@@ -27,6 +27,7 @@ import {
   getTaskTypeForRequest,
   NOVA_REEL_REGION_SUPPORT
 } from '../types/movie'
+import { log } from '../../../../common/logger'
 
 export class VideoService {
   private runtimeClient: BedrockRuntimeClient
@@ -41,14 +42,14 @@ export class VideoService {
       (!awsCredentials.useProfile &&
         (!awsCredentials.accessKeyId || !awsCredentials.secretAccessKey))
     ) {
-      console.warn('AWS credentials not configured properly')
+      log.warn('AWS credentials not configured properly')
     }
 
     this.region = awsCredentials.region || 'us-east-1' // Default to us-east-1
 
     // Validate that Nova Reel is supported in the selected region
     if (!isNovaReelSupportedInRegion(this.region)) {
-      console.warn(
+      log.warn(
         `Nova Reel is not available in region ${this.region}. Supported regions: ${Object.keys(
           NOVA_REEL_REGION_SUPPORT
         ).join(', ')}`
@@ -340,8 +341,8 @@ export class VideoService {
 
     try {
       // Add detailed logging for debugging
-      console.log('Nova Reel Request Structure:', JSON.stringify(novaReelRequest, null, 2))
-      console.log(`Using Nova Reel model: ${modelId} for region: ${this.region}`)
+      log.debug('Nova Reel Request Structure:', JSON.stringify(novaReelRequest, null, 2))
+      log.debug(`Using Nova Reel model: ${modelId} for region: ${this.region}`)
 
       const command = new StartAsyncInvokeCommand({
         modelId,
@@ -353,7 +354,7 @@ export class VideoService {
         }
       })
 
-      console.log(
+      log.debug(
         'AWS Command:',
         JSON.stringify(
           {
@@ -387,7 +388,7 @@ export class VideoService {
         }
       }
     } catch (error: any) {
-      console.error('Error starting video generation:', error)
+      log.error('Error starting video generation:', error)
 
       // If MULTI_SHOT_MANUAL fails with validation error, try fallback to MULTI_SHOT_AUTOMATED
       if (
@@ -395,7 +396,7 @@ export class VideoService {
         novaReelRequest.taskType === 'MULTI_SHOT_MANUAL' &&
         error.message?.includes('textToVideoParams')
       ) {
-        console.log('MULTI_SHOT_MANUAL failed, attempting fallback to MULTI_SHOT_AUTOMATED...')
+        log.debug('MULTI_SHOT_MANUAL failed, attempting fallback to MULTI_SHOT_AUTOMATED...')
 
         try {
           // Create fallback request with combined prompts
@@ -412,7 +413,7 @@ export class VideoService {
             }
           }
 
-          console.log('Fallback Request:', JSON.stringify(fallbackRequest, null, 2))
+          log.debug('Fallback Request:', JSON.stringify(fallbackRequest, null, 2))
 
           const fallbackCommand = new StartAsyncInvokeCommand({
             modelId,
@@ -430,7 +431,7 @@ export class VideoService {
             throw new Error('Failed to start video generation: No invocation ARN returned')
           }
 
-          console.log('Fallback succeeded! Note: Images were not used due to API limitations.')
+          log.debug('Fallback succeeded! Note: Images were not used due to API limitations.')
 
           return {
             invocationArn: response.invocationArn,
@@ -447,7 +448,7 @@ export class VideoService {
             }
           }
         } catch (fallbackError) {
-          console.error('Fallback also failed:', fallbackError)
+          log.error('Fallback also failed:', fallbackError)
           throw new Error(
             `Both MULTI_SHOT_MANUAL and fallback failed. Original error: ${error.message}. Fallback error: ${fallbackError}`
           )
@@ -492,7 +493,7 @@ export class VideoService {
         failureMessage: response.failureMessage
       }
     } catch (error: any) {
-      console.error('Error getting job status:', error)
+      log.error('Error getting job status:', error)
       throw error
     }
   }
@@ -528,7 +529,7 @@ export class VideoService {
 
       return localPath
     } catch (error: any) {
-      console.error('Error downloading video from S3:', error)
+      log.error('Error downloading video from S3:', error)
       throw error
     }
   }
@@ -578,7 +579,7 @@ export class VideoService {
     // Wait for completion
     const finalStatus = await this.waitForCompletion(initialResult.invocationArn, {
       onProgress: (status) => {
-        console.log(`Video generation status: ${status.status}`)
+        log.debug(`Video generation status: ${status.status}`)
       }
     })
 

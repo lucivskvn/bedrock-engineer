@@ -11,6 +11,7 @@ import {
 } from '@aws-sdk/client-bedrock-agent-runtime'
 import { createAgentRuntimeClient } from '../client'
 import type { ServiceContext } from '../types'
+import { log } from '../../../../common/logger'
 
 // 必須パラメータと省略可能パラメータを明確に分離
 type RequiredAgentParams = {
@@ -85,7 +86,7 @@ export class AgentService {
 
     try {
       const response = await agentClient.send(command)
-      console.log({ response })
+      log.debug({ response })
       return {
         $metadata: response.$metadata,
         contentType: response.contentType,
@@ -95,7 +96,7 @@ export class AgentService {
           : undefined
       }
     } catch (error) {
-      console.error('Error invoking agent:', error)
+      log.error('Error invoking agent:', error)
       throw error
     }
   }
@@ -139,7 +140,7 @@ export class AgentService {
         }
       }
     } catch (error) {
-      console.error('Error reading stream:', error)
+      log.error('Error reading stream:', error)
       throw error
     }
     return response
