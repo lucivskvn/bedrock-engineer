@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { FiChevronDown, FiChevronRight } from 'react-icons/fi'
@@ -23,7 +24,7 @@ export const ToolDetailsTab: React.FC<ToolDetailsTabProps> = ({
   bedrockAgents,
   onBedrockAgentsChange,
   flows = [],
-  onFlowsChange = () => console.warn('onFlowsChange not provided')
+  onFlowsChange = () => log.warn('onFlowsChange not provided')
 }) => {
   const { t } = useTranslation()
 

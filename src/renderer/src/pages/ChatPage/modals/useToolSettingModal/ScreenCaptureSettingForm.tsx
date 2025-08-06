@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useMemo, useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Label, Select, Button } from 'flowbite-react'
@@ -62,7 +63,7 @@ export const ScreenCaptureSettingForm: React.FC = () => {
       const windows = await window.api.screen.listAvailableWindows()
       setAvailableWindows(windows || [])
     } catch (error) {
-      console.error('Failed to fetch available windows:', error)
+      log.error('Failed to fetch available windows:', error)
       setAvailableWindows([])
     } finally {
       setIsLoadingWindows(false)

@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useEffect, useState } from 'react'
 import useSetting from '@renderer/hooks/useSetting'
 import { useAgentChat } from './useAgentChat'
@@ -158,7 +159,7 @@ System Prompt: ${systemPrompt}
       const textContent = lastMessage.content?.find((v) => v.text)
       if (textContent && textContent.text) {
         const parsedScenarios = extractCompleteObjects(textContent.text)
-        console.log(parsedScenarios)
+        log.debug(parsedScenarios)
         if (parsedScenarios.length > 0) {
           setResult(parsedScenarios)
         }

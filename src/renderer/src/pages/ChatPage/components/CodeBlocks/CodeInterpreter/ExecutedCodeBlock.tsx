@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -90,7 +91,7 @@ export const ExecutedCodeBlock: React.FC<ExecutedCodeBlockProps> = ({ code }) =>
       // Reset copied state after timeout
       setTimeout(() => setCopied(false), COPY_FEEDBACK_TIMEOUT)
     } catch (error) {
-      console.error('Failed to copy code:', error)
+      log.error('Failed to copy code:', error)
       toast.error(t('code interpreter display.Failed to copy code', 'Failed to copy code'))
     }
   }, [code, t])

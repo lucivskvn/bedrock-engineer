@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useMemo, useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Label, Select, Button, ToggleSwitch } from 'flowbite-react'
@@ -68,7 +69,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
       const cameras = await enumerateCameraDevices()
       setAvailableCameras(cameras)
     } catch (error) {
-      console.error('Failed to fetch available cameras:', error)
+      log.error('Failed to fetch available cameras:', error)
       setAvailableCameras([])
     } finally {
       setIsLoadingCameras(false)
@@ -117,7 +118,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
           setPreviewPosition(status.options.position || 'bottom-right')
         }
       } catch (error) {
-        console.error('Failed to get preview status:', error)
+        log.error('Failed to get preview status:', error)
       }
     }
   }, [])
@@ -146,9 +147,9 @@ export const CameraCaptureSettingForm: React.FC = () => {
           // 有効なカメラが見つからない場合はデフォルトカメラを使用
           const cameraIds = validCameraIds.length > 0 ? validCameraIds : ['default']
 
-          console.log('Preview window - Available cameras:', availableCameraIds)
-          console.log('Preview window - Selected cameras:', selectedCameraIds)
-          console.log('Preview window - Valid cameras:', cameraIds)
+          log.debug('Preview window - Available cameras:', availableCameraIds)
+          log.debug('Preview window - Selected cameras:', selectedCameraIds)
+          log.debug('Preview window - Valid cameras:', cameraIds)
 
           const result = await window.api.camera.showPreviewWindow({
             size: previewSize,
@@ -161,9 +162,9 @@ export const CameraCaptureSettingForm: React.FC = () => {
           if (result.success) {
             setPreviewEnabled(true)
             setPreviewStatus({ isActive: true })
-            console.log('Preview windows created successfully:', result.message)
+            log.debug('Preview windows created successfully:', result.message)
           } else {
-            console.error('Failed to create preview windows:', result.message)
+            log.error('Failed to create preview windows:', result.message)
             setPreviewEnabled(false)
             setPreviewStatus({ isActive: false })
           }
@@ -172,11 +173,11 @@ export const CameraCaptureSettingForm: React.FC = () => {
           if (result.success) {
             setPreviewEnabled(false)
             setPreviewStatus({ isActive: false })
-            console.log('Preview windows closed successfully:', result.message)
+            log.debug('Preview windows closed successfully:', result.message)
           }
         }
       } catch (error) {
-        console.error('Failed to toggle preview window:', error)
+        log.error('Failed to toggle preview window:', error)
         setPreviewEnabled(false)
         setPreviewStatus({ isActive: false })
       }
@@ -202,7 +203,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
         position: previewPosition
       })
     } catch (error) {
-      console.error('Failed to update preview settings:', error)
+      log.error('Failed to update preview settings:', error)
     }
   }, [previewSize, previewOpacity, previewPosition, previewStatus.isActive])
 

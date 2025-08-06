@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -51,7 +52,7 @@ export const DrawIOBlock: React.FC<DrawIOBlockProps> = ({ xml, className = '' })
         })
       }
     } catch (error) {
-      console.error('Failed to download PNG:', error)
+      log.error('Failed to download PNG:', error)
     }
   }
 
@@ -64,7 +65,7 @@ export const DrawIOBlock: React.FC<DrawIOBlockProps> = ({ xml, className = '' })
             await drawioRef.current.load({ xml })
           }
         } catch (error) {
-          console.error('Failed to load DrawIO XML:', error)
+          log.error('Failed to load DrawIO XML:', error)
         }
       }, 100)
 

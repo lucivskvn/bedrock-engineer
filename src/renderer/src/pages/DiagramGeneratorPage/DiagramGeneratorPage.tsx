@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { DrawIoEmbed, DrawIoEmbedRef } from 'react-drawio'
 import { useAgentChat } from '../ChatPage/hooks/useAgentChat'
@@ -196,13 +197,13 @@ export default function DiagramGeneratorPage() {
   // モード変更時の処理
   const handleModeChange = useCallback(
     async (newMode: DiagramMode) => {
-      console.log('[DEBUG] Mode change initiated:', { from: diagramMode, to: newMode })
+      log.debug('[DEBUG] Mode change initiated:', { from: diagramMode, to: newMode })
 
       setDiagramMode(newMode)
       // モード変更時にexampleDiagramを切り替える
       const newXml = exampleDiagrams[newMode] || exampleDiagrams['aws']
 
-      console.log('[DEBUG] Loading new XML for mode:', {
+      log.debug('[DEBUG] Loading new XML for mode:', {
         mode: newMode,
         xmlLength: newXml.length,
         xmlPreview: newXml.substring(0, 100) + '...'
@@ -212,15 +213,15 @@ export default function DiagramGeneratorPage() {
       if (drawioRef.current) {
         try {
           await drawioRef.current.load({ xml: newXml })
-          console.log('[DEBUG] DrawIO load successful for new mode')
+          log.debug('[DEBUG] DrawIO load successful for new mode')
           setXml(newXml) // 成功後にステート更新
         } catch (error) {
-          console.error('[DEBUG] Failed to load diagram for new mode:', error)
+          log.error('[DEBUG] Failed to load diagram for new mode:', error)
           // フォールバック: ステートを更新してuseEffectに委ねる
           setXml(newXml)
         }
       } else {
-        console.log('[DEBUG] DrawIO ref not ready, setting XML state only')
+        log.debug('[DEBUG] DrawIO ref not ready, setting XML state only')
         setXml(newXml)
       }
 
@@ -257,7 +258,7 @@ export default function DiagramGeneratorPage() {
         // ストリーミング中にXMLが利用可能になったら即座に反映
         if (xmlLoading && !hasValidXml && drawioRef.current) {
           const extractedXml = extractDrawioXml(currentText)
-          console.log('[DEBUG] XML extraction attempt:', {
+          log.debug('[DEBUG] XML extraction attempt:', {
             xmlLoading,
             hasValidXml,
             drawioRefExists: !!drawioRef.current,
@@ -269,14 +270,14 @@ export default function DiagramGeneratorPage() {
 
           if (extractedXml) {
             try {
-              console.log('[DEBUG] Loading XML to drawio:', extractedXml.substring(0, 200) + '...')
+              log.debug('[DEBUG] Loading XML to drawio:', extractedXml.substring(0, 200) + '...')
               drawioRef.current.load({ xml: extractedXml })
               setXml(extractedXml)
               setHasValidXml(true)
               setXmlLoading(false)
-              console.log('[DEBUG] XML loaded successfully, updated states')
+              log.debug('[DEBUG] XML loaded successfully, updated states')
             } catch (error) {
-              console.error('Failed to load streaming XML:', error)
+              log.error('Failed to load streaming XML:', error)
             }
           }
         }
@@ -298,7 +299,7 @@ export default function DiagramGeneratorPage() {
       return
     }
 
-    console.log('[DEBUG] XML state changed, scheduling drawio update:', {
+    log.debug('[DEBUG] XML state changed, scheduling drawio update:', {
       xmlLength: xml.length,
       xmlPreview: xml.substring(0, 200) + '...',
       drawioExists: !!drawioRef.current
@@ -309,17 +310,17 @@ export default function DiagramGeneratorPage() {
       if (drawioRef.current) {
         try {
           await drawioRef.current.load({ xml })
-          console.log('[DEBUG] DrawIO updated successfully via useEffect')
+          log.debug('[DEBUG] DrawIO updated successfully via useEffect')
         } catch (error) {
-          console.error('[DEBUG] Failed to update DrawIO with new XML via useEffect:', error)
+          log.error('[DEBUG] Failed to update DrawIO with new XML via useEffect:', error)
           // リトライ処理
           setTimeout(() => {
             if (drawioRef.current) {
               try {
                 drawioRef.current.load({ xml })
-                console.log('[DEBUG] DrawIO retry successful')
+                log.debug('[DEBUG] DrawIO retry successful')
               } catch (retryError) {
-                console.error('[DEBUG] DrawIO retry failed:', retryError)
+                log.error('[DEBUG] DrawIO retry failed:', retryError)
               }
             }
           }, 100)
@@ -410,9 +411,9 @@ export default function DiagramGeneratorPage() {
             })
           }
         } catch (error) {
-          console.error('Failed to load diagram:', error)
+          log.error('Failed to load diagram:', error)
           // XMLの解析に失敗した場合、エラーメッセージをコンソールに表示
-          console.error('Invalid XML content:', rawContent)
+          log.error('Invalid XML content:', rawContent)
         }
       }
     }
@@ -430,7 +431,7 @@ export default function DiagramGeneratorPage() {
           setUserInput(historyItem.prompt)
           setSelectedHistoryIndex(index)
         } catch (error) {
-          console.error('Failed to load diagram from history:', error)
+          log.error('Failed to load diagram from history:', error)
         }
       }
     }

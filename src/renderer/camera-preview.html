@@ -214,6 +214,7 @@
     </div>
 
     <script>
+      const log = window.logger.createCategoryLogger('camera-preview')
       class CameraPreview {
         constructor() {
           this.videoElement = document.getElementById('videoStream')
@@ -241,7 +242,7 @@
 
             this.isInitialized = true
           } catch (error) {
-            console.error('Failed to initialize camera preview:', error)
+            log.error('Failed to initialize camera preview:', error)
             this.showError('Initialization failed', error.message)
           }
         }
@@ -256,19 +257,19 @@
             const deviceId = urlParams.get('deviceId') || 'default'
 
             try {
-              console.log('Attempting to close individual preview window:', deviceId)
+              log.debug('Attempting to close individual preview window:', deviceId)
               const result = await window.api.camera.closePreviewWindow(deviceId)
 
               if (result.success) {
-                console.log('Individual window close result:', result.message)
+                log.debug('Individual window close result:', result.message)
                 // ウィンドウが正常に閉じられるとclosedイベントが発火され、自動的に削除される
               } else {
-                console.error('Failed to close individual window:', result.message)
+                log.error('Failed to close individual window:', result.message)
                 // フォールバックとして全体を閉じる
                 await this.fallbackClose()
               }
             } catch (error) {
-              console.error('Error during individual window close:', error)
+              log.error('Error during individual window close:', error)
               // エラー時のフォールバック
               await this.fallbackClose()
             }
@@ -277,7 +278,7 @@
           // 設定ボタン（将来の拡張用）
           document.getElementById('settingsBtn').addEventListener('click', () => {
             // 将来的にここで設定パネルを表示
-            console.log('Settings clicked')
+            log.debug('Settings clicked')
           })
 
           // ウィンドウが閉じられる時のクリーンアップ
@@ -291,7 +292,7 @@
           })
 
           this.videoElement.addEventListener('error', (error) => {
-            console.error('Video element error:', error)
+            log.error('Video element error:', error)
             this.showError('Video playback failed', 'Unable to display camera stream')
           })
         }
@@ -305,7 +306,7 @@
             const targetDeviceId = urlParams.get('deviceId')
             const targetDeviceName = urlParams.get('deviceName')
 
-            console.log('Starting camera stream for:', {
+            log.info('Starting camera stream for:', {
               deviceId: targetDeviceId,
               deviceName: targetDeviceName
             })
@@ -329,9 +330,9 @@
             // 特定のdeviceIdが指定されている場合は制約に追加
             if (targetDeviceId && targetDeviceId !== 'default') {
               constraints.video.deviceId = { exact: targetDeviceId }
-              console.log('Using specific camera device:', targetDeviceId)
+              log.info('Using specific camera device:', targetDeviceId)
             } else {
-              console.log('Using default camera device')
+              log.info('Using default camera device')
             }
 
             this.currentStream = await navigator.mediaDevices.getUserMedia(constraints)
@@ -340,11 +341,11 @@
             // デバイス情報を取得
             await this.updateCameraInfo()
           } catch (error) {
-            console.error('Camera access failed:', error)
+            log.error('Camera access failed:', error)
 
             // 特定のデバイスIDでの取得に失敗した場合、デフォルトカメラにフォールバック
             if (error.name === 'OverconstrainedError' || error.name === 'NotFoundError') {
-              console.log('Falling back to default camera...')
+              log.info('Falling back to default camera...')
               try {
                 const fallbackConstraints = {
                   video: {
@@ -365,7 +366,7 @@
                   'Specified camera not available, using default camera instead'
                 )
               } catch (fallbackError) {
-                console.error('Fallback camera access also failed:', fallbackError)
+                log.error('Fallback camera access also failed:', fallbackError)
                 this.showError('Camera access failed', this.getErrorMessage(fallbackError))
               }
             } else {
@@ -397,7 +398,7 @@
               this.cameraResolution.textContent = `${settings.width}×${settings.height}`
             }
           } catch (error) {
-            console.error('Failed to update camera info:', error)
+            log.error('Failed to update camera info:', error)
           }
         }
 
@@ -426,7 +427,7 @@
         }
 
         showWarning(title, details) {
-          console.warn(`${title}: ${details}`)
+          log.warn(`${title}: ${details}`)
           // 警告は一時的に表示して自動で消える
           const warningElement = this.errorMessage.cloneNode(true)
           warningElement.style.background = 'rgba(245, 158, 11, 0.9)' // 警告色（オレンジ）
@@ -487,18 +488,18 @@
 
         async fallbackClose() {
           try {
-            console.log('Attempting fallback close using hidePreviewWindow')
+            log.debug('Attempting fallback close using hidePreviewWindow')
             const result = await window.api.camera.hidePreviewWindow()
 
             if (result.success) {
-              console.log('Fallback close successful:', result.message)
+              log.debug('Fallback close successful:', result.message)
             } else {
-              console.error('Fallback close failed:', result.message)
+              log.error('Fallback close failed:', result.message)
               // 最後の手段として、ウィンドウを直接閉じる
               window.close()
             }
           } catch (error) {
-            console.error('Fallback close error:', error)
+            log.error('Fallback close error:', error)
             // 最後の手段として、ウィンドウを直接閉じる
             window.close()
           }

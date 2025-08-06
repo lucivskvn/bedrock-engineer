@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useRef, useState, useCallback } from 'react'
 
 export type RecordingStatus = 'idle' | 'recording' | 'processing' | 'error'
@@ -44,7 +45,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
       const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName })
       return permission.state
     } catch (error) {
-      console.warn('Could not check microphone permission:', error)
+      log.warn('Could not check microphone permission:', error)
       return 'prompt' // Default to prompt if checking fails
     }
   }, [])
@@ -60,7 +61,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
 
       // Check microphone permission first
       const permissionState = await checkMicrophonePermission()
-      console.log('Microphone permission state:', permissionState)
+      log.debug('Microphone permission state:', permissionState)
 
       if (permissionState === 'denied') {
         throw new Error(
@@ -94,7 +95,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
 
       // Calculate sampling ratio (only relevant for Firefox)
       samplingRatioRef.current = audioContext.sampleRate / targetSampleRate
-      console.log(
+      log.debug(
         `AudioContext sampleRate: ${audioContext.sampleRate}, samplingRatio: ${samplingRatioRef.current}`
       )
 
@@ -149,7 +150,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
       setStatus('recording')
       isRecordingRef.current = true
     } catch (error) {
-      console.error('Error starting recording:', error)
+      log.error('Error starting recording:', error)
       setStatus('error')
       throw error
     }
@@ -190,7 +191,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
 
       setStatus('idle')
     } catch (error) {
-      console.error('Error stopping recording:', error)
+      log.error('Error stopping recording:', error)
       setStatus('error')
     }
   }, [status])

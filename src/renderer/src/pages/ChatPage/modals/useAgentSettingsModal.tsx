@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState } from 'react'
 import { CustomAgent } from '@/types/agent-chat'
 import useSetting from '@renderer/hooks/useSetting'
@@ -36,7 +37,7 @@ const AgentSettingsModal = React.memo(
     const { t } = useTranslation()
 
     const handleSaveAgent = (agent: CustomAgent) => {
-      console.log('handleSaveAgent called with agent:', agent)
+      log.debug('handleSaveAgent called with agent:', agent)
 
       // 必須フィールドの検証
       if (!agent.name || !agent.name.trim()) {
@@ -51,7 +52,7 @@ const AgentSettingsModal = React.memo(
 
       try {
         // MCPサーバー情報を確認
-        console.log('MCP Servers to save:', agent.mcpServers || [])
+        log.debug('MCP Servers to save:', agent.mcpServers || [])
 
         // 最終的なエージェントデータ（MCPサーバー情報を明示的に含む）
         const finalAgentData: CustomAgent = {
@@ -64,15 +65,15 @@ const AgentSettingsModal = React.memo(
           ? customAgents.map((a) => (a.id === agent.id ? finalAgentData : a))
           : [...customAgents, finalAgentData]
 
-        console.log('Saving agent data:', finalAgentData)
-        console.log('Updated agents list:', updatedAgents)
+        log.debug('Saving agent data:', finalAgentData)
+        log.debug('Updated agents list:', updatedAgents)
 
         saveCustomAgents(updatedAgents)
         toast.success(t('Agent saved successfully'))
         setEditingAgent(null)
         onClose()
       } catch (error) {
-        console.error('Error saving agent:', error)
+        log.error('Error saving agent:', error)
         toast.error(t('Failed to save agent'))
       }
     }
@@ -105,7 +106,7 @@ const AgentSettingsModal = React.memo(
         const result = await window.file.saveSharedAgent(agent)
         if (result.success) {
           // Show success notification or toast here if needed
-          console.log('Agent saved as shared file:', result.filePath)
+          log.debug('Agent saved as shared file:', result.filePath)
 
           // Load the updated shared agents to refresh the list in the UI
           await loadSharedAgents()
@@ -115,11 +116,11 @@ const AgentSettingsModal = React.memo(
             duration: 5000
           })
         } else {
-          console.error('Failed to save agent as shared file:', result.error)
+          log.error('Failed to save agent as shared file:', result.error)
           toast.error(result.error || t('failedToSaveShared'))
         }
       } catch (error) {
-        console.error('Error saving shared agent:', error)
+        log.error('Error saving shared agent:', error)
         toast.error(t('failedToSaveShared'))
       }
     }
@@ -146,13 +147,13 @@ const AgentSettingsModal = React.memo(
           toast.success(`Strands Agents files saved to ${directory}`, {
             duration: 5000
           })
-          console.log('Conversion successful:', result.savedFiles)
+          log.debug('Conversion successful:', result.savedFiles)
         } else {
           toast.error(result.error || 'Failed to convert agent to Strands Agents')
-          console.error('Conversion failed:', result.errors)
+          log.error('Conversion failed:', result.errors)
         }
       } catch (error) {
-        console.error('Error converting agent to Strands Agents:', error)
+        log.error('Error converting agent to Strands Agents:', error)
         toast.error('Failed to convert agent to Strands Agents')
       }
     }

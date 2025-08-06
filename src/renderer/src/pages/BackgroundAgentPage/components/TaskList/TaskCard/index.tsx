@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ScheduledTask, ScheduleConfig } from '../../../hooks/useBackgroundAgent'
@@ -73,7 +74,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
       setIsExecuting(true)
       await onExecute(task.id)
     } catch (error) {
-      console.error('Failed to execute task:', error)
+      log.error('Failed to execute task:', error)
     } finally {
       setIsExecuting(false)
     }
@@ -93,7 +94,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     try {
       await window.api.window.openTaskHistory(task.id)
     } catch (error) {
-      console.error('Failed to open task history window:', error)
+      log.error('Failed to open task history window:', error)
     }
   }
 
@@ -108,7 +109,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
       }
       setShowEditModal(false)
     } catch (error) {
-      console.error('Failed to update task:', error)
+      log.error('Failed to update task:', error)
     }
   }
 

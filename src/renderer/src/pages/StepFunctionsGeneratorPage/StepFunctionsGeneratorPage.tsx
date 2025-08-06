@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useCallback, useEffect, useState } from 'react'
 import { SAMPLE_ASL_PARALLEL } from './SAMPLE_ASL'
 import AWSSfnGraph from '@tshepomgaga/aws-sfn-graph'
@@ -51,7 +52,7 @@ function StepFunctionsGeneratorPage() {
       // 現在のエディタの内容を取得
       const aslDefinition = editorValue
       if (!aslDefinition || aslDefinition.trim() === '') {
-        console.error('No ASL definition available')
+        log.error('No ASL definition available')
         return
       }
 
@@ -71,7 +72,7 @@ function StepFunctionsGeneratorPage() {
         // Agent Chatページに遷移
         navigate(`/chat?prompt=${encodeURIComponent(prompt)}&agent=softwareAgent`)
       } catch (jsonError) {
-        console.error('Invalid JSON in ASL definition:', jsonError)
+        log.error('Invalid JSON in ASL definition:', jsonError)
         // 無効なJSONでもとりあえず試みる
         const language = lng === 'ja' ? 'ja' : 'en'
         const prompt =
@@ -81,7 +82,7 @@ function StepFunctionsGeneratorPage() {
         navigate(`/chat?prompt=${encodeURIComponent(prompt)}&agent=softwareAgent`)
       }
     } catch (error) {
-      console.error('Error generating CDK implementation prompt:', error)
+      log.error('Error generating CDK implementation prompt:', error)
     }
   }, [editorValue, userInput, navigate, lng])
 
@@ -101,14 +102,14 @@ function StepFunctionsGeneratorPage() {
         // lastMessageTextが存在し、JSONとして解析可能な場合
         if (lastMessageText && lastMessageText.trim()) {
           const json = JSON.parse(lastMessageText)
-          console.log(json)
+          log.debug(json)
           setAsl(json)
           // ステートマシンが正常に生成された場合、フラグをセット
           setHasValidStateMachine(true)
         }
       } catch (e) {
-        console.error(e)
-        console.error(lastMessageText)
+        log.error(e)
+        log.error(lastMessageText)
       }
     }
   }, [messages, loading])
@@ -190,7 +191,7 @@ function StepFunctionsGeneratorPage() {
           </div>
           <div>
             <div className="h-[80vh] w-full flex justify-center items-center">
-              {loading ? <Loader /> : <AWSSfnGraph data={editorValue} onError={console.log} />}
+              {loading ? <Loader /> : <AWSSfnGraph data={editorValue} onError={log.debug} />}
             </div>
           </div>
         </div>

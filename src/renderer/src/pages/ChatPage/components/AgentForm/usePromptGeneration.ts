@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import toast from 'react-hot-toast'
@@ -350,7 +351,7 @@ export function usePromptGeneration(
               onScenariosGeneratedRef.current(scenarios)
             }
           } catch (e) {
-            console.error('Failed to parse scenarios:', e)
+            log.error('Failed to parse scenarios:', e)
           }
         }
       }

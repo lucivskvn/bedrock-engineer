@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { converse } from '@renderer/lib/api'
 import toast from 'react-hot-toast'
 
@@ -62,11 +63,11 @@ export async function generateSessionTitle(
     if (textContent && 'text' in textContent) {
       return textContent.text
     } else {
-      console.warn('No text content found in response:', response)
+      log.warn('No text content found in response:', response)
       return null
     }
   } catch (error) {
-    console.error('Failed to generate AI title:', error)
+    log.error('Failed to generate AI title:', error)
     toast.error(t('Failed to generate title'))
     return null
   }

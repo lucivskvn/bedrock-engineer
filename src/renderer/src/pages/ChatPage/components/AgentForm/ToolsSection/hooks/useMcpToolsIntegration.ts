@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useEffect, useMemo, useRef } from 'react'
 import { ToolState, McpServerConfig } from '@/types/agent-chat'
 import { isMcpTool } from '@/types/tools'
@@ -77,7 +78,7 @@ export function useMcpToolsIntegration(
         // デバッグカウンター増加
         integrationCountRef.current += 1
 
-        console.log(
+        log.debug(
           'Integrating MCP tools into agent tools:',
           agentMcpTools.length,
           '(count:',
@@ -95,7 +96,7 @@ export function useMcpToolsIntegration(
         }, 0)
       } else {
         // 変更なしの場合はログ出力
-        console.log('Skipping redundant MCP tools integration (no changes detected)')
+        log.debug('Skipping redundant MCP tools integration (no changes detected)')
       }
     }
   }, [agentMcpTools, onChange])
