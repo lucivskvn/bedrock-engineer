@@ -47,7 +47,9 @@ const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
 const api = express()
 const server = http.createServer(api)
 
-const allowedOrigins = ['http://localhost:5173']
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
+  : ['http://localhost:5173']
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
