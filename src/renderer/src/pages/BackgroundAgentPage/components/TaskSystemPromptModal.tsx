@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal } from 'flowbite-react'
@@ -57,7 +58,7 @@ const TaskSystemPromptModal = React.memo(
           const prompt = await getTaskSystemPrompt(taskId)
           setSystemPrompt(prompt)
         } catch (err: any) {
-          console.error('Failed to fetch system prompt:', err)
+          log.error('Failed to fetch system prompt:', err)
           setError(err.message || t('backgroundAgent.errors.getSystemPrompt'))
         } finally {
           setIsLoading(false)

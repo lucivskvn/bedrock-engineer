@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { LLM } from '@/types/llm'
 import { RetrieveAndGenerateCommandInput } from '@aws-sdk/client-bedrock-agent-runtime'
 import {
@@ -63,7 +64,7 @@ export async function* streamChatCompletion(
               try {
                 yield JSON.parse(chunk)
               } catch (e) {
-                console.error(`Error parsing JSON:`, e)
+                log.error(`Error parsing JSON:`, e)
               }
             }
           }

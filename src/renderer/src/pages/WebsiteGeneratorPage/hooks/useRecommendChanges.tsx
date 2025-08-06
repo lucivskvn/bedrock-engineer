@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import useSetting from '@renderer/hooks/useSetting'
 import { converse } from '@renderer/lib/api'
 import { getLightProcessingModelId } from '@renderer/lib/modelSelection'
@@ -65,7 +66,7 @@ export const useRecommendChanges = () => {
         setRecommendLoading(false)
       }
     } catch (e) {
-      console.log(e)
+      log.debug(e)
       retry += 1
       return getRecommendChanges(websiteCode)
     }

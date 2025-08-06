@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreview } from './ImagePreview'
@@ -31,7 +32,7 @@ export const FileDisplay: React.FC<FileDisplayProps> = ({ files }) => {
       const base64DataUrl = await window.api.images.getLocalImage(filePath)
       return base64DataUrl
     } catch (error) {
-      console.error('Failed to load image as base64:', error)
+      log.error('Failed to load image as base64:', error)
       throw error
     }
   }
@@ -59,7 +60,7 @@ export const FileDisplay: React.FC<FileDisplayProps> = ({ files }) => {
               [filePath]: dataUrl
             }))
           } catch (error) {
-            console.error(`Failed to load image ${filePath}:`, error)
+            log.error(`Failed to load image ${filePath}:`, error)
             // エラーが発生した場合はプレビューを無効にする
             setPreviewingImages((prev) => ({
               ...prev,

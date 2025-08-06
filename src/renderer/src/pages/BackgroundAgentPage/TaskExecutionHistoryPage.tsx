@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
@@ -88,7 +89,7 @@ const TaskExecutionHistoryPage: React.FC = () => {
       const historyData = await getTaskExecutionHistory(task.id)
       setHistory(historyData)
     } catch (error) {
-      console.error('Failed to fetch execution history:', error)
+      log.error('Failed to fetch execution history:', error)
     } finally {
       setIsLoading(false)
     }
@@ -157,7 +158,7 @@ const TaskExecutionHistoryPage: React.FC = () => {
       const messages = await getSessionHistory(sessionId)
       setSessionHistories((prev) => ({ ...prev, [sessionId]: messages }))
     } catch (error) {
-      console.error('Failed to fetch session history:', error)
+      log.error('Failed to fetch session history:', error)
     } finally {
       setLoadingSessions((prev) => {
         const newSet = new Set(prev)
@@ -340,7 +341,7 @@ const TaskExecutionHistoryPage: React.FC = () => {
       // メッセージ送信後、セッション履歴を再取得
       await fetchSessionHistory(selectedExecution.sessionId)
     } catch (error: any) {
-      console.error('Failed to continue session:', error)
+      log.error('Failed to continue session:', error)
       // エラーメッセージを設定
       const errorMessage = error?.message || error || 'Unknown error occurred'
       setSessionError(errorMessage)

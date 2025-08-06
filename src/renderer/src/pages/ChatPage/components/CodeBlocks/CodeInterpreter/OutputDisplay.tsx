@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FiCopy, FiCheck } from 'react-icons/fi'
@@ -24,7 +25,7 @@ export const OutputDisplay: React.FC<OutputDisplayProps> = ({ stdout, output }) 
       )
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.error('Failed to copy output:', err)
+      log.error('Failed to copy output:', err)
       toast.error(t('code interpreter display.Failed to copy output', 'Failed to copy output'))
     }
   }

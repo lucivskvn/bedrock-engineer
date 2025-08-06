@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import useSetting from '@renderer/hooks/useSetting'
 import { converse } from '@renderer/lib/api'
 import { getLightProcessingModelId } from '@renderer/lib/modelSelection'
@@ -222,13 +223,13 @@ The value property should contain a detailed description of what to create. This
           const json = JSON.parse(recommendDiagrams)
           setRecommendDiagrams(json)
         } catch (e) {
-          console.log('Error parsing recommendations:', e)
+          log.debug('Error parsing recommendations:', e)
           retry += 1
           return getRecommendDiagrams(diagramXml)
         }
       }
     } catch (e) {
-      console.error('Error getting recommendations:', e)
+      log.error('Error getting recommendations:', e)
     } finally {
       setRecommendLoading(false)
     }

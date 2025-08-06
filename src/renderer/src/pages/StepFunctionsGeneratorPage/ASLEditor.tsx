@@ -17,12 +17,11 @@ export const ASLEditor: React.FC<ASLEditorProps> = ({ value, setValue }) => {
   }
 
   function handleEditorWillMount(_monaco: any) {
-    // console.log("beforeMount: the monaco instance:", monaco);
+    // intentionally left blank
   }
 
   function handleEditorValidation(_markers: any) {
-    // model markers
-    // markers.forEach(marker => console.log('onValidate:', marker.message));
+    // model markers - no logging
   }
 
   const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches

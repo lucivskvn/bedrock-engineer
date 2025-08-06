@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React from 'react'
 import { SpeakChatStatus } from '../hooks/useSpeakChat'
 
@@ -24,7 +25,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
     try {
       await onStartRecording()
     } catch (error) {
-      console.error('Failed to start recording:', error)
+      log.error('Failed to start recording:', error)
     }
   }
 

@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useState, useCallback, useMemo, useRef } from 'react'
 import { listModels } from '@renderer/lib/api'
 import type { LLM, ApplicationInferenceProfile } from '@/types/llm'
@@ -84,7 +85,7 @@ export const useModelManagement = ({
         setAvailableInferenceProfiles(profiles)
         return profiles
       } catch (error) {
-        console.error('Failed to fetch inference profiles:', error)
+        log.error('Failed to fetch inference profiles:', error)
         setAvailableInferenceProfiles([])
         return []
       } finally {
@@ -118,7 +119,7 @@ export const useModelManagement = ({
         setAvailableModels(finalModels)
         return finalModels
       } catch (profileError) {
-        console.warn(
+        log.warn(
           'Failed to fetch inference profiles, falling back to standard models only:',
           profileError
         )
@@ -140,12 +141,12 @@ export const useModelManagement = ({
     (enhancedModels: LLM[]): void => {
       const firstStandardModel = enhancedModels[0]
       if (firstStandardModel && onModelUpdate) {
-        console.info(
+        log.info(
           `Switching from inference profile to standard model: ${firstStandardModel.modelName}`
         )
         onModelUpdate(firstStandardModel)
       } else if (!firstStandardModel) {
-        console.warn('No standard models available for automatic switching')
+        log.warn('No standard models available for automatic switching')
       }
     },
     [onModelUpdate]
@@ -230,12 +231,12 @@ export const useModelManagement = ({
         // Find the best alternative model
         const alternativeModel = findBestAlternative(currentLLM, newModels)
         if (alternativeModel) {
-          console.info(
+          log.info(
             `Model automatically switched from ${currentLLM.modelName} to ${alternativeModel.modelName} due to region change`
           )
           onModelUpdate(alternativeModel)
         } else {
-          console.warn('No suitable alternative model found for region change')
+          log.warn('No suitable alternative model found for region change')
         }
       }
     },
@@ -270,7 +271,7 @@ export const useModelManagement = ({
         // Fetch base models from the API
         const models = await listModels()
         if (!models) {
-          console.warn('No models returned from API')
+          log.warn('No models returned from API')
           return
         }
 
@@ -294,7 +295,7 @@ export const useModelManagement = ({
         const modelError =
           error instanceof Error ? error : new Error('Unknown error occurred while fetching models')
 
-        console.error('Failed to fetch models:', modelError)
+        log.error('Failed to fetch models:', modelError)
         setModelError(modelError)
         throw modelError
       } finally {

@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { XMarkIcon } from '@heroicons/react/24/outline'
@@ -82,7 +83,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({ mode, task, onSubm
         setFormData((prev) => ({ ...prev, projectDirectory: selectedPath }))
       }
     } catch (error) {
-      console.error('Failed to select directory:', error)
+      log.error('Failed to select directory:', error)
     }
   }
 
@@ -118,7 +119,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({ mode, task, onSubm
           setFormData((prev) => ({ ...prev, maxTokens: maxTokensLimit }))
         }
       } catch (error) {
-        console.error('Failed to get model max tokens:', error)
+        log.error('Failed to get model max tokens:', error)
         // エラーの場合はデフォルト値を使用
         const defaultMaxTokens = 8192
         if (formData.maxTokens > defaultMaxTokens) {
@@ -203,7 +204,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({ mode, task, onSubm
 
       await onSubmit(config, isEditMode && task ? task.id : undefined)
     } catch (error) {
-      console.error(`Failed to ${isEditMode ? 'update' : 'create'} task:`, error)
+      log.error(`Failed to ${isEditMode ? 'update' : 'create'} task:`, error)
     } finally {
       setIsSubmitting(false)
     }

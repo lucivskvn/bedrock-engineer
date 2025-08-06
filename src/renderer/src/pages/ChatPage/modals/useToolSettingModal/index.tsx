@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useSettings } from '@renderer/contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { ToolName, isMcpTool } from '@/types/tools'
@@ -387,7 +388,7 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
           updatedTools = [...agentTools, newTool]
         } else {
           // ToolSpecが見つからない場合はエラー
-          console.error(`ToolSpec not found for tool: ${toolName}`)
+          log.error(`ToolSpec not found for tool: ${toolName}`)
           return
         }
       }
@@ -415,7 +416,7 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
               toast.success('Camera preview window opened')
             }
           } catch (error) {
-            console.error('Failed to show camera preview window:', error)
+            log.error('Failed to show camera preview window:', error)
           }
         }, 500)
       } else if (!isNowEnabled && window.api?.camera) {
@@ -425,7 +426,7 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
             await window.api.camera.hidePreviewWindow()
             toast.success('Camera preview window closed')
           } catch (error) {
-            console.error('Failed to hide camera preview window:', error)
+            log.error('Failed to hide camera preview window:', error)
           }
         }, 100)
       }
