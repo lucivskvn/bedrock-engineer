@@ -6,4 +6,6 @@ require('dotenv').config()
 const SAFE_ENV_KEYS = ['AWS_REGION', 'INTEGRATION_TEST']
 const presentKeys = SAFE_ENV_KEYS.filter((key) => process.env[key] !== undefined)
 
-console.log('Integration test environment variables loaded:', presentKeys)
+if (process.env.DEBUG) {
+  console.log('Integration test environment variables loaded:', presentKeys)
+}
