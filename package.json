@@ -14,8 +14,8 @@
   },
   "scripts": {
     "format": "prettier --write .",
-    "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",
-    "lint:fix": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
+    "lint": "cross-env ESLINT_USE_FLAT_CONFIG=true eslint .",
+    "lint:fix": "cross-env ESLINT_USE_FLAT_CONFIG=true eslint . --fix",
     "test": "jest --config jest.config.js",
     "test:watch": "jest --watchAll  --config jest.config.js",
     "test:integration": "jest --config jest.integration.config.js",
@@ -118,6 +118,7 @@
     "@vitejs/plugin-react": "4.3.4",
     "autoprefixer": "10.4.20",
     "babel-jest": "^29.7.0",
+    "cross-env": "^7.0.3",
     "dotenv": "^16.4.5",
     "electron": "36.3.2",
     "electron-builder": "24.13.3",
