@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { MCPClient } from './mcp-client'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { McpServerConfig } from '../../types/agent-chat'
-import { log } from '../logger'
+import { log } from '../../common/logger'
 
 const configSchema = z.object({
   mcpServers: z.record(
@@ -38,8 +38,8 @@ const generateConfigHash = (servers: McpServerConfig[]): string => {
   // 本質的な設定のみを含むオブジェクトの配列を作成
   const essentialConfigs = sortedServers.map((server) => ({
     name: server.name,
-    command: server.command,
-    args: [...server.args], // 配列のコピーを作成して安定させる
+    command: server.command || '',
+    args: server.args ? [...server.args] : [], // 配列のコピーを作成して安定させる
     // 環境変数がある場合のみ含める
     ...(server.env && Object.keys(server.env).length > 0 ? { env: { ...server.env } } : {})
   }))
@@ -132,9 +132,12 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
       const configData = {
         mcpServers: mcpServers.reduce(
           (acc, server) => {
+            if (!server.command) {
+              throw new Error(`MCP server "${server.name}" missing command`)
+            }
             acc[server.name] = {
               command: server.command,
-              args: server.args,
+              args: server.args ?? [],
               env: server.env || {}
             }
             return acc
@@ -154,9 +157,13 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
         await Promise.all(
           mcpServers.map(async (serverConfig) => {
             try {
+              if (!serverConfig.command) {
+                log.error(`MCP server "${serverConfig.name}" missing command`)
+                return undefined
+              }
               const client = await MCPClient.fromCommand(
                 serverConfig.command,
-                serverConfig.args,
+                serverConfig.args ?? [],
                 serverConfig.env
               )
               return { name: serverConfig.name, client }
@@ -289,7 +296,14 @@ export const testMcpServerConnection = async (
 
   try {
     // 単一サーバー用の一時的なクライアントを作成
-    const client = await MCPClient.fromCommand(mcpServer.command, mcpServer.args, mcpServer.env)
+    if (!mcpServer.command) {
+      throw new Error('MCP server command is required')
+    }
+    const client = await MCPClient.fromCommand(
+      mcpServer.command,
+      mcpServer.args ?? [],
+      mcpServer.env
+    )
 
     // ツール情報を取得
     const tools = client.tools || []
@@ -366,6 +380,14 @@ export const testAllMcpServerConnections = async (
   }
 
   return results
+}
+
+export const cleanupMcpClients = async () => {
+  await Promise.all(clients.map(({ client }) => client.cleanup()))
+  clients = []
+  lastMcpServerConfigHash = null
+  lastMcpServerLength = 0
+  lastMcpServerNames = []
 }
 
 /**

@@ -1,4 +1,5 @@
-import { rendererLogger as log } from '@renderer/lib/logger';
+import { rendererLogger } from '@renderer/lib/logger';
+const log: any = rendererLogger;
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useSocketConnection, SocketEvents } from './useSocketConnection'
 import { useAudioRecorder } from './useAudioRecorder'

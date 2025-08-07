@@ -67,8 +67,8 @@ export class ChatHistoryManager {
     }
 
     const history = this.chatRef.current?.history || []
-    log.debug('[ChatHistoryManager] Current history length:', history.length)
-    log.debug('[ChatHistoryManager] Adding message:', content)
+    log.debug('[ChatHistoryManager] Current history length:', { length: history.length })
+    log.debug('[ChatHistoryManager] Adding message:', { content })
 
     const updatedChatHistory = [...history]
     const lastTurn = updatedChatHistory[updatedChatHistory.length - 1]
@@ -89,7 +89,9 @@ export class ChatHistoryManager {
       log.debug('[ChatHistoryManager] Added new message')
     }
 
-    log.debug('[ChatHistoryManager] Updated history length:', updatedChatHistory.length)
+    log.debug('[ChatHistoryManager] Updated history length:', {
+      length: updatedChatHistory.length
+    })
     this.setChat({
       history: updatedChatHistory
     })

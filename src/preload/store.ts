@@ -360,7 +360,7 @@ const init = async () => {
   }
 }
 
-await init()
+init()
 
 type Key = keyof StoreScheme
 export const store = {

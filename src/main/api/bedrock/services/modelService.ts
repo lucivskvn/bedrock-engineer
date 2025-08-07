@@ -25,7 +25,7 @@ export class ModelService {
 
       return result
     } catch (error) {
-      log.error('Error in listModels:', error)
+      log.error('Error in listModels:', { error })
       return []
     }
   }

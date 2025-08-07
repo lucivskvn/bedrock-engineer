@@ -341,7 +341,9 @@ export class VideoService {
 
     try {
       // Add detailed logging for debugging
-      log.debug('Nova Reel Request Structure:', JSON.stringify(novaReelRequest, null, 2))
+      log.debug('Nova Reel Request Structure:', {
+        request: JSON.stringify(novaReelRequest, null, 2)
+      })
       log.debug(`Using Nova Reel model: ${modelId} for region: ${this.region}`)
 
       const command = new StartAsyncInvokeCommand({
@@ -354,9 +356,8 @@ export class VideoService {
         }
       })
 
-      log.debug(
-        'AWS Command:',
-        JSON.stringify(
+      log.debug('AWS Command:', {
+        command: JSON.stringify(
           {
             modelId,
             modelInput: novaReelRequest,
@@ -365,7 +366,7 @@ export class VideoService {
           null,
           2
         )
-      )
+      })
 
       const response = await this.runtimeClient.send(command)
 
@@ -388,7 +389,7 @@ export class VideoService {
         }
       }
     } catch (error: any) {
-      log.error('Error starting video generation:', error)
+      log.error('Error starting video generation:', { error })
 
       // If MULTI_SHOT_MANUAL fails with validation error, try fallback to MULTI_SHOT_AUTOMATED
       if (
@@ -413,7 +414,9 @@ export class VideoService {
             }
           }
 
-          log.debug('Fallback Request:', JSON.stringify(fallbackRequest, null, 2))
+          log.debug('Fallback Request:', {
+            request: JSON.stringify(fallbackRequest, null, 2)
+          })
 
           const fallbackCommand = new StartAsyncInvokeCommand({
             modelId,
@@ -448,7 +451,7 @@ export class VideoService {
             }
           }
         } catch (fallbackError) {
-          log.error('Fallback also failed:', fallbackError)
+          log.error('Fallback also failed:', { error: fallbackError })
           throw new Error(
             `Both MULTI_SHOT_MANUAL and fallback failed. Original error: ${error.message}. Fallback error: ${fallbackError}`
           )
@@ -493,7 +496,7 @@ export class VideoService {
         failureMessage: response.failureMessage
       }
     } catch (error: any) {
-      log.error('Error getting job status:', error)
+      log.error('Error getting job status:', { error })
       throw error
     }
   }
@@ -529,7 +532,7 @@ export class VideoService {
 
       return localPath
     } catch (error: any) {
-      log.error('Error downloading video from S3:', error)
+      log.error('Error downloading video from S3:', { error })
       throw error
     }
   }

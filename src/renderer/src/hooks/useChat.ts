@@ -51,12 +51,12 @@ export const useChat = (props: UseChatProps) => {
           }
 
           if (json.messageStop) {
-            log.debug({ stopReason: json.messageStop.stopReason })
+            log.debug('message stop reason', { stopReason: json.messageStop.stopReason })
             setStopReason(json.messageStop.stopReason)
           }
         }
       } catch (error: any) {
-        log.error(error)
+        log.error('useChat error', { error })
         toast.error(t('request error'))
         const msgsToset = [...msgs, { role: 'assistant', content: [{ text: error.message }] }]
         setMessages(msgsToset)

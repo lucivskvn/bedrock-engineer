@@ -72,7 +72,7 @@ function StepFunctionsGeneratorPage() {
         // Agent Chatページに遷移
         navigate(`/chat?prompt=${encodeURIComponent(prompt)}&agent=softwareAgent`)
       } catch (jsonError) {
-        log.error('Invalid JSON in ASL definition:', jsonError)
+        log.error('Invalid JSON in ASL definition:', { error: jsonError })
         // 無効なJSONでもとりあえず試みる
         const language = lng === 'ja' ? 'ja' : 'en'
         const prompt =
@@ -82,7 +82,7 @@ function StepFunctionsGeneratorPage() {
         navigate(`/chat?prompt=${encodeURIComponent(prompt)}&agent=softwareAgent`)
       }
     } catch (error) {
-      log.error('Error generating CDK implementation prompt:', error)
+      log.error('Error generating CDK implementation prompt:', { error })
     }
   }, [editorValue, userInput, navigate, lng])
 
@@ -102,14 +102,14 @@ function StepFunctionsGeneratorPage() {
         // lastMessageTextが存在し、JSONとして解析可能な場合
         if (lastMessageText && lastMessageText.trim()) {
           const json = JSON.parse(lastMessageText)
-          log.debug(json)
+          log.debug('Parsed last message JSON', { json })
           setAsl(json)
           // ステートマシンが正常に生成された場合、フラグをセット
           setHasValidStateMachine(true)
         }
       } catch (e) {
-        log.error(e)
-        log.error(lastMessageText)
+        log.error('Error parsing last message text', { error: e })
+        log.error('Last message text', { lastMessageText })
       }
     }
   }, [messages, loading])

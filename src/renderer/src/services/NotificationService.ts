@@ -25,7 +25,7 @@ export class NotificationService {
       const permission = await Notification.requestPermission()
       return permission === 'granted'
     } catch (error) {
-      log.error('Error requesting notification permission:', error)
+      log.error('Error requesting notification permission:', { error })
       return false
     }
   }
@@ -38,7 +38,7 @@ export class NotificationService {
         return
       }
     } catch (error) {
-      log.warn('Failed to check window focus state:', error)
+      log.warn('Failed to check window focus state:', { error })
       // エラーが発生した場合は通知を表示する方向で処理を継続
     }
 
@@ -65,7 +65,7 @@ export class NotificationService {
 
       new Notification(title, defaultOptions)
     } catch (error) {
-      log.error('Error showing notification:', error)
+      log.error('Error showing notification:', { error })
     }
   }
 

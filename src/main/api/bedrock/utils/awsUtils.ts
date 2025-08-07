@@ -71,7 +71,7 @@ export async function getAccountId(awsCredentials: AWSCredentials) {
     const res = await sts.send(command)
     return res.Account
   } catch (error) {
-    log.error('Error getting AWS account ID:', error)
+    log.error('Error getting AWS account ID:', { error })
     return null
   }
 }

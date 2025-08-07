@@ -1,4 +1,5 @@
-import { rendererLogger as log } from '@renderer/lib/logger';
+import { rendererLogger } from '@renderer/lib/logger';
+const log: any = rendererLogger;
 import React, { useState, useCallback, useRef, useMemo } from 'react'
 
 export interface TranslationState {

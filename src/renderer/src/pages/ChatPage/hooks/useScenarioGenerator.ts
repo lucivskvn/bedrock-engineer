@@ -159,7 +159,7 @@ System Prompt: ${systemPrompt}
       const textContent = lastMessage.content?.find((v) => v.text)
       if (textContent && textContent.text) {
         const parsedScenarios = extractCompleteObjects(textContent.text)
-        log.debug(parsedScenarios)
+        log.debug('parsed scenarios', parsedScenarios)
         if (parsedScenarios.length > 0) {
           setResult(parsedScenarios)
         }

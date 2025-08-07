@@ -34,7 +34,7 @@ const CmdK = () => {
             navigate(routes[id - 1].href)
           }
         } catch (e) {
-          log.debug(e)
+          log.debug('command palette keydown error', { error: e })
         }
       }
     }
