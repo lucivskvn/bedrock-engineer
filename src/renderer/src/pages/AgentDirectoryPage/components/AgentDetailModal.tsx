@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CustomAgent } from '@/types/agent-chat'
@@ -34,7 +35,7 @@ export const AgentDetailModal: React.FC<AgentDetailModalProps> = ({
         }, 2000)
       } catch (error) {
         setAddSuccess(false)
-        console.error('Error adding agent:', error)
+        log.error('Error adding agent:', error)
       } finally {
         setIsAdding(false)
       }

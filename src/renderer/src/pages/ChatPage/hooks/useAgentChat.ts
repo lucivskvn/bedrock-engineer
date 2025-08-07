@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import {
   ConversationRole,
   ContentBlock,
@@ -138,7 +139,7 @@ export const useAgentChat = (
         if (isMcpTool(toolName)) {
           // MCPサーバーが設定されていない場合は除外
           if (!hasMcpServers) {
-            console.warn(
+            log.warn(
               `MCP tool "${toolName}" is enabled but no MCP servers are configured. Tool will be disabled.`
             )
             return false
@@ -381,8 +382,8 @@ export const useAgentChat = (
           messageStart = true
         } else if (json.messageStop) {
           if (!messageStart) {
-            console.warn('messageStop without messageStart')
-            console.log(messages)
+            log.warn('messageStop without messageStart')
+            log.debug(messages)
             await streamChat(props, currentMessages)
             return
           }
@@ -618,7 +619,7 @@ export const useAgentChat = (
               )
               metadata.sessionCost = sessionCost
             } catch (error) {
-              console.error('Error calculating cost:', error)
+              log.error('Error calculating cost:', error)
             }
           }
 
@@ -671,17 +672,17 @@ export const useAgentChat = (
             }
           }
         } else {
-          console.error('unexpected json:', json)
+          log.error('unexpected json:', json)
         }
       }
 
       return stopReason
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        console.log('Chat stream aborted')
+        log.debug('Chat stream aborted')
         return
       }
-      console.error({ streamChatRequestError: error })
+      log.error({ streamChatRequestError: error })
       toast.error(t('request error'))
       const messageId = generateMessageId()
       const errorMessage: IdentifiableMessage = {
@@ -769,12 +770,12 @@ export const useAgentChat = (
               guardrailSettings.guardrailVersion
             ) {
               try {
-                console.log('Applying guardrail to tool result')
+                log.debug('Applying guardrail to tool result')
                 // ツール結果をガードレールで検証
                 const toolResultText =
                   typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
 
-                console.log({ toolResultText })
+                log.debug({ toolResultText })
                 // ツール結果をGuardrailで評価
                 const guardrailResult = await window.api.bedrock.applyGuardrail({
                   guardrailIdentifier: guardrailSettings.guardrailIdentifier,
@@ -788,11 +789,11 @@ export const useAgentChat = (
                     }
                   ]
                 })
-                console.log({ guardrailResult })
+                log.debug({ guardrailResult })
 
                 // ガードレールが介入した場合は代わりにエラーメッセージを使用
                 if (guardrailResult.action === 'GUARDRAIL_INTERVENED') {
-                  console.warn('Guardrail intervened for tool result', guardrailResult)
+                  log.warn('Guardrail intervened for tool result', guardrailResult)
                   let errorMessage = t('guardrail.toolResult.blocked')
 
                   // もしガードレールが出力を提供していれば、それを使用
@@ -822,7 +823,7 @@ export const useAgentChat = (
                   })
                 }
               } catch (guardrailError) {
-                console.error('Error applying guardrail to tool result:', guardrailError)
+                log.error('Error applying guardrail to tool result:', guardrailError)
                 // ガードレールエラー時は元のツール結果を使用し続ける
               }
             }
@@ -830,7 +831,7 @@ export const useAgentChat = (
             // 最終的なツール結果をコレクションに追加
             toolResults.push(resultContentBlock)
           } catch (e: any) {
-            console.error(e)
+            log.error(e)
             toolResults.push({
               toolResult: {
                 toolUseId: toolUse.toolUseId,
@@ -963,7 +964,7 @@ export const useAgentChat = (
       const lastMessage = currentMessages[currentMessages.length - 1]
       if (lastMessage.content?.find((v) => v.toolUse)) {
         if (!lastMessage.content) {
-          console.warn(lastMessage)
+          log.warn(lastMessage)
           result = null
         } else {
           result = await recursivelyExecTool(lastMessage.content, currentMessages)
@@ -1008,7 +1009,7 @@ export const useAgentChat = (
         })
       }
     } catch (error: any) {
-      console.error('Error in handleSubmit:', error)
+      log.error('Error in handleSubmit:', error)
       toast.error(error.message || 'An error occurred')
     } finally {
       setLoading(false)
@@ -1061,7 +1062,7 @@ export const useAgentChat = (
         await updateSessionTitle(currentSessionId, newTitle)
       }
     } catch (error) {
-      console.error('Error generating title for current session:', error)
+      log.error('Error generating title for current session:', error)
     }
   }, [currentSessionId, modelId, t, enableHistory, getSession, updateSessionTitle])
 

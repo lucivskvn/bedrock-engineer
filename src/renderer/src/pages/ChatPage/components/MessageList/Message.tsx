@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { Message } from '@aws-sdk/client-bedrock-runtime'
 
 import { IdentifiableMessage } from '@/types/chat/message'
@@ -54,7 +55,7 @@ function convertImageToDataUrl(imageData: any, format: string = 'png'): string {
     return convertImageToDataUrl(imageData.bytes, format)
   }
 
-  console.warn('Unsupported image data format:', imageData)
+  log.warn('Unsupported image data format:', imageData)
   return ''
 }
 
@@ -106,7 +107,7 @@ export const ChatMessage = memo(function ChatMessage({
         setIsDropdownOpen(false)
       })
       .catch((err) => {
-        console.error('Failed to copy text: ', err)
+        log.error('Failed to copy text: ', err)
         toast.error(t('Failed to copy message'))
       })
   }, [message, t])
@@ -285,8 +286,8 @@ export const ChatMessage = memo(function ChatMessage({
               </div>
             )
           } else {
-            console.error(c)
-            console.error('Invalid message content')
+            log.error(c)
+            log.error('Invalid message content')
             return (
               <div key={index} className="relative">
                 <CodeRenderer text={JSON.stringify(c)} />

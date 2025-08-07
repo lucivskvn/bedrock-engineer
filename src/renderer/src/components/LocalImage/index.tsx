@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useEffect, useState } from 'react'
 
 interface LocalImageProps {
@@ -20,7 +21,7 @@ const LocalImage: React.FC<LocalImageProps> = ({ src, alt, className }) => {
         setError('')
       } catch (err) {
         setError('Failed to load image')
-        console.error('Error loading image:', err)
+        log.error('Error loading image:', err)
       } finally {
         setLoading(false)
       }

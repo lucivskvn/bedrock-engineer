@@ -69,9 +69,12 @@ If a configuration file error occurs when starting the application, please check
 
 ### Build
 
-First, install the npm modules:
+First, install the npm modules.
+
+Make sure Node.js 20 is active by running `nvm use`:
 
 ```bash
+nvm use
 npm ci
 ```
 
@@ -94,6 +97,18 @@ npm run build:linux
 ```
 
 Use the application stored in the `dist` directory.
+### Lint, Typecheck, and Test
+
+Install dependencies and run code checks:
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run test:integration
+```
+
 
 ## Agent Chat
 

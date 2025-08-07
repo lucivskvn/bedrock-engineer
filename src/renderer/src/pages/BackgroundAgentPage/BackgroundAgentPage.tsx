@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BsQuestionCircle } from 'react-icons/bs'
@@ -32,7 +33,7 @@ const BackgroundAgentPage: React.FC = () => {
       setShowCreateForm(false)
       await refreshAll()
     } catch (error) {
-      console.error('Failed to create task:', error)
+      log.error('Failed to create task:', error)
     }
   }
 

@@ -15,12 +15,8 @@ class ExpandableBuffer {
   }
 
   logTimeElapsedSinceLastWrite() {
-    const now = Date.now()
-    if (this.lastWriteTime !== 0) {
-      const elapsed = now - this.lastWriteTime
-      console.debug(`Elapsed time since last audio buffer write: ${elapsed} ms`)
-    }
-    this.lastWriteTime = now
+    // track time since last write without logging
+    this.lastWriteTime = Date.now()
   }
 
   write(samples) {
@@ -32,13 +28,13 @@ class ExpandableBuffer {
       if (samples.length <= this.readIndex) {
         // ... but we can shift samples to the beginning of the buffer
         const subarray = this.buffer.subarray(this.readIndex, this.writeIndex)
-        console.debug(`Shifting the audio buffer of length ${subarray.length} by ${this.readIndex}`)
+        // Debug logs removed to avoid direct console usage in renderer code
         this.buffer.set(subarray)
       } else {
         // ... and we need to grow the buffer capacity to make room for more audio
         const newLength = (samples.length + this.writeIndex - this.readIndex) * 2
         const newBuffer = new Float32Array(newLength)
-        console.debug(`Expanding the audio buffer from ${this.buffer.length} to ${newLength}`)
+        // Debug logs removed to avoid direct console usage in renderer code
         newBuffer.set(this.buffer.subarray(this.readIndex, this.writeIndex))
         this.buffer = newBuffer
       }
@@ -50,7 +46,7 @@ class ExpandableBuffer {
     if (this.writeIndex - this.readIndex >= this.initialBufferLength) {
       // Filled the initial buffer length, so we can start playback with some cushion
       this.isInitialBuffering = false
-      console.debug('Initial audio buffer filled')
+      // Debug logs removed to avoid direct console usage in renderer code
     }
   }
 
@@ -63,7 +59,7 @@ class ExpandableBuffer {
     destination.set(this.buffer.subarray(this.readIndex, this.readIndex + copyLength))
     this.readIndex += copyLength
     if (copyLength > 0 && this.underflowedSamples > 0) {
-      console.debug(`Detected audio buffer underflow of ${this.underflowedSamples} samples`)
+      // Debug logs removed to avoid direct console usage in renderer code
       this.underflowedSamples = 0
     }
     if (copyLength < destination.length) {
@@ -94,7 +90,7 @@ class AudioPlayerProcessor extends AudioWorkletProcessor {
         // Override the current playback initial buffer length
         const newLength = event.data.bufferLength
         this.playbackBuffer.initialBufferLength = newLength
-        console.debug(`Changed initial audio buffer length to: ${newLength}`)
+        // Debug logs removed to avoid direct console usage in renderer code
       } else if (event.data.type === 'barge-in') {
         this.playbackBuffer.clearBuffer()
       }

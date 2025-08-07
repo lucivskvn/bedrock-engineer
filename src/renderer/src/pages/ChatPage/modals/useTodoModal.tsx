@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useCallback, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FaClock, FaCheckCircle, FaTimesCircle, FaSpinner, FaTimes, FaSync } from 'react-icons/fa'
@@ -128,7 +129,7 @@ export const useTodoModal = (messages?: any[], currentSessionId?: string) => {
       const data = await window.api.todo.getTodoList({ sessionId: currentSessionId })
       setTodoList(data)
     } catch (err) {
-      console.error('Failed to fetch TODO list:', err)
+      log.error('Failed to fetch TODO list:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch TODO list')
       setTodoList(null)
     } finally {

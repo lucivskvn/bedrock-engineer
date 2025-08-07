@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState } from 'react'
 import { ClipboardIcon, CheckIcon } from '@heroicons/react/24/outline'
 import { formatProjectPath } from '../utils/pathUtils'
@@ -31,7 +32,7 @@ export const ProjectPathDisplay: React.FC<ProjectPathDisplayProps> = ({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
-      console.error('Failed to copy path:', error)
+      log.error('Failed to copy path:', error)
     }
   }
 

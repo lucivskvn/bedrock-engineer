@@ -1,3 +1,6 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
+import i18n from '@renderer/i18n/config'
+
 export class NotificationService {
   private static instance: NotificationService
 
@@ -14,7 +17,7 @@ export class NotificationService {
 
   public async requestPermission(): Promise<boolean> {
     if (!this.isSupported()) {
-      console.warn('Notifications are not supported in this browser')
+      log.warn('Notifications are not supported in this browser')
       return false
     }
 
@@ -22,7 +25,7 @@ export class NotificationService {
       const permission = await Notification.requestPermission()
       return permission === 'granted'
     } catch (error) {
-      console.error('Error requesting notification permission:', error)
+      log.error('Error requesting notification permission:', error)
       return false
     }
   }
@@ -35,26 +38,26 @@ export class NotificationService {
         return
       }
     } catch (error) {
-      console.warn('Failed to check window focus state:', error)
+      log.warn('Failed to check window focus state:', error)
       // エラーが発生した場合は通知を表示する方向で処理を継続
     }
 
     if (!this.isSupported()) {
-      console.warn('Notifications are not supported in this browser')
+      log.warn('Notifications are not supported in this browser')
       return
     }
 
     if (Notification.permission !== 'granted') {
       const permitted = await this.requestPermission()
       if (!permitted) {
-        console.warn('Notification permission not granted')
+        log.warn('Notification permission not granted')
         return
       }
     }
 
     try {
       const defaultOptions: NotificationOptions = {
-        body: 'AIからの返信が届きました',
+        body: i18n.t('notification.messages.chatComplete.body'),
         icon: '/icon.png', // アプリケーションのアイコンを使用
         silent: false, // 通知音を有効化
         ...options
@@ -62,7 +65,7 @@ export class NotificationService {
 
       new Notification(title, defaultOptions)
     } catch (error) {
-      console.error('Error showing notification:', error)
+      log.error('Error showing notification:', error)
     }
   }
 

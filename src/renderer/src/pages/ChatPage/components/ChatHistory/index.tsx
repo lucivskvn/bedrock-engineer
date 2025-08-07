@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FiMoreHorizontal, FiEdit2, FiTrash2, FiZap } from 'react-icons/fi'
@@ -100,7 +101,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ onSessionSelect, curre
         setMenuOpenSessionId(undefined)
       }
     } catch (error) {
-      console.error('Failed to generate AI title:', error)
+      log.error('Failed to generate AI title:', error)
       // エラーメッセージは generateSessionTitle 内で既に表示されるため不要
     } finally {
       setIsGenerating(false)

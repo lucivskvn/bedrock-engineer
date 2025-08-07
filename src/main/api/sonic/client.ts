@@ -24,6 +24,9 @@ import { SonicToolExecutor } from './tool-executor'
 import { ToolInput } from '../../../types/tools'
 import { ProxyConfiguration } from '../bedrock/types'
 import { createSonicHttpOptions } from '../../lib/proxy-utils'
+import { createCategoryLogger } from '../../../common/logger'
+
+const logger = createCategoryLogger('sonic:client')
 
 export interface NovaSonicBidirectionalStreamClientConfig {
   requestHandlerConfig?: NodeHttp2HandlerOptions | Provider<NodeHttp2HandlerOptions | void>
@@ -131,7 +134,7 @@ export class StreamSession {
     this.audioBufferQueue = [] // Clear any pending audio
 
     await this.client.sendSessionEnd(this.sessionId)
-    console.log(`Session ${this.sessionId} close completed`)
+    logger.debug(`Session ${this.sessionId} close completed`)
   }
 }
 
@@ -252,7 +255,7 @@ export class NovaSonicBidirectionalStreamClient {
   }
 
   private async processToolUse(toolName: string, toolUseContent: object): Promise<object> {
-    console.log(`Processing tool use: ${toolName}`, {
+    logger.debug(`Processing tool use: ${toolName}`, {
       toolName,
       hasToolExecutor: !!this.toolExecutor,
       contentPreview: JSON.stringify(toolUseContent).substring(0, 100) + '...'
@@ -261,7 +264,7 @@ export class NovaSonicBidirectionalStreamClient {
     // Ensure tool executor is available
     if (!this.toolExecutor) {
       const errorMessage = `Tool executor not available. Please ensure frontend connection is active.`
-      console.error(errorMessage, { toolName })
+      logger.error(errorMessage, { toolName })
 
       return {
         error: true,
@@ -275,18 +278,18 @@ export class NovaSonicBidirectionalStreamClient {
     }
 
     try {
-      console.log(`Converting tool input for ${toolName}...`)
+      logger.debug(`Converting tool input for ${toolName}...`)
       let toolInput = this.convertToToolInput(toolName, toolUseContent)
 
       // Apply default values for tools that need them
       toolInput = this.applyDefaultValuesForTool(toolName, toolInput)
 
-      console.log(`Executing tool via preload system:`, {
+      logger.debug(`Executing tool via preload system:`, {
         toolInput
       })
 
       const result = await this.toolExecutor.executeToolViaSocket(toolInput)
-      console.log(`Tool executed successfully:`, {
+      logger.debug(`Tool executed successfully:`, {
         toolName,
         resultType: typeof result,
         resultPreview:
@@ -300,14 +303,14 @@ export class NovaSonicBidirectionalStreamClient {
       try {
         parsedResult = typeof result === 'string' ? JSON.parse(result) : result
       } catch (parseError) {
-        console.warn(`Failed to parse tool result as JSON, using as string:`, parseError)
+        logger.warn(`Failed to parse tool result as JSON, using as string:`, parseError)
         parsedResult = { result: result }
       }
 
       return parsedResult
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      console.error(`Tool execution failed for ${toolName}:`, {
+      logger.error(`Tool execution failed for ${toolName}:`, {
         toolName,
         error: errorMessage,
         errorType: error instanceof Error ? error.constructor.name : typeof error,
@@ -332,7 +335,7 @@ export class NovaSonicBidirectionalStreamClient {
    * Convert Nova Sonic tool format to preload tool format
    */
   private convertToToolInput(toolName: string, toolUseContent: any): ToolInput {
-    // console.log({ toolUseContent })
+    // logger.debug({ toolUseContent })
     // {
     //   toolUseContent: {
     //     completionId: '92186f21-5211-40cd-a258-592d3ad20e48',
@@ -359,7 +362,7 @@ export class NovaSonicBidirectionalStreamClient {
 
       return toolInput
     } catch (error) {
-      console.error(`Error converting tool input for ${toolName}:`, error)
+      logger.error(`Error converting tool input for ${toolName}:`, error)
       throw new Error(`Failed to convert tool input for ${toolName}: ${error}`)
     }
   }
@@ -372,11 +375,11 @@ export class NovaSonicBidirectionalStreamClient {
       // Get project path from store - we'll need to import this
       const projectPath = this.getProjectPath()
       if (!projectPath) {
-        console.warn('Project path not available, skipping default value application')
+        logger.warn('Project path not available, skipping default value application')
         return toolInput
       }
 
-      console.log(`Applying default values for tool ${toolName}`, {
+      logger.debug(`Applying default values for tool ${toolName}`, {
         toolName,
         projectPath,
         originalInput: this.sanitizeInputForLogging(toolInput)
@@ -414,7 +417,7 @@ export class NovaSonicBidirectionalStreamClient {
           break
       }
 
-      console.log(`Default values applied for ${toolName}`, {
+      logger.debug(`Default values applied for ${toolName}`, {
         toolName,
         hasChanges: JSON.stringify(updatedInput) !== JSON.stringify(toolInput),
         updatedInput: this.sanitizeInputForLogging(updatedInput)
@@ -422,7 +425,7 @@ export class NovaSonicBidirectionalStreamClient {
 
       return updatedInput
     } catch (error) {
-      console.error(`Error applying default values for ${toolName}:`, error)
+      logger.error(`Error applying default values for ${toolName}:`, error)
       // Return original input if error occurs
       return toolInput
     }
@@ -440,10 +443,10 @@ export class NovaSonicBidirectionalStreamClient {
 
       // Fallback to user home directory
       const homeDir = process.env[process.platform === 'win32' ? 'USERPROFILE' : 'HOME']
-      console.warn('No project path in store, using home directory:', homeDir)
+      logger.warn('No project path in store, using home directory:', homeDir)
       return homeDir
     } catch (error) {
-      console.error('Error getting project path from store:', error)
+      logger.error('Error getting project path from store:', error)
       // Fallback to user home directory
       return process.env[process.platform === 'win32' ? 'USERPROFILE' : 'HOME']
     }
@@ -469,7 +472,7 @@ export class NovaSonicBidirectionalStreamClient {
       toolInput.outputPath = defaultPath
       toolInput.output_path = defaultPath
 
-      console.log(`Applied default outputPath for generateImage: ${defaultPath}`)
+      logger.debug(`Applied default outputPath for generateImage: ${defaultPath}`)
     } else if (!path.isAbsolute(currentOutputPath)) {
       // Convert relative path to absolute
       const absolutePath = path.resolve(projectPath, currentOutputPath)
@@ -478,7 +481,7 @@ export class NovaSonicBidirectionalStreamClient {
       toolInput.outputPath = absolutePath
       toolInput.output_path = absolutePath
 
-      console.log(`Converted relative outputPath to absolute: ${absolutePath}`)
+      logger.debug(`Converted relative outputPath to absolute: ${absolutePath}`)
     } else {
       // Ensure both formats are set with the absolute path
       toolInput.outputPath = currentOutputPath
@@ -493,7 +496,7 @@ export class NovaSonicBidirectionalStreamClient {
     // Handle single path
     if (toolInput.path && typeof toolInput.path === 'string' && !path.isAbsolute(toolInput.path)) {
       toolInput.path = path.resolve(projectPath, toolInput.path)
-      console.log(`Converted relative path to absolute: ${toolInput.path}`)
+      logger.debug(`Converted relative path to absolute: ${toolInput.path}`)
     }
 
     // Handle paths array (for readFiles)
@@ -501,7 +504,7 @@ export class NovaSonicBidirectionalStreamClient {
       toolInput.paths = toolInput.paths.map((p: string) => {
         if (typeof p === 'string' && !path.isAbsolute(p)) {
           const absolutePath = path.resolve(projectPath, p)
-          console.log(`Converted relative path to absolute: ${p} -> ${absolutePath}`)
+          logger.debug(`Converted relative path to absolute: ${p} -> ${absolutePath}`)
           return absolutePath
         }
         return p
@@ -517,12 +520,12 @@ export class NovaSonicBidirectionalStreamClient {
       // For listFiles, default to project directory
       if (toolInput.type === 'listFiles') {
         toolInput.path = projectPath
-        console.log(`Applied default path for listFiles: ${toolInput.path}`)
+        logger.debug(`Applied default path for listFiles: ${toolInput.path}`)
       }
     } else if (!path.isAbsolute(toolInput.path)) {
       // Convert relative path to absolute
       toolInput.path = path.resolve(projectPath, toolInput.path)
-      console.log(`Converted relative path to absolute: ${toolInput.path}`)
+      logger.debug(`Converted relative path to absolute: ${toolInput.path}`)
     }
   }
 
@@ -536,7 +539,7 @@ export class NovaSonicBidirectionalStreamClient {
       !path.isAbsolute(toolInput.source)
     ) {
       toolInput.source = path.resolve(projectPath, toolInput.source)
-      console.log(`Converted relative source path to absolute: ${toolInput.source}`)
+      logger.debug(`Converted relative source path to absolute: ${toolInput.source}`)
     }
 
     if (
@@ -545,7 +548,7 @@ export class NovaSonicBidirectionalStreamClient {
       !path.isAbsolute(toolInput.destination)
     ) {
       toolInput.destination = path.resolve(projectPath, toolInput.destination)
-      console.log(`Converted relative destination path to absolute: ${toolInput.destination}`)
+      logger.debug(`Converted relative destination path to absolute: ${toolInput.destination}`)
     }
   }
 
@@ -555,10 +558,10 @@ export class NovaSonicBidirectionalStreamClient {
   private applyExecuteCommandDefaults(toolInput: any, projectPath: string): void {
     if (!toolInput.cwd || typeof toolInput.cwd !== 'string') {
       toolInput.cwd = projectPath
-      console.log(`Applied default cwd for executeCommand: ${toolInput.cwd}`)
+      logger.debug(`Applied default cwd for executeCommand: ${toolInput.cwd}`)
     } else if (!path.isAbsolute(toolInput.cwd)) {
       toolInput.cwd = path.resolve(projectPath, toolInput.cwd)
-      console.log(`Converted relative cwd to absolute: ${toolInput.cwd}`)
+      logger.debug(`Converted relative cwd to absolute: ${toolInput.cwd}`)
     }
   }
 
@@ -606,7 +609,7 @@ export class NovaSonicBidirectionalStreamClient {
       // Process responses for this session
       await this.processResponseStream(sessionId, response)
     } catch (error) {
-      console.error(`Error in session ${sessionId}: `, error)
+      logger.error(`Error in session ${sessionId}: `, error)
       this.dispatchEventForSession(sessionId, 'error', {
         source: 'bidirectionalStream',
         error
@@ -629,7 +632,7 @@ export class NovaSonicBidirectionalStreamClient {
       try {
         handler(data)
       } catch (e) {
-        console.error(`Error in ${eventType} handler for session ${sessionId}: `, e)
+        logger.error(`Error in ${eventType} handler for session ${sessionId}: `, e)
       }
     }
 
@@ -639,7 +642,7 @@ export class NovaSonicBidirectionalStreamClient {
       try {
         anyHandler({ type: eventType, data })
       } catch (e) {
-        console.error(`Error in 'any' handler for session ${sessionId}: `, e)
+        logger.error(`Error in 'any' handler for session ${sessionId}: `, e)
       }
     }
   }
@@ -648,7 +651,7 @@ export class NovaSonicBidirectionalStreamClient {
     sessionId: string
   ): AsyncIterable<InvokeModelWithBidirectionalStreamInput> {
     if (!this.isSessionActive(sessionId)) {
-      console.log(`Cannot create async iterable: Session ${sessionId} not active`)
+      logger.debug(`Cannot create async iterable: Session ${sessionId} not active`)
       return {
         [Symbol.asyncIterator]: () => ({
           next: async () => ({ value: undefined, done: true })
@@ -665,14 +668,14 @@ export class NovaSonicBidirectionalStreamClient {
 
     return {
       [Symbol.asyncIterator]: () => {
-        console.log(`AsyncIterable iterator requested for session ${sessionId}`)
+        logger.debug(`AsyncIterable iterator requested for session ${sessionId}`)
 
         return {
           next: async (): Promise<IteratorResult<InvokeModelWithBidirectionalStreamInput>> => {
             try {
               // Check if session is still active
               if (!session.isActive || !this.activeSessions.has(sessionId)) {
-                console.log(`Iterator closing for session ${sessionId}, done = true`)
+                logger.debug(`Iterator closing for session ${sessionId}, done = true`)
                 return { value: undefined, done: true }
               }
               // Wait for items in the queue or close signal
@@ -689,19 +692,19 @@ export class NovaSonicBidirectionalStreamClient {
                     if (error.message === 'Stream closed' || !session.isActive) {
                       // This is an expected condition when closing the session
                       if (this.activeSessions.has(sessionId)) {
-                        console.log(`Session \${ sessionId } closed during wait`)
+                        logger.debug(`Session \${ sessionId } closed during wait`)
                       }
                       return { value: undefined, done: true }
                     }
                   } else {
-                    console.error(`Error on event close`, error)
+                    logger.error(`Error on event close`, error)
                   }
                 }
               }
 
               // If queue is still empty or session is inactive, we're done
               if (session.queue.length === 0 || !session.isActive) {
-                console.log(`Queue empty or session inactive: ${sessionId} `)
+                logger.debug(`Queue empty or session inactive: ${sessionId} `)
                 return { value: undefined, done: true }
               }
 
@@ -709,7 +712,7 @@ export class NovaSonicBidirectionalStreamClient {
               const nextEvent = session.queue.shift()
               _eventCount++
 
-              //console.log(`Sending event #${ _eventCount } for session ${ sessionId }: ${ JSON.stringify(nextEvent).substring(0, 100) }...`);
+              //logger.debug(`Sending event #${ _eventCount } for session ${ sessionId }: ${ JSON.stringify(nextEvent).substring(0, 100) }...`);
 
               return {
                 value: {
@@ -720,14 +723,14 @@ export class NovaSonicBidirectionalStreamClient {
                 done: false
               }
             } catch (error) {
-              console.error(`Error in session ${sessionId} iterator: `, error)
+              logger.error(`Error in session ${sessionId} iterator: `, error)
               session.isActive = false
               return { value: undefined, done: true }
             }
           },
 
           return: async (): Promise<IteratorResult<InvokeModelWithBidirectionalStreamInput>> => {
-            console.log(`Iterator return () called for session ${sessionId}`)
+            logger.debug(`Iterator return () called for session ${sessionId}`)
             session.isActive = false
             return { value: undefined, done: true }
           },
@@ -735,7 +738,7 @@ export class NovaSonicBidirectionalStreamClient {
           throw: async (
             error: any
           ): Promise<IteratorResult<InvokeModelWithBidirectionalStreamInput>> => {
-            console.log(`Iterator throw () called for session ${sessionId} with error: `, error)
+            logger.debug(`Iterator throw () called for session ${sessionId} with error: `, error)
             session.isActive = false
             throw error
           }
@@ -752,7 +755,7 @@ export class NovaSonicBidirectionalStreamClient {
     try {
       for await (const event of response.body) {
         if (!session.isActive) {
-          console.log(`Session ${sessionId} is no longer active, stopping response processing`)
+          logger.debug(`Session ${sessionId} is no longer active, stopping response processing`)
           break
         }
         if (event.chunk?.bytes) {
@@ -780,15 +783,15 @@ export class NovaSonicBidirectionalStreamClient {
                 jsonResponse.event?.contentEnd?.type === 'TOOL'
               ) {
                 // Process tool use
-                console.log(`Processing tool use for session ${sessionId}`)
+                logger.debug(`Processing tool use for session ${sessionId}`)
                 this.dispatchEvent(sessionId, 'toolEnd', {
                   toolUseContent: session.toolUseContent,
                   toolUseId: session.toolUseId,
                   toolName: session.toolName
                 })
 
-                console.log('calling tooluse')
-                console.log('tool use content : ', session.toolUseContent)
+                logger.debug('calling tooluse')
+                logger.debug('tool use content : ', session.toolUseContent)
                 // function calling
                 const toolResult = await this.processToolUse(
                   session.toolName,
@@ -808,8 +811,8 @@ export class NovaSonicBidirectionalStreamClient {
               } else {
                 // Handle other events
                 const eventKeys = Object.keys(jsonResponse.event || {})
-                console.log(`Event keys for session ${sessionId}: `, eventKeys)
-                console.log(`Handling other events`)
+                logger.debug(`Event keys for session ${sessionId}: `, eventKeys)
+                logger.debug(`Handling other events`)
                 if (eventKeys.length > 0) {
                   this.dispatchEvent(sessionId, eventKeys[0], jsonResponse.event)
                 } else if (Object.keys(jsonResponse).length > 0) {
@@ -817,13 +820,13 @@ export class NovaSonicBidirectionalStreamClient {
                 }
               }
             } catch (e) {
-              console.log(`Raw text response for session ${sessionId}(parse error): `, textResponse)
+              logger.debug(`Raw text response for session ${sessionId}(parse error): `, textResponse)
             }
           } catch (e) {
-            console.error(`Error processing response chunk for session ${sessionId}: `, e)
+            logger.error(`Error processing response chunk for session ${sessionId}: `, e)
           }
         } else if (event.modelStreamErrorException) {
-          console.error(
+          logger.error(
             `Model stream error for session ${sessionId}: `,
             event.modelStreamErrorException
           )
@@ -832,7 +835,7 @@ export class NovaSonicBidirectionalStreamClient {
             details: event.modelStreamErrorException
           })
         } else if (event.internalServerException) {
-          console.error(
+          logger.error(
             `Internal server error for session ${sessionId}: `,
             event.internalServerException
           )
@@ -843,12 +846,12 @@ export class NovaSonicBidirectionalStreamClient {
         }
       }
 
-      console.log(`Response stream processing complete for session ${sessionId}`)
+      logger.debug(`Response stream processing complete for session ${sessionId}`)
       this.dispatchEvent(sessionId, 'streamComplete', {
         timestamp: new Date().toISOString()
       })
     } catch (error) {
-      console.error(`Error processing response stream for session ${sessionId}: `, error)
+      logger.error(`Error processing response stream for session ${sessionId}: `, error)
       this.dispatchEvent(sessionId, 'error', {
         source: 'responseStream',
         message: 'Error processing response stream',
@@ -869,7 +872,7 @@ export class NovaSonicBidirectionalStreamClient {
 
   // Rebuild queue with SessionStart as the first event
   private rebuildQueueWithSessionStart(sessionId: string): void {
-    console.log(`Rebuilding queue with SessionStart first for session ${sessionId}...`)
+    logger.debug(`Rebuilding queue with SessionStart first for session ${sessionId}...`)
     const session = this.activeSessions.get(sessionId)
     if (!session) return
 
@@ -895,9 +898,9 @@ export class NovaSonicBidirectionalStreamClient {
    * Convert ToolState[] from frontend to Nova Sonic tool format
    */
   private convertToolsToNovaSonicFormat(tools: any[] = []): any[] {
-    console.log('convertToolsToNovaSonicFormat called with tools:', tools?.length || 0)
+    logger.debug('convertToolsToNovaSonicFormat called with tools:', tools?.length || 0)
 
-    console.log(
+    logger.debug(
       'Processing tools:',
       tools.map((t) => ({
         enabled: t.enabled,
@@ -907,10 +910,10 @@ export class NovaSonicBidirectionalStreamClient {
     )
 
     const filteredTools = tools.filter((tool) => tool.enabled && tool.toolSpec)
-    console.log('Filtered tools:', filteredTools.length)
+    logger.debug('Filtered tools:', filteredTools.length)
 
     const convertedTools = filteredTools.map((tool) => {
-      console.log('Converting tool:', {
+      logger.debug('Converting tool:', {
         name: tool.toolSpec.name,
         inputSchema: tool.toolSpec.inputSchema
       })
@@ -932,26 +935,26 @@ export class NovaSonicBidirectionalStreamClient {
         }
       }
 
-      console.log('Converted tool inputSchema.json:', converted.toolSpec.inputSchema.json)
+      logger.debug('Converted tool inputSchema.json:', converted.toolSpec.inputSchema.json)
       return converted
     })
 
-    console.log('Final converted tools count:', convertedTools.length)
+    logger.debug('Final converted tools count:', convertedTools.length)
     return convertedTools
   }
 
   public setupPromptStartEvent(sessionId: string, tools?: any[], voiceId?: string): void {
-    console.log(`Setting up prompt start event for session ${sessionId}...`)
+    logger.debug(`Setting up prompt start event for session ${sessionId}...`)
     const session = this.activeSessions.get(sessionId)
     if (!session) return
 
     // ツール設定を動的に生成
     const novaSonicTools = this.convertToolsToNovaSonicFormat(tools)
-    console.log(`Configured ${novaSonicTools.length} tools for Nova Sonic session ${sessionId}`)
+    logger.debug(`Configured ${novaSonicTools.length} tools for Nova Sonic session ${sessionId}`)
 
     // 音声設定を動的に取得
     const audioOutputConfig = getAudioOutputConfiguration(voiceId)
-    console.log(`Using voice: ${audioOutputConfig.voiceId} for session ${sessionId}`)
+    logger.debug(`Using voice: ${audioOutputConfig.voiceId} for session ${sessionId}`)
 
     // Prompt start event
     this.addEventToSessionQueue(sessionId, {
@@ -979,7 +982,7 @@ export class NovaSonicBidirectionalStreamClient {
     textConfig: typeof DefaultTextConfiguration = DefaultTextConfiguration,
     systemPromptContent: string = DefaultSystemPrompt
   ): void {
-    console.log(`Setting up systemPrompt events for session ${sessionId}...`)
+    logger.debug(`Setting up systemPrompt events for session ${sessionId}...`)
     const session = this.activeSessions.get(sessionId)
     if (!session) return
     // Text content start
@@ -1023,11 +1026,11 @@ export class NovaSonicBidirectionalStreamClient {
     sessionId: string,
     audioConfig: typeof DefaultAudioInputConfiguration = DefaultAudioInputConfiguration
   ): void {
-    console.log(`Setting up startAudioContent event for session ${sessionId}...`)
+    logger.debug(`Setting up startAudioContent event for session ${sessionId}...`)
     const session = this.activeSessions.get(sessionId)
     if (!session) return
 
-    console.log(`Using audio content ID: ${session.audioContentId}`)
+    logger.debug(`Using audio content ID: ${session.audioContentId}`)
     // Audio content start
     this.addEventToSessionQueue(sessionId, {
       event: {
@@ -1042,7 +1045,7 @@ export class NovaSonicBidirectionalStreamClient {
       }
     })
     session.isAudioContentStartSent = true
-    console.log(`Initial events setup complete for session ${sessionId}`)
+    logger.debug(`Initial events setup complete for session ${sessionId}`)
   }
 
   // Stream an audio chunk for a session
@@ -1068,10 +1071,10 @@ export class NovaSonicBidirectionalStreamClient {
   // Send tool result back to the model
   private async sendToolResult(sessionId: string, toolUseId: string, result: any): Promise<void> {
     const session = this.activeSessions.get(sessionId)
-    console.log('inside tool result')
+    logger.debug('inside tool result')
     if (!session || !session.isActive) return
 
-    console.log(`Sending tool result for session ${sessionId}, tool use ID: ${toolUseId}`)
+    logger.debug(`Sending tool result for session ${sessionId}, tool use ID: ${toolUseId}`)
     const contentId = randomUUID()
 
     // Tool content start
@@ -1116,7 +1119,7 @@ export class NovaSonicBidirectionalStreamClient {
       }
     })
 
-    console.log(`Tool result sent for session ${sessionId}`)
+    logger.debug(`Tool result sent for session ${sessionId}`)
   }
 
   public async sendContentEnd(sessionId: string): Promise<void> {
@@ -1171,7 +1174,7 @@ export class NovaSonicBidirectionalStreamClient {
     session.closeSignal.complete()
     this.activeSessions.delete(sessionId)
     this.sessionLastActivity.delete(sessionId)
-    console.log(`Session ${sessionId} closed and removed from active sessions`)
+    logger.debug(`Session ${sessionId} closed and removed from active sessions`)
   }
 
   // Register an event handler for a session
@@ -1197,7 +1200,7 @@ export class NovaSonicBidirectionalStreamClient {
       try {
         handler(data)
       } catch (e) {
-        console.error(`Error in ${eventType} handler for session ${sessionId}:`, e)
+        logger.error(`Error in ${eventType} handler for session ${sessionId}:`, e)
       }
     }
 
@@ -1207,25 +1210,25 @@ export class NovaSonicBidirectionalStreamClient {
       try {
         anyHandler({ type: eventType, data })
       } catch (e) {
-        console.error(`Error in 'any' handler for session ${sessionId}:`, e)
+        logger.error(`Error in 'any' handler for session ${sessionId}:`, e)
       }
     }
   }
 
   public async closeSession(sessionId: string): Promise<void> {
     if (this.sessionCleanupInProgress.has(sessionId)) {
-      console.log(`Cleanup already in progress for session ${sessionId}, skipping`)
+      logger.debug(`Cleanup already in progress for session ${sessionId}, skipping`)
       return
     }
     this.sessionCleanupInProgress.add(sessionId)
     try {
-      console.log(`Starting close process for session ${sessionId}`)
+      logger.debug(`Starting close process for session ${sessionId}`)
       await this.sendContentEnd(sessionId)
       await this.sendPromptEnd(sessionId)
       await this.sendSessionEnd(sessionId)
-      console.log(`Session ${sessionId} cleanup complete`)
+      logger.debug(`Session ${sessionId} cleanup complete`)
     } catch (error) {
-      console.error(`Error during closing sequence for session ${sessionId}:`, error)
+      logger.error(`Error during closing sequence for session ${sessionId}:`, error)
 
       // Ensure cleanup happens even if there's an error
       const session = this.activeSessions.get(sessionId)
@@ -1243,7 +1246,7 @@ export class NovaSonicBidirectionalStreamClient {
   // Same for forceCloseSession:
   public forceCloseSession(sessionId: string): void {
     if (this.sessionCleanupInProgress.has(sessionId) || !this.activeSessions.has(sessionId)) {
-      console.log(`Session ${sessionId} already being cleaned up or not active`)
+      logger.debug(`Session ${sessionId} already being cleaned up or not active`)
       return
     }
 
@@ -1252,7 +1255,7 @@ export class NovaSonicBidirectionalStreamClient {
       const session = this.activeSessions.get(sessionId)
       if (!session) return
 
-      console.log(`Force closing session ${sessionId}`)
+      logger.debug(`Force closing session ${sessionId}`)
 
       // Immediately mark as inactive and clean up resources
       session.isActive = false
@@ -1261,7 +1264,7 @@ export class NovaSonicBidirectionalStreamClient {
       this.activeSessions.delete(sessionId)
       this.sessionLastActivity.delete(sessionId)
 
-      console.log(`Session ${sessionId} force closed`)
+      logger.debug(`Session ${sessionId} force closed`)
     } finally {
       this.sessionCleanupInProgress.delete(sessionId)
     }

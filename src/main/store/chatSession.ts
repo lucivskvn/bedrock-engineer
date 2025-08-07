@@ -3,6 +3,7 @@ import fs from 'fs'
 import Store from 'electron-store'
 import { ChatSession, ChatMessage, SessionMetadata } from '../../types/chat/history'
 import { store } from '../../preload/store'
+import { log } from '../../common/logger'
 
 export class ChatSessionManager {
   private readonly sessionsDir: string
@@ -50,9 +51,9 @@ export class ChatSessionManager {
           }
         }
 
-        console.log('Metadata initialized successfully')
+        log.debug('Metadata initialized successfully')
       } catch (error) {
-        console.error('Error initializing metadata:', error)
+        log.error('Error initializing metadata:', error)
       }
     }
   }
@@ -67,7 +68,7 @@ export class ChatSessionManager {
       const data = fs.readFileSync(filePath, 'utf-8')
       return JSON.parse(data) as ChatSession
     } catch (error) {
-      console.error(`Error reading session file ${sessionId}:`, error)
+      log.error(`Error reading session file ${sessionId}:`, error)
       return null
     }
   }
@@ -77,7 +78,7 @@ export class ChatSessionManager {
     try {
       await fs.promises.writeFile(filePath, JSON.stringify(session, null, 2))
     } catch (error) {
-      console.error(`Error writing session file ${sessionId}:`, error)
+      log.error(`Error writing session file ${sessionId}:`, error)
     }
   }
 
@@ -155,7 +156,7 @@ export class ChatSessionManager {
       delete metadata[sessionId]
       this.metadataStore.set('metadata', metadata)
     } catch (error) {
-      console.error(`Error deleting session file ${sessionId}:`, error)
+      log.error(`Error deleting session file ${sessionId}:`, error)
     }
 
     const recentSessions = this.metadataStore.get('recentSessions')
@@ -181,9 +182,9 @@ export class ChatSessionManager {
       this.metadataStore.set('recentSessions', [])
       this.metadataStore.delete('activeSessionId')
 
-      console.log('All sessions have been deleted successfully')
+      log.debug('All sessions have been deleted successfully')
     } catch (error) {
-      console.error('Error deleting all sessions:', error)
+      log.error('Error deleting all sessions:', error)
     }
   }
 
@@ -237,7 +238,7 @@ export class ChatSessionManager {
 
     // 指定されたインデックスが有効な範囲内かチェック
     if (messageIndex < 0 || messageIndex >= session.messages.length) {
-      console.error(`Invalid message index: ${messageIndex}`)
+      log.error(`Invalid message index: ${messageIndex}`)
       return
     }
 
@@ -256,7 +257,7 @@ export class ChatSessionManager {
 
     // 指定されたインデックスが有効な範囲内かチェック
     if (messageIndex < 0 || messageIndex >= session.messages.length) {
-      console.error(`Invalid message index: ${messageIndex}`)
+      log.error(`Invalid message index: ${messageIndex}`)
       return
     }
 

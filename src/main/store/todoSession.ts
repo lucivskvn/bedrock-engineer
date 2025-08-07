@@ -2,6 +2,7 @@ import path from 'path'
 import fs from 'fs'
 import Store from 'electron-store'
 import { store } from '../../preload/store'
+import { log } from '../../common/logger'
 
 export interface TodoItem {
   id: string
@@ -88,9 +89,9 @@ export class TodoSessionManager {
           }
         }
 
-        console.log('Todo metadata initialized successfully')
+        log.debug('Todo metadata initialized successfully')
       } catch (error) {
-        console.error('Error initializing todo metadata:', error)
+        log.error('Error initializing todo metadata:', error)
       }
     }
   }
@@ -109,7 +110,7 @@ export class TodoSessionManager {
       const data = fs.readFileSync(filePath, 'utf-8')
       return JSON.parse(data) as TodoList
     } catch (error) {
-      console.error(`Error reading todo file ${sessionId}:`, error)
+      log.error(`Error reading todo file ${sessionId}:`, error)
       return null
     }
   }
@@ -119,7 +120,7 @@ export class TodoSessionManager {
     try {
       await fs.promises.writeFile(filePath, JSON.stringify(todoList, null, 2))
     } catch (error) {
-      console.error(`Error writing todo file ${sessionId}:`, error)
+      log.error(`Error writing todo file ${sessionId}:`, error)
     }
   }
 
@@ -234,7 +235,7 @@ export class TodoSessionManager {
       delete metadata[sessionId]
       this.metadataStore.set('metadata', metadata)
     } catch (error) {
-      console.error(`Error deleting todo file ${sessionId}:`, error)
+      log.error(`Error deleting todo file ${sessionId}:`, error)
     }
 
     const recentTodos = this.metadataStore.get('recentTodos')

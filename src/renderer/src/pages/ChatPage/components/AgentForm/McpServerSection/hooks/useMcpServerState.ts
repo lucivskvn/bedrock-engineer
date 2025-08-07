@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useState } from 'react'
 import { McpServerConfig } from '@/types/agent-chat'
 import { ConnectionResultsMap } from '../types/mcpServer.types'
@@ -59,7 +60,7 @@ export function useMcpServerState(
         toast.error(`${result.message}`)
       }
     } catch (error) {
-      console.error(`Error testing connection to ${serverName}:`, error)
+      log.error(`Error testing connection to ${serverName}:`, error)
       toast.error(`Error testing connection to ${serverName}`)
     } finally {
       setTestingConnection(null)
@@ -89,7 +90,7 @@ export function useMcpServerState(
       const totalTime = Date.now() - startTime
       toast.success(`Completed testing ${initialServers.length} servers in ${totalTime}ms`)
     } catch (error) {
-      console.error('Error testing all connections:', error)
+      log.error('Error testing all connections:', error)
       toast.error(`Failed to test all connections: ${error}`)
     } finally {
       setTestingAll(false)

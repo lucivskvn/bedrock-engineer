@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 const API_ENDPOINT = window.store.get('apiEndpoint')
 
 export interface RegionCheckResult {
@@ -31,7 +32,7 @@ export async function checkNovaSonicRegionSupport(region?: string): Promise<Regi
 
     return await response.json()
   } catch (error) {
-    console.error('Failed to check Nova Sonic region support:', error)
+    log.error('Failed to check Nova Sonic region support:', error)
     return {
       isSupported: false,
       currentRegion: region || 'unknown',
@@ -60,7 +61,7 @@ export async function testBedrockConnectivity(region?: string): Promise<Connecti
 
     return await response.json()
   } catch (error) {
-    console.error('Failed to test Bedrock connectivity:', error)
+    log.error('Failed to test Bedrock connectivity:', error)
     return {
       success: false,
       error: `Connectivity test failed: ${error instanceof Error ? error.message : String(error)}`

@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 export interface ChatMessage {
   role: string
   message: string
@@ -61,13 +62,13 @@ export class ChatHistoryManager {
 
   addTextMessage(content: { role: string; message: string }): void {
     if (!this.chatRef || !this.setChat) {
-      console.error('ChatHistoryManager: chatRef or setChat is not initialized')
+      log.error('ChatHistoryManager: chatRef or setChat is not initialized')
       return
     }
 
     const history = this.chatRef.current?.history || []
-    console.log('[ChatHistoryManager] Current history length:', history.length)
-    console.log('[ChatHistoryManager] Adding message:', content)
+    log.debug('[ChatHistoryManager] Current history length:', history.length)
+    log.debug('[ChatHistoryManager] Adding message:', content)
 
     const updatedChatHistory = [...history]
     const lastTurn = updatedChatHistory[updatedChatHistory.length - 1]
@@ -78,17 +79,17 @@ export class ChatHistoryManager {
         ...content,
         message: lastTurn.message + ' ' + content.message
       }
-      console.log('[ChatHistoryManager] Appended to existing message')
+      log.debug('[ChatHistoryManager] Appended to existing message')
     } else {
       // Different role, add a new turn
       updatedChatHistory.push({
         role: content.role,
         message: content.message
       })
-      console.log('[ChatHistoryManager] Added new message')
+      log.debug('[ChatHistoryManager] Added new message')
     }
 
-    console.log('[ChatHistoryManager] Updated history length:', updatedChatHistory.length)
+    log.debug('[ChatHistoryManager] Updated history length:', updatedChatHistory.length)
     this.setChat({
       history: updatedChatHistory
     })
@@ -96,7 +97,7 @@ export class ChatHistoryManager {
 
   endTurn(): void {
     if (!this.chatRef || !this.setChat) {
-      console.error('ChatHistoryManager: chatRef or setChat is not initialized')
+      log.error('ChatHistoryManager: chatRef or setChat is not initialized')
       return
     }
 
@@ -115,7 +116,7 @@ export class ChatHistoryManager {
 
   endConversation(): void {
     if (!this.chatRef || !this.setChat) {
-      console.error('ChatHistoryManager: chatRef or setChat is not initialized')
+      log.error('ChatHistoryManager: chatRef or setChat is not initialized')
       return
     }
 
@@ -140,7 +141,7 @@ export class ChatHistoryManager {
 
   clearHistory(): void {
     if (!this.setChat) {
-      console.error('ChatHistoryManager: setChat is not initialized')
+      log.error('ChatHistoryManager: setChat is not initialized')
       return
     }
 

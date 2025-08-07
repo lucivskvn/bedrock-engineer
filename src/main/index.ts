@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../build/icon.ico?asset'
 import { server } from './api'
+import type { Server as HTTPServer } from 'http'
 import Store from 'electron-store'
 import getRandomPort from '../preload/lib/random-port'
 import { store } from '../preload/store'
@@ -28,15 +29,13 @@ import { agentHandlers } from './handlers/agent-handlers'
 import { utilHandlers } from './handlers/util-handlers'
 import { screenHandlers } from './handlers/screen-handlers'
 import { cameraHandlers } from './handlers/camera-handlers'
-import { proxyHandlers } from './handlers/proxy-handlers'
+import { registerProxyHandlers } from './handlers/proxy-handlers'
 import {
   backgroundAgentHandlers,
   shutdownBackgroundAgentScheduler
 } from './handlers/background-agent-handlers'
 import { pubsubHandlers } from './handlers/pubsub-handlers'
 import { todoHandlers } from './handlers/todo-handlers'
-import { mcpHandlers, cleanupMcpHandlers } from './handlers/mcp-handlers'
-import { cleanupMcpClients } from './mcp/index'
 
 // 動的インポートを使用してfix-pathパッケージを読み込む
 // eslint-disable-next-line no-restricted-syntax
@@ -45,7 +44,7 @@ import('fix-path')
     fixPathModule.default()
   })
   .catch((err) => {
-    console.error('Failed to load fix-path module:', err)
+    log.error('Failed to load fix-path module:', { error: err })
   })
 
 // No need to track project path anymore as we always read from disk
@@ -83,7 +82,7 @@ async function setupSessionProxy(window: BrowserWindow): Promise<void> {
 
     // プロキシ設定を決定
     const proxyConfig = resolveProxyConfig(awsConfig?.proxyConfig)
-    console.log({ proxyConfig })
+    log.debug('Resolved proxy configuration', { proxyConfig })
 
     if (proxyConfig) {
       const electronProxyRules = convertToElectronProxyConfig(proxyConfig)
@@ -224,7 +223,7 @@ function createMenu(window: BrowserWindow) {
         {
           label: 'GitHub Repository',
           click: async () => {
-            await shell.openExternal('https://github.com/aws-samples/bedrock-engineer')
+            await shell.openExternal('https://github.com/daisuke-awaji/bedrock-engineer')
           }
         }
       ]
@@ -351,7 +350,7 @@ async function createWindow(): Promise<void> {
   const port = await getRandomPort()
   store.set('apiEndpoint', `http://localhost:${port}`)
 
-  server.listen(port, () => {
+  apiServer = server.listen(port, () => {
     apiLogger.info('API server started', {
       endpoint: `http://localhost:${port}`
     })
@@ -379,6 +378,8 @@ registerGlobalErrorHandlers()
 let mainWindow: BrowserWindow | null = null
 // Track app quit state for macOS
 let isQuitting = false
+// Reference to running API HTTP server
+let apiServer: HTTPServer | null = null
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -432,8 +433,9 @@ app.whenReady().then(async () => {
   registerIpcHandlers(backgroundAgentHandlers, { loggerCategory: 'background-agent:ipc' })
   registerIpcHandlers(pubsubHandlers, { loggerCategory: 'pubsub:ipc' })
   registerIpcHandlers(todoHandlers, { loggerCategory: 'todo:ipc' })
-  registerIpcHandlers(mcpHandlers, { loggerCategory: 'mcp:ipc' })
-  registerIpcHandlers(proxyHandlers, { loggerCategory: 'proxy:ipc' })
+
+  // プロキシ関連IPCハンドラーの登録
+  registerProxyHandlers()
 
   // ログハンドラーの登録
   registerLogHandler()
@@ -502,23 +504,17 @@ app.whenReady().then(async () => {
       })
     }
 
-    // MCP クライアントのクリーンアップ処理
-    try {
-      cleanupMcpHandlers()
-      // 非同期クリーンアップは fire-and-forget で実行（before-quit は同期）
-      cleanupMcpClients()
-        .then(() => {
-          log.info('MCP clients cleanup completed')
+    // Close API server to release port
+    if (apiServer) {
+      try {
+        apiServer.close(() => {
+          log.info('API server closed')
         })
-        .catch((error) => {
-          log.error('Failed to cleanup MCP clients', {
-            error: error instanceof Error ? error.message : String(error)
-          })
+      } catch (error) {
+        log.error('Failed to close API server', {
+          error: error instanceof Error ? error.message : String(error)
         })
-    } catch (error) {
-      log.error('Failed to cleanup MCP clients', {
-        error: error instanceof Error ? error.message : String(error)
-      })
+      }
     }
 
     // Background Agent Schedulerのシャットダウン処理（強化版）

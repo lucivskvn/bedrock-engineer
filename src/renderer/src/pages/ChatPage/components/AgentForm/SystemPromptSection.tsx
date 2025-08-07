@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FiZap, FiEye, FiEyeOff, FiChevronDown, FiChevronUp, FiMic } from 'react-icons/fi'
@@ -70,7 +71,7 @@ export const SystemPromptSection: React.FC<SystemPromptSectionProps> = ({
         })
         setEnvironmentContextText(replacedContext)
       } catch (error) {
-        console.error('Failed to load environment context:', error)
+        log.error('Failed to load environment context:', error)
         setEnvironmentContextText('Error loading environment context')
       }
     }

@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 /**
  * CDK実装用プロンプト生成ユーティリティ
  *
@@ -28,7 +29,7 @@ export const generateCDKImplementPrompt = (
       aslJson = JSON.stringify(parsed, null, 2)
     }
   } catch (error) {
-    console.error('Invalid ASL definition:', error)
+    log.error('Invalid ASL definition:', error)
     // フォールバック: エラーがあっても元の文字列を使用
     aslJson = typeof aslDefinition === 'string' ? aslDefinition : JSON.stringify(aslDefinition)
   }
@@ -87,7 +88,7 @@ export const generateCDKImplementPromptJa = (
       aslJson = JSON.stringify(parsed, null, 2)
     }
   } catch (error) {
-    console.error('Invalid ASL definition:', error)
+    log.error('Invalid ASL definition:', error)
     // フォールバック: エラーがあっても元の文字列を使用
     aslJson = typeof aslDefinition === 'string' ? aslDefinition : JSON.stringify(aslDefinition)
   }

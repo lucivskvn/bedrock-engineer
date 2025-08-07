@@ -1,4 +1,5 @@
 import Store from 'electron-store'
+import keytar from 'keytar'
 import { LLM, InferenceParameters, ThinkingMode, ThinkingModeBudget } from '../types/llm'
 import {
   AgentChatConfig,
@@ -11,6 +12,21 @@ import { CustomAgent } from '../types/agent-chat'
 import { BedrockAgent } from '../types/agent'
 import { AWSCredentials } from '../main/api/bedrock/types'
 import { CodeInterpreterContainerConfig } from './tools/handlers/interpreter/types'
+import { log } from './logger'
+
+const KEYCHAIN_SERVICE = 'bedrock-engineer'
+const KEYCHAIN_ACCESS_ID = 'awsAccessKeyId'
+const KEYCHAIN_SECRET = 'awsSecretAccessKey'
+const KEYCHAIN_SESSION = 'awsSessionToken'
+
+let cachedCredentials: {
+  accessKeyId: string
+  secretAccessKey: string
+  sessionToken?: string
+} = {
+  accessKeyId: '',
+  secretAccessKey: ''
+}
 
 const DEFAULT_SHELL =
   process.platform === 'win32'
@@ -137,6 +153,9 @@ type StoreScheme = {
   /** コマンド実行の設定（シェル設定） */
   shell: string
 
+  /** 追加のPATH設定 */
+  commandSearchPaths?: string[]
+
   /** 通知機能の有効/無効設定 */
   notification?: boolean
 
@@ -179,9 +198,9 @@ type StoreScheme = {
 }
 
 const electronStore = new Store<StoreScheme>()
-console.log('store path', electronStore.path)
+log.debug(`store path ${electronStore.path}`)
 
-const init = () => {
+const init = async () => {
   // Initialize userDataPath if not present
   const userDataPath = electronStore.get('userDataPath')
   if (!userDataPath) {
@@ -210,13 +229,40 @@ const init = () => {
   }
 
   // Initialize AWS settings if not present
-  const awsConfig = electronStore.get('aws')
+  const awsConfig = electronStore.get('aws') as Partial<AWSCredentials> | undefined
   if (!awsConfig) {
     electronStore.set('aws', {
-      region: 'us-west-2',
-      accessKeyId: '',
-      secretAccessKey: ''
+      region: 'us-west-2'
     })
+  }
+
+  const [storedAccessKeyId, storedSecretAccessKey, storedSessionToken] = await Promise.all([
+    keytar.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCESS_ID),
+    keytar.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_SECRET),
+    keytar.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_SESSION)
+  ])
+
+  // Migrate old credentials from electron-store if present
+  if (awsConfig?.accessKeyId || awsConfig?.secretAccessKey || awsConfig?.sessionToken) {
+    const accessKeyId = awsConfig.accessKeyId || storedAccessKeyId || ''
+    const secretAccessKey = awsConfig.secretAccessKey || storedSecretAccessKey || ''
+    const sessionToken = awsConfig.sessionToken || storedSessionToken || undefined
+    if (accessKeyId) await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCESS_ID, accessKeyId)
+    if (secretAccessKey) await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_SECRET, secretAccessKey)
+    if (sessionToken) await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_SESSION, sessionToken)
+    cachedCredentials = { accessKeyId, secretAccessKey, sessionToken }
+    electronStore.set('aws', {
+      region: awsConfig.region || 'us-west-2',
+      useProfile: awsConfig.useProfile,
+      profile: awsConfig.profile,
+      proxyConfig: awsConfig.proxyConfig
+    })
+  } else {
+    cachedCredentials = {
+      accessKeyId: storedAccessKeyId || '',
+      secretAccessKey: storedSecretAccessKey || '',
+      sessionToken: storedSessionToken || undefined
+    }
   }
 
   // Initialize inference parameters if not present
@@ -259,6 +305,10 @@ const init = () => {
   const shell = electronStore.get('shell')
   if (!shell) {
     electronStore.set('shell', DEFAULT_SHELL)
+  }
+  const commandSearchPaths = electronStore.get('commandSearchPaths')
+  if (!commandSearchPaths) {
+    electronStore.set('commandSearchPaths', [])
   }
 
   // Initialize bedrockSettings
@@ -310,14 +360,39 @@ const init = () => {
   }
 }
 
-init()
+await init()
 
 type Key = keyof StoreScheme
 export const store = {
   get<T extends Key>(key: T) {
+    if (key === 'aws') {
+      const aws = electronStore.get('aws') as Partial<AWSCredentials> | undefined
+      return {
+        region: aws?.region || 'us-west-2',
+        useProfile: aws?.useProfile,
+        profile: aws?.profile,
+        proxyConfig: aws?.proxyConfig,
+        accessKeyId: cachedCredentials.accessKeyId,
+        secretAccessKey: cachedCredentials.secretAccessKey,
+        sessionToken: cachedCredentials.sessionToken
+      } as StoreScheme[T]
+    }
     return electronStore.get(key)
   },
   set<T extends Key>(key: T, value: StoreScheme[T]) {
+    if (key === 'aws') {
+      const awsValue = value as AWSCredentials
+      const { accessKeyId, secretAccessKey, sessionToken, ...rest } = awsValue
+      void keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCESS_ID, accessKeyId)
+      void keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_SECRET, secretAccessKey)
+      if (sessionToken) {
+        void keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_SESSION, sessionToken)
+      } else {
+        void keytar.deletePassword(KEYCHAIN_SERVICE, KEYCHAIN_SESSION)
+      }
+      cachedCredentials = { accessKeyId, secretAccessKey, sessionToken }
+      return electronStore.set('aws', rest as any)
+    }
     return electronStore.set(key, value)
   }
 }

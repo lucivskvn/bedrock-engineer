@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { nanoid } from 'nanoid'
 import {
@@ -203,7 +204,7 @@ export const useAgentForm = (initialAgent?: CustomAgent, onSave?: (agent: Custom
       const currentServers = mcpServersToUse || formData.mcpServers
 
       // デバッグ - 呼び出し内容を確認
-      console.log(
+      log.debug(
         'fetchMcpTools called with:',
         mcpServersToUse ? `${mcpServersToUse.length} provided servers` : 'no servers provided',
         'current formData servers:',
@@ -212,14 +213,14 @@ export const useAgentForm = (initialAgent?: CustomAgent, onSave?: (agent: Custom
 
       // MCPサーバーが設定されていない場合は明示的にツールをクリア
       if (!currentServers || currentServers.length === 0) {
-        console.log('No MCP servers available in fetchMcpTools, clearing tools')
+        log.debug('No MCP servers available in fetchMcpTools, clearing tools')
         setTempMcpTools([])
         return
       }
 
       setIsLoadingMcpTools(true)
       try {
-        console.log(
+        log.debug(
           'Fetching MCP tools for tab switch:',
           currentServers.length,
           'servers:',
@@ -228,7 +229,7 @@ export const useAgentForm = (initialAgent?: CustomAgent, onSave?: (agent: Custom
         const tools = await window.api.mcp.getToolSpecs(currentServers)
 
         if (tools && tools.length > 0) {
-          console.log('Received MCP tools:', tools.length)
+          log.debug('Received MCP tools:', tools.length)
           // APIから取得したツールをToolState形式に変換
           const toolStates = tools.map((tool) => ({
             toolSpec: tool.toolSpec,
@@ -238,11 +239,11 @@ export const useAgentForm = (initialAgent?: CustomAgent, onSave?: (agent: Custom
 
           setTempMcpTools(toolStates)
         } else {
-          console.log('No MCP tools found from servers')
+          log.debug('No MCP tools found from servers')
           setTempMcpTools([])
         }
       } catch (error) {
-        console.error('Failed to fetch MCP tools:', error)
+        log.error('Failed to fetch MCP tools:', error)
         setTempMcpTools([])
       } finally {
         setIsLoadingMcpTools(false)
@@ -283,7 +284,7 @@ export const useAgentForm = (initialAgent?: CustomAgent, onSave?: (agent: Custom
 
       // ツールタブへの切り替え時
       if (tabId === 'tools') {
-        console.log(
+        log.debug(
           'Switching to tools tab, fetching MCP tools with current servers:',
           formData.mcpServers?.length || 0
         )
@@ -298,7 +299,7 @@ export const useAgentForm = (initialAgent?: CustomAgent, onSave?: (agent: Custom
   // サーバー設定変更時にツールをクリア
   useEffect(() => {
     if (formData.mcpServers && formData.mcpServers.length === 0) {
-      console.log('MCP servers empty, clearing tempMcpTools')
+      log.debug('MCP servers empty, clearing tempMcpTools')
       setTempMcpTools([])
     }
   }, [formData.mcpServers])
@@ -320,14 +321,14 @@ export const useAgentForm = (initialAgent?: CustomAgent, onSave?: (agent: Custom
 
       // 500ms以上経過していれば再取得（デバウンス効果）
       if (timeSinceLastFetch > 500) {
-        console.log('Active tab changed to tools, refreshing MCP tools...')
+        log.debug('Active tab changed to tools, refreshing MCP tools...')
         // タイマーを使用して状態更新の競合を避ける
         setTimeout(() => {
           fetchMcpTools(formData.mcpServers)
           lastMcpToolsFetchRef.current = now
         }, 0)
       } else {
-        console.log('MCP tools fetched recently, skipping redundant fetch')
+        log.debug('MCP tools fetched recently, skipping redundant fetch')
       }
     }
   }, [activeTab, formData.mcpServers, fetchMcpTools])
@@ -341,15 +342,15 @@ export const useAgentForm = (initialAgent?: CustomAgent, onSave?: (agent: Custom
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault()
-      console.log('Form submitted with data:', formData)
-      console.log(
+      log.debug('Form submitted with data:', formData)
+      log.debug(
         'ツール情報:',
         formData.tools ? `${formData.tools.length}件` : '未設定',
         formData.tools
       )
 
       if (formData.tools && formData.tools.length === 0) {
-        console.warn('警告: ツールが設定されていません')
+        log.warn('警告: ツールが設定されていません')
         // ここで対処: ツールが設定されていない場合はデフォルトツール設定を適用
         const defaultTools = getDefaultToolsForCategory('all')
         const defaultToolNames = defaultTools
@@ -363,17 +364,17 @@ export const useAgentForm = (initialAgent?: CustomAgent, onSave?: (agent: Custom
           tools: defaultToolNames
         }
 
-        console.log('デフォルトツールを適用:', updatedFormData.tools)
+        log.debug('デフォルトツールを適用:', updatedFormData.tools)
 
         if (onSave) {
-          console.log('修正したフォームデータで保存')
+          log.debug('修正したフォームデータで保存')
           onSave(updatedFormData)
         }
       } else if (onSave) {
-        console.log('Calling onSave callback')
+        log.debug('Calling onSave callback')
         onSave(formData)
       } else {
-        console.warn('onSave callback is not provided')
+        log.warn('onSave callback is not provided')
       }
     },
     [formData, onSave, getDefaultToolsForCategory]

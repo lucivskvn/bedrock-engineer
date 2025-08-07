@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 /**
  * Camera device utilities for web-based camera access
  * Uses navigator.mediaDevices.enumerateDevices() for device enumeration
@@ -45,7 +46,7 @@ export async function enumerateCameraDevices(): Promise<CameraDeviceInfo[]> {
 
     return cameras
   } catch (error) {
-    console.error('Failed to enumerate camera devices:', error)
+    log.error('Failed to enumerate camera devices:', error)
     throw new Error(
       `Camera device enumeration failed: ${error instanceof Error ? error.message : String(error)}`
     )
@@ -92,14 +93,14 @@ export async function requestCameraPermissionAndEnumerate(): Promise<CameraDevic
         cameras = await enumerateCameraDevices()
       } catch (permissionError) {
         // Permission denied or device access failed
-        console.warn('Camera permission request failed:', permissionError)
+        log.warn('Camera permission request failed:', permissionError)
         // Return the cameras we got without proper labels
       }
     }
 
     return cameras
   } catch (error) {
-    console.error('Failed to request camera permission and enumerate:', error)
+    log.error('Failed to request camera permission and enumerate:', error)
     throw error
   }
 }

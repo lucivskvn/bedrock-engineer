@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import useSetting from '@renderer/hooks/useSetting'
@@ -57,7 +58,7 @@ export const SettingPage: React.FC = () => {
     if (selectedModel) {
       updateLLM(selectedModel)
     } else {
-      console.error(t('Invalid model'))
+      log.error(t('Invalid model'))
     }
   }
 
