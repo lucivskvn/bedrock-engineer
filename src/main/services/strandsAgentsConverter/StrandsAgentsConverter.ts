@@ -46,10 +46,10 @@ export class StrandsAgentsConverter {
       }
 
       return output
-    } catch (error) {
-      logger.error(`Failed to convert agent: ${agent.name}`, error)
-      throw error
-    }
+      } catch (error) {
+        logger.error(`Failed to convert agent: ${agent.name}`, { error })
+        throw error
+      }
   }
 
   /**
@@ -210,12 +210,12 @@ export class StrandsAgentsConverter {
 
       // Save file
       return await this.saveAgentToDirectory(output, options)
-    } catch (error) {
-      logger.error(`Failed to convert and save agent: ${agent.name}`, error)
-      return {
-        success: false,
-        outputDirectory: options.outputDirectory,
-        savedFiles: [],
+      } catch (error) {
+        logger.error(`Failed to convert and save agent: ${agent.name}`, { error })
+        return {
+          success: false,
+          outputDirectory: options.outputDirectory,
+          savedFiles: [],
         errors: [
           {
             file: 'conversion',

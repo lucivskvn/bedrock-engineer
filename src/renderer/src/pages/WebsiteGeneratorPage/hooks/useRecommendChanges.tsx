@@ -66,7 +66,7 @@ export const useRecommendChanges = () => {
         setRecommendLoading(false)
       }
     } catch (e) {
-      log.debug(e)
+      log.debug('Error parsing recommend changes', { error: e })
       retry += 1
       return getRecommendChanges(websiteCode)
     }

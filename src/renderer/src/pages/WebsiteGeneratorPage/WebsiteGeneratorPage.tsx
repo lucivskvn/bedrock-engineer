@@ -258,7 +258,7 @@ function WebsiteGeneratorPageContents(props: WebsiteGeneratorPageContentsProps) 
       // Agent Chatページに遷移し、プロンプトをクエリパラメータで渡す
       navigate(`/chat?prompt=${encodeURIComponent(prompt)}&agent=softwareAgent`)
     } catch (error) {
-      log.error('Error generating prompt or navigating:', error)
+      log.error('Error generating prompt or navigating:', { error })
     }
   }, [sandpack.files, template, styleType, userInput, navigate])
 

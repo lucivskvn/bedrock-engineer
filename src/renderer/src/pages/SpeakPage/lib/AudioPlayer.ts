@@ -52,13 +52,13 @@ export class AudioPlayer {
 
       // Create audio context
       this.audioContext = new AudioContext({ sampleRate: 24000 })
-      log.debug('AudioPlayer: AudioContext created, state:', this.audioContext.state)
+      log.debug('AudioPlayer: AudioContext created', { state: this.audioContext.state })
 
       // Resume context if suspended (required in some browsers)
       if (this.audioContext.state === 'suspended') {
         log.debug('AudioPlayer: Resuming suspended AudioContext...')
         await this.audioContext.resume()
-        log.debug('AudioPlayer: AudioContext resumed, state:', this.audioContext.state)
+        log.debug('AudioPlayer: AudioContext resumed', { state: this.audioContext.state })
       }
 
       this.analyser = this.audioContext.createAnalyser()
@@ -67,13 +67,13 @@ export class AudioPlayer {
 
       // Get the appropriate worklet URL based on environment
       const workletUrl = getAudioWorkletUrl()
-      log.debug('AudioPlayer: Loading AudioWorklet from:', workletUrl)
+      log.debug('AudioPlayer: Loading AudioWorklet from', { workletUrl })
 
       try {
         await this.audioContext.audioWorklet.addModule(workletUrl)
         log.debug('AudioPlayer: AudioWorklet module loaded successfully')
       } catch (error) {
-        log.error('AudioPlayer: Failed to load AudioWorklet module:', error)
+        log.error('AudioPlayer: Failed to load AudioWorklet module:', { error })
         throw new Error(`Failed to load AudioWorklet module: ${error}`)
       }
 
@@ -101,7 +101,7 @@ export class AudioPlayer {
       this.initialized = true
       log.debug('AudioPlayer: Initialization completed successfully')
     } catch (error) {
-      log.error('AudioPlayer: Failed to initialize:', error)
+      log.error('AudioPlayer: Failed to initialize:', { error })
       this.initialized = false
       throw error
     }
@@ -147,10 +147,12 @@ export class AudioPlayer {
       return // No override specified
     }
     const bufferLength = parseInt(value)
-    if (isNaN(bufferLength)) {
-      log.error('Invalid audioPlayerInitialBufferLength value:', JSON.stringify(value))
-      return
-    }
+      if (isNaN(bufferLength)) {
+        log.error('Invalid audioPlayerInitialBufferLength value:', {
+          value: JSON.stringify(value)
+        })
+        return
+      }
     if (this.workletNode) {
       this.workletNode.port.postMessage({
         type: 'initial-buffer-length',

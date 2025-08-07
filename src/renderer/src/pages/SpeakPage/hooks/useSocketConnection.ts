@@ -1,4 +1,5 @@
-import { rendererLogger as log } from '@renderer/lib/logger';
+import { rendererLogger } from '@renderer/lib/logger';
+const log: any = rendererLogger;
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
 
@@ -225,14 +226,14 @@ export function useSocketConnection(
   }, [])
 
   // Send prompt start
-  const sendPromptStart = useCallback((tools?: any[], voiceId?: string) => {
-    if (socketRef.current?.connected) {
-      log.debug('Sending promptStart with tools:', tools?.length || 0, 'voiceId:', voiceId)
-      socketRef.current.emit('promptStart', { tools, voiceId })
-    } else {
-      log.warn('Cannot send prompt start: socket not connected')
-    }
-  }, [])
+    const sendPromptStart = useCallback((tools?: any[], voiceId?: string) => {
+      if (socketRef.current?.connected) {
+        log.debug('Sending promptStart', { toolsCount: tools?.length || 0, voiceId })
+        socketRef.current.emit('promptStart', { tools, voiceId })
+      } else {
+        log.warn('Cannot send prompt start: socket not connected')
+      }
+    }, [])
 
   // Send system prompt
   const sendSystemPrompt = useCallback((prompt: string) => {

@@ -79,7 +79,7 @@ export class FlowService {
         ...processedResponse
       }
     } catch (error) {
-      log.error('Error invoking flow:', error)
+      log.error('Error invoking flow:', { error })
       throw error
     }
   }
@@ -177,7 +177,7 @@ export class FlowService {
         }
       }
     } catch (error: any) {
-      log.error('Error processing response stream:', error)
+      log.error('Error processing response stream:', { error })
 
       // セッションコンテキストエラーの場合は特別なハンドリング
       if (

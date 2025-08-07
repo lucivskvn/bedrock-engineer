@@ -52,9 +52,9 @@ export class ChatSessionManager {
         }
 
         log.debug('Metadata initialized successfully')
-      } catch (error) {
-        log.error('Error initializing metadata:', error)
-      }
+        } catch (error) {
+          log.error('Error initializing metadata:', { error })
+        }
     }
   }
 
@@ -67,19 +67,19 @@ export class ChatSessionManager {
     try {
       const data = fs.readFileSync(filePath, 'utf-8')
       return JSON.parse(data) as ChatSession
-    } catch (error) {
-      log.error(`Error reading session file ${sessionId}:`, error)
-      return null
-    }
+      } catch (error) {
+        log.error(`Error reading session file ${sessionId}:`, { error })
+        return null
+      }
   }
 
   private async writeSessionFile(sessionId: string, session: ChatSession): Promise<void> {
     const filePath = this.getSessionFilePath(sessionId)
     try {
       await fs.promises.writeFile(filePath, JSON.stringify(session, null, 2))
-    } catch (error) {
-      log.error(`Error writing session file ${sessionId}:`, error)
-    }
+      } catch (error) {
+        log.error(`Error writing session file ${sessionId}:`, { error })
+      }
   }
 
   private updateMetadata(sessionId: string, session: ChatSession): void {
@@ -155,9 +155,9 @@ export class ChatSessionManager {
       const metadata = this.metadataStore.get('metadata')
       delete metadata[sessionId]
       this.metadataStore.set('metadata', metadata)
-    } catch (error) {
-      log.error(`Error deleting session file ${sessionId}:`, error)
-    }
+      } catch (error) {
+        log.error(`Error deleting session file ${sessionId}:`, { error })
+      }
 
     const recentSessions = this.metadataStore.get('recentSessions')
     this.metadataStore.set(
@@ -183,9 +183,9 @@ export class ChatSessionManager {
       this.metadataStore.delete('activeSessionId')
 
       log.debug('All sessions have been deleted successfully')
-    } catch (error) {
-      log.error('Error deleting all sessions:', error)
-    }
+      } catch (error) {
+        log.error('Error deleting all sessions:', { error })
+      }
   }
 
   private updateRecentSessions(sessionId: string): void {

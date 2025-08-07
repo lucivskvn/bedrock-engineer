@@ -46,7 +46,7 @@ export const MermaidCore: React.FC<Props> = (props) => {
           onRenderComplete?.()
         }
       } catch (error) {
-        log.error(error)
+        log.error('Mermaid render error', { error })
         setSvgContent('<div>Invalid syntax</div>')
         // エラー時はコールバックを呼び出さない
       }

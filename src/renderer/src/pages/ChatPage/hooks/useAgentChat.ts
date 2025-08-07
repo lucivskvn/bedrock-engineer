@@ -383,7 +383,7 @@ export const useAgentChat = (
         } else if (json.messageStop) {
           if (!messageStart) {
             log.warn('messageStop without messageStart')
-            log.debug(messages)
+            log.debug('messages before retry', messages)
             await streamChat(props, currentMessages)
             return
           }
@@ -682,7 +682,7 @@ export const useAgentChat = (
         log.debug('Chat stream aborted')
         return
       }
-      log.error({ streamChatRequestError: error })
+      log.error('streamChatRequestError', { streamChatRequestError: error })
       toast.error(t('request error'))
       const messageId = generateMessageId()
       const errorMessage: IdentifiableMessage = {
@@ -775,7 +775,7 @@ export const useAgentChat = (
                 const toolResultText =
                   typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
 
-                log.debug({ toolResultText })
+                log.debug('tool result text', { toolResultText })
                 // ツール結果をGuardrailで評価
                 const guardrailResult = await window.api.bedrock.applyGuardrail({
                   guardrailIdentifier: guardrailSettings.guardrailIdentifier,
@@ -789,7 +789,7 @@ export const useAgentChat = (
                     }
                   ]
                 })
-                log.debug({ guardrailResult })
+                log.debug('guardrail result', { guardrailResult })
 
                 // ガードレールが介入した場合は代わりにエラーメッセージを使用
                 if (guardrailResult.action === 'GUARDRAIL_INTERVENED') {
@@ -831,7 +831,7 @@ export const useAgentChat = (
             // 最終的なツール結果をコレクションに追加
             toolResults.push(resultContentBlock)
           } catch (e: any) {
-            log.error(e)
+            log.error('tool result processing error', { error: e })
             toolResults.push({
               toolResult: {
                 toolUseId: toolUse.toolUseId,
@@ -964,7 +964,7 @@ export const useAgentChat = (
       const lastMessage = currentMessages[currentMessages.length - 1]
       if (lastMessage.content?.find((v) => v.toolUse)) {
         if (!lastMessage.content) {
-          log.warn(lastMessage)
+          log.warn('last message', lastMessage)
           result = null
         } else {
           result = await recursivelyExecTool(lastMessage.content, currentMessages)

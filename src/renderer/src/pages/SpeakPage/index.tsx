@@ -1,4 +1,5 @@
-import { rendererLogger as log } from '@renderer/lib/logger';
+import { rendererLogger } from '@renderer/lib/logger';
+const log: any = rendererLogger;
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'

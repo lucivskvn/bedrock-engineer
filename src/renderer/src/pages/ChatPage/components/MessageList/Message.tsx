@@ -286,8 +286,7 @@ export const ChatMessage = memo(function ChatMessage({
               </div>
             )
           } else {
-            log.error(c)
-            log.error('Invalid message content')
+            log.error('Invalid message content', { content: c })
             return (
               <div key={index} className="relative">
                 <CodeRenderer text={JSON.stringify(c)} />

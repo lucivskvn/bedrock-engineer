@@ -86,7 +86,7 @@ export class AgentService {
 
     try {
       const response = await agentClient.send(command)
-      log.debug({ response })
+      log.debug('Agent invocation response', { response })
       return {
         $metadata: response.$metadata,
         contentType: response.contentType,
@@ -96,7 +96,7 @@ export class AgentService {
           : undefined
       }
     } catch (error) {
-      log.error('Error invoking agent:', error)
+      log.error('Error invoking agent:', { error })
       throw error
     }
   }
@@ -140,7 +140,7 @@ export class AgentService {
         }
       }
     } catch (error) {
-      log.error('Error reading stream:', error)
+      log.error('Error reading stream:', { error })
       throw error
     }
     return response
