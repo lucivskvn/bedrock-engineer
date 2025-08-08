@@ -64,20 +64,25 @@ export const createPreloadCategoryLogger = (category: string) => {
  * Renderer logger API - exposed to the renderer process
  */
 export const rendererLogger = {
-  error: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('error', message, { ...meta, process: 'renderer' })
+  error: (message: any, ...meta: unknown[]) => {
+    const metaObj = (meta[0] as any) || {}
+    sendLogToMain('error', message, { ...metaObj, process: 'renderer' })
   },
-  warn: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('warn', message, { ...meta, process: 'renderer' })
+  warn: (message: any, ...meta: unknown[]) => {
+    const metaObj = (meta[0] as any) || {}
+    sendLogToMain('warn', message, { ...metaObj, process: 'renderer' })
   },
-  info: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('info', message, { ...meta, process: 'renderer' })
+  info: (message: any, ...meta: unknown[]) => {
+    const metaObj = (meta[0] as any) || {}
+    sendLogToMain('info', message, { ...metaObj, process: 'renderer' })
   },
-  debug: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('debug', message, { ...meta, process: 'renderer' })
+  debug: (message: any, ...meta: unknown[]) => {
+    const metaObj = (meta[0] as any) || {}
+    sendLogToMain('debug', message, { ...metaObj, process: 'renderer' })
   },
-  verbose: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('verbose', message, { ...meta, process: 'renderer' })
+  verbose: (message: any, ...meta: unknown[]) => {
+    const metaObj = (meta[0] as any) || {}
+    sendLogToMain('verbose', message, { ...metaObj, process: 'renderer' })
   }
 }
 
@@ -86,20 +91,25 @@ export const rendererLogger = {
  */
 export const createRendererCategoryLogger = (category: string) => {
   return {
-    error: (message: string, meta: Record<string, any> = {}) => {
-      rendererLogger.error(message, { ...meta, category })
+    error: (message: any, ...meta: unknown[]) => {
+      const metaObj = (meta[0] as any) || {}
+      rendererLogger.error(message, { ...metaObj, category })
     },
-    warn: (message: string, meta: Record<string, any> = {}) => {
-      rendererLogger.warn(message, { ...meta, category })
+    warn: (message: any, ...meta: unknown[]) => {
+      const metaObj = (meta[0] as any) || {}
+      rendererLogger.warn(message, { ...metaObj, category })
     },
-    info: (message: string, meta: Record<string, any> = {}) => {
-      rendererLogger.info(message, { ...meta, category })
+    info: (message: any, ...meta: unknown[]) => {
+      const metaObj = (meta[0] as any) || {}
+      rendererLogger.info(message, { ...metaObj, category })
     },
-    debug: (message: string, meta: Record<string, any> = {}) => {
-      rendererLogger.debug(message, { ...meta, category })
+    debug: (message: any, ...meta: unknown[]) => {
+      const metaObj = (meta[0] as any) || {}
+      rendererLogger.debug(message, { ...metaObj, category })
     },
-    verbose: (message: string, meta: Record<string, any> = {}) => {
-      rendererLogger.verbose(message, { ...meta, category })
+    verbose: (message: any, ...meta: unknown[]) => {
+      const metaObj = (meta[0] as any) || {}
+      rendererLogger.verbose(message, { ...metaObj, category })
     }
   }
 }

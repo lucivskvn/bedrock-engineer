@@ -86,7 +86,7 @@ export class AgentService {
 
     try {
       const response = await agentClient.send(command)
-      log.debug({ response })
+      log.debug('Agent invoke response', { response })
       return {
         $metadata: response.$metadata,
         contentType: response.contentType,

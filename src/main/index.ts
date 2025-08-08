@@ -29,7 +29,7 @@ import { agentHandlers } from './handlers/agent-handlers'
 import { utilHandlers } from './handlers/util-handlers'
 import { screenHandlers } from './handlers/screen-handlers'
 import { cameraHandlers } from './handlers/camera-handlers'
-import { registerProxyHandlers } from './handlers/proxy-handlers'
+import { proxyHandlers } from './handlers/proxy-handlers'
 import {
   backgroundAgentHandlers,
   shutdownBackgroundAgentScheduler
@@ -435,7 +435,7 @@ app.whenReady().then(async () => {
   registerIpcHandlers(todoHandlers, { loggerCategory: 'todo:ipc' })
 
   // プロキシ関連IPCハンドラーの登録
-  registerProxyHandlers()
+  registerIpcHandlers(proxyHandlers, { loggerCategory: 'proxy:ipc' })
 
   // ログハンドラーの登録
   registerLogHandler()

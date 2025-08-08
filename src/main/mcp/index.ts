@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { MCPClient } from './mcp-client'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { McpServerConfig } from '../../types/agent-chat'
-import { log } from '../logger'
+import { log } from '../../common/logger'
 
 const configSchema = z.object({
   mcpServers: z.record(
@@ -27,25 +27,25 @@ let initializationInProgress: Promise<void> | null = null
  * サーバー設定の安定した比較用のハッシュ値を生成する
  * 構成の本質的な部分のみを考慮し、不要な変動要素を除外する
  */
-const generateConfigHash = (servers: McpServerConfig[]): string => {
-  if (!servers || servers.length === 0) {
-    return 'empty'
+  const generateConfigHash = (servers: McpServerConfig[]): string => {
+    if (!servers || servers.length === 0) {
+      return 'empty'
+    }
+
+    // 名前で並べ替えて安定した順序にする
+    const sortedServers = [...servers].sort((a, b) => a.name.localeCompare(b.name))
+
+    // 本質的な設定のみを含むオブジェクトの配列を作成
+    const essentialConfigs = sortedServers.map((server) => ({
+      name: server.name,
+      command: server.command,
+      args: [...(server.args ?? [])], // 配列のコピーを作成して安定させる
+      // 環境変数がある場合のみ含める
+      ...(server.env && Object.keys(server.env).length > 0 ? { env: { ...server.env } } : {})
+    }))
+
+    return JSON.stringify(essentialConfigs)
   }
-
-  // 名前で並べ替えて安定した順序にする
-  const sortedServers = [...servers].sort((a, b) => a.name.localeCompare(b.name))
-
-  // 本質的な設定のみを含むオブジェクトの配列を作成
-  const essentialConfigs = sortedServers.map((server) => ({
-    name: server.name,
-    command: server.command,
-    args: [...server.args], // 配列のコピーを作成して安定させる
-    // 環境変数がある場合のみ含める
-    ...(server.env && Object.keys(server.env).length > 0 ? { env: { ...server.env } } : {})
-  }))
-
-  return JSON.stringify(essentialConfigs)
-}
 
 /**
  * サーバー設定が実質的に変更されたかどうかをチェック
@@ -133,8 +133,8 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
         mcpServers: mcpServers.reduce(
           (acc, server) => {
             acc[server.name] = {
-              command: server.command,
-              args: server.args,
+              command: server.command ?? '',
+              args: server.args ?? [],
               env: server.env || {}
             }
             return acc
@@ -155,8 +155,8 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
           mcpServers.map(async (serverConfig) => {
             try {
               const client = await MCPClient.fromCommand(
-                serverConfig.command,
-                serverConfig.args,
+                serverConfig.command ?? '',
+                serverConfig.args ?? [],
                 serverConfig.env
               )
               return { name: serverConfig.name, client }
@@ -289,7 +289,11 @@ export const testMcpServerConnection = async (
 
   try {
     // 単一サーバー用の一時的なクライアントを作成
-    const client = await MCPClient.fromCommand(mcpServer.command, mcpServer.args, mcpServer.env)
+    const client = await MCPClient.fromCommand(
+      mcpServer.command ?? '',
+      mcpServer.args ?? [],
+      mcpServer.env
+    )
 
     // ツール情報を取得
     const tools = client.tools || []
@@ -391,4 +395,21 @@ function analyzeServerError(errorMessage: string): string {
   }
 
   return 'Please make sure your command and arguments are correct.'
+}
+
+/**
+ * Cleanup all MCP clients and reset caches
+ */
+export const cleanupMcpClients = async (): Promise<void> => {
+  await Promise.all(
+    clients.map(({ client }) =>
+      client.cleanup().catch((error) => {
+        log.error('Failed to cleanup MCP client', { error })
+      })
+    )
+  )
+  clients = []
+  lastMcpServerConfigHash = null
+  lastMcpServerLength = 0
+  lastMcpServerNames = []
 }

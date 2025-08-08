@@ -360,7 +360,9 @@ const init = async () => {
   }
 }
 
-await init()
+void init().catch((error) => {
+  log.error('Failed to initialize store', { error })
+})
 
 type Key = keyof StoreScheme
 export const store = {

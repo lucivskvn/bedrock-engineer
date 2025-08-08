@@ -90,9 +90,9 @@ export class TodoSessionManager {
         }
 
         log.debug('Todo metadata initialized successfully')
-      } catch (error) {
-        log.error('Error initializing todo metadata:', error)
-      }
+        } catch (error) {
+          log.error('Error initializing todo metadata:', error as Record<string, any>)
+        }
     }
   }
 
@@ -110,7 +110,7 @@ export class TodoSessionManager {
       const data = fs.readFileSync(filePath, 'utf-8')
       return JSON.parse(data) as TodoList
     } catch (error) {
-      log.error(`Error reading todo file ${sessionId}:`, error)
+      log.error(`Error reading todo file ${sessionId}:`, error as Record<string, any>)
       return null
     }
   }
@@ -120,7 +120,7 @@ export class TodoSessionManager {
     try {
       await fs.promises.writeFile(filePath, JSON.stringify(todoList, null, 2))
     } catch (error) {
-      log.error(`Error writing todo file ${sessionId}:`, error)
+      log.error(`Error writing todo file ${sessionId}:`, error as Record<string, any>)
     }
   }
 
@@ -235,7 +235,7 @@ export class TodoSessionManager {
       delete metadata[sessionId]
       this.metadataStore.set('metadata', metadata)
     } catch (error) {
-      log.error(`Error deleting todo file ${sessionId}:`, error)
+      log.error(`Error deleting todo file ${sessionId}:`, error as Record<string, any>)
     }
 
     const recentTodos = this.metadataStore.get('recentTodos')

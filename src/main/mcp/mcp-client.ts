@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { z } from 'zod'
 import { resolveCommand } from './command-resolver'
-import { log } from '../logger'
+import { log } from '../../common/logger'
 
 // https://github.com/modelcontextprotocol/quickstart-resources/blob/main/mcp-client-typescript/index.ts
 export class MCPClient {

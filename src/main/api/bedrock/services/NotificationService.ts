@@ -2,7 +2,7 @@ import { Notification, BrowserWindow } from 'electron'
 import { createCategoryLogger } from '../../../../common/logger'
 import { ServiceContext } from '../types'
 import { windowHandlers } from '../../../handlers/window-handlers'
-import { t } from '../../i18n'
+import { t } from '../../../i18n'
 
 const logger = createCategoryLogger('notification-service')
 
