@@ -249,6 +249,9 @@ async function createWindow(): Promise<void> {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: false,
+      enableRemoteModule: false,
       // Zoom related settings
       zoomFactor: 1.0,
       enableWebSQL: false
