@@ -1,5 +1,7 @@
 import Store from 'electron-store'
 import keytar from 'keytar'
+import { randomBytes } from 'crypto'
+import { promises as fs } from 'fs'
 import { LLM, InferenceParameters, ThinkingMode, ThinkingModeBudget } from '../types/llm'
 import {
   AgentChatConfig,
@@ -18,6 +20,7 @@ const KEYCHAIN_SERVICE = 'bedrock-engineer'
 const KEYCHAIN_ACCESS_ID = 'awsAccessKeyId'
 const KEYCHAIN_SECRET = 'awsSecretAccessKey'
 const KEYCHAIN_SESSION = 'awsSessionToken'
+const KEYCHAIN_ENCRYPTION_KEY = 'storeEncryptionKey'
 
 let cachedCredentials: {
   accessKeyId: string
@@ -197,7 +200,26 @@ type StoreScheme = {
   organizations?: OrganizationConfig[]
 }
 
-const electronStore = new Store<StoreScheme>()
+const createElectronStore = async () => {
+  const existingKey = await keytar.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ENCRYPTION_KEY)
+  if (existingKey) {
+    return new Store<StoreScheme>({ encryptionKey: existingKey })
+  }
+
+  const generatedKey = randomBytes(32).toString('hex')
+  await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ENCRYPTION_KEY, generatedKey)
+
+  const plainStore = new Store<StoreScheme>()
+  const storePath = plainStore.path
+  const data = plainStore.store
+  await fs.rm(storePath, { force: true })
+
+  const encryptedStore = new Store<StoreScheme>({ encryptionKey: generatedKey })
+  encryptedStore.store = data
+  return encryptedStore
+}
+
+const electronStore = await createElectronStore()
 log.debug(`store path ${electronStore.path}`)
 
 const init = async () => {
@@ -248,7 +270,8 @@ const init = async () => {
     const secretAccessKey = awsConfig.secretAccessKey || storedSecretAccessKey || ''
     const sessionToken = awsConfig.sessionToken || storedSessionToken || undefined
     if (accessKeyId) await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCESS_ID, accessKeyId)
-    if (secretAccessKey) await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_SECRET, secretAccessKey)
+    if (secretAccessKey)
+      await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_SECRET, secretAccessKey)
     if (sessionToken) await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_SESSION, sessionToken)
     cachedCredentials = { accessKeyId, secretAccessKey, sessionToken }
     electronStore.set('aws', {
@@ -360,7 +383,7 @@ const init = async () => {
   }
 }
 
-init()
+await init()
 
 type Key = keyof StoreScheme
 export const store = {
