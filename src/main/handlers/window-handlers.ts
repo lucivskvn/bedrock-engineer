@@ -73,7 +73,8 @@ export const preloadTaskHistoryWindow = async (): Promise<void> => {
       title: 'Task Execution History',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
-        sandbox: false,
+        sandbox: true,
+        nodeIntegration: false,
         contextIsolation: true,
         devTools: true
       }
@@ -181,7 +182,8 @@ export const windowHandlers = {
       title: 'Task Execution History',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
-        sandbox: false,
+        sandbox: true,
+        nodeIntegration: false,
         contextIsolation: true,
         devTools: true
       }

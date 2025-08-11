@@ -5,7 +5,11 @@ import {
   SystemContentBlock,
   ToolConfiguration
 } from '@aws-sdk/client-bedrock-runtime'
-import { ConfigStore } from '../../../preload/store'
+// Define minimal store interface locally to avoid importing preload store
+export interface ConfigStore {
+  get(key: string): any
+  set(key: string, value: any): void
+}
 
 export type CallConverseAPIProps = {
   modelId: string

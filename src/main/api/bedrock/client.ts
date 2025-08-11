@@ -3,7 +3,6 @@ import { BedrockClient } from '@aws-sdk/client-bedrock'
 import { BedrockAgentRuntimeClient } from '@aws-sdk/client-bedrock-agent-runtime'
 import { TranslateClient } from '@aws-sdk/client-translate'
 import { fromIni } from '@aws-sdk/credential-providers'
-import { NovaSonicBidirectionalStreamClient } from '../sonic/client'
 import type { AWSCredentials } from './types'
 import { S3Client } from '@aws-sdk/client-s3'
 import { createHttpOptions } from '../../lib/proxy-utils'
@@ -85,6 +84,8 @@ export function createAgentRuntimeClient(awsCredentials: AWSCredentials) {
 }
 
 export function createNovaSonicClient(awsCredentials: AWSCredentials) {
+  // Lazily require to avoid loading heavy dependencies when not needed
+  const { NovaSonicBidirectionalStreamClient } = require('../sonic/client')
   const { region, useProfile, profile, ...credentials } = awsCredentials
   const httpOptions = createHttpOptions(awsCredentials)
 
