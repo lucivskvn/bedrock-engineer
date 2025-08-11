@@ -2,6 +2,7 @@ import express, { Request, Response, ErrorRequestHandler } from 'express'
 import cors from 'cors'
 import compression from 'compression'
 import helmet from 'helmet'
+import rateLimit from 'express-rate-limit'
 import { RequestHandler, NextFunction } from 'express'
 import { RetrieveAndGenerateCommandInput } from '@aws-sdk/client-bedrock-agent-runtime'
 import { BedrockService, CallConverseAPIProps } from './bedrock'
@@ -46,6 +47,18 @@ const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
 // アプリケーションで動作するようにdotenvを設定する
 const api = express()
 const server = http.createServer(api)
+
+const rateLimitWindowMs = parseInt(
+  process.env.RATE_LIMIT_WINDOW_MS || String(15 * 60 * 1000),
+  10
+)
+const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '100', 10)
+api.use(
+  rateLimit({
+    windowMs: rateLimitWindowMs,
+    max: rateLimitMax
+  })
+)
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
