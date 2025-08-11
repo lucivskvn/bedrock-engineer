@@ -2,7 +2,11 @@ import { jest } from '@jest/globals'
 
 describe('preload sandbox', () => {
   test('exposes APIs in isolated context', async () => {
-    const expose = jest.fn()
+    const windowMock: any = {}
+    ;(global as any).window = windowMock
+    const expose = jest.fn((key: string, value: unknown) => {
+      windowMock[key] = value
+    })
     const originalContext = (process as any).contextIsolated
 
     await jest.isolateModulesAsync(async () => {
@@ -44,5 +48,8 @@ describe('preload sandbox', () => {
         'preloadTools'
       ])
     )
+    expect(windowMock.process).toBeUndefined()
+    expect(windowMock.require).toBeUndefined()
+    delete (global as any).window
   })
 })
