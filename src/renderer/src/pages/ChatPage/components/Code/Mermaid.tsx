@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { IoIosClose } from 'react-icons/io'
 import { VscZoomIn, VscZoomOut, VscScreenFull } from 'react-icons/vsc'
+import DOMPurify from 'dompurify'
 
 type Props = {
   code: string
@@ -16,7 +17,7 @@ mermaid.initialize({
   // syntax error が dom node に勝手に追加されないようにする
   // https://github.com/mermaid-js/mermaid/pull/4359
   suppressErrorRendering: true,
-  securityLevel: 'loose', // SVGのレンダリングを許可
+  securityLevel: 'strict',
   theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
   fontFamily: 'monospace', // フォントファミリーを指定
   fontSize: 16, // フォントサイズを指定
@@ -41,7 +42,8 @@ export const MermaidCore: React.FC<Props> = (props) => {
           // SVG要素に必要な属性を設定
           svgElement.setAttribute('width', '100%')
           svgElement.setAttribute('height', '100%')
-          setSvgContent(svgElement.outerHTML)
+          const sanitizedSvg = DOMPurify.sanitize(svgElement.outerHTML)
+          setSvgContent(sanitizedSvg)
           // レンダリング成功時にコールバックを呼び出し
           onRenderComplete?.()
         }
