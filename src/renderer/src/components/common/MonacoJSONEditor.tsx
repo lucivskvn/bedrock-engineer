@@ -101,7 +101,7 @@ export const MonacoJSONEditor: React.FC<MonacoJSONEditorProps> = ({
       const parsed = JSON.parse(unformatted)
       const formatted = JSON.stringify(parsed, null, 2)
       editorRef.current.setValue(formatted)
-    } catch (error) {
+    } catch {
       // エラーの場合は何もしない（バリデーションが処理する）
     }
   }

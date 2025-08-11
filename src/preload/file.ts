@@ -24,7 +24,7 @@ async function readSharedAgents(): Promise<{ agents: CustomAgent[]; error?: Erro
     // Check if the shared agents directory exists
     try {
       await promisify(fs.access)(sharedAgentsDir)
-    } catch (error) {
+    } catch {
       return { agents: [] }
     }
 
@@ -86,7 +86,7 @@ async function readDirectoryAgents(): Promise<{ agents: CustomAgent[]; error?: E
     // Check if the directory agents directory exists
     try {
       await promisify(fs.access)(agentsDir)
-    } catch (error) {
+    } catch {
       log.debug(`Directory agents directory not found: ${agentsDir}`)
       return { agents: [] }
     }

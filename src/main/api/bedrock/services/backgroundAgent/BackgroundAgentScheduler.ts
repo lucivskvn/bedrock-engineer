@@ -874,7 +874,7 @@ export class BackgroundAgentScheduler {
       // 簡易実装として、現在時刻から1分後を設定
       // 実際のcron計算ロジックは複雑なので簡略化
       return Date.now() + 60000 // 1分後
-    } catch (error) {
+    } catch {
       return Date.now() + 3600000 // エラー時は1時間後
     }
   }

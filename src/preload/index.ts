@@ -131,21 +131,21 @@ if (process.contextIsolated) {
 } else {
   try {
     log.info('Initializing preload APIs (context isolation disabled)')
-    // @ts-ignore (define in dts)
+    // @ts-expect-error (define in dts)
     window.electron = electronAPI
-    // @ts-ignore (define in dts)
+    // @ts-expect-error (define in dts)
     window.api = api
-    // @ts-ignore (define in dts)
+    // @ts-expect-error (define in dts)
     window.store = store
-    // @ts-ignore (define in dts)
+    // @ts-expect-error (define in dts)
     window.file = file
-    // @ts-ignore (define in dts)
+    // @ts-expect-error (define in dts)
     window.chatHistory = chatHistory
-    // @ts-ignore (define in dts)
+    // @ts-expect-error (define in dts)
     window.appWindow = appWindow
-    // @ts-ignore (define in dts)
+    // @ts-expect-error (define in dts)
     window.ipc = ipcClient
-    // @ts-ignore (define in dts)
+    // @ts-expect-error (define in dts)
     window.logger = {
       log: rendererLogger,
       createCategoryLogger: createRendererCategoryLogger

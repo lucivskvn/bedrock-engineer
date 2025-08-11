@@ -243,7 +243,7 @@ const TaskExecutionHistoryPage: React.FC = () => {
           )
         }
         return <JSONViewer data={parsed} title="" maxHeight={maxHeight} showCopyButton={true} />
-      } catch (e) {
+      } catch {
         // JSON parse failed, display as plain text
         return (
           <pre

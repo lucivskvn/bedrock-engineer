@@ -107,9 +107,6 @@ export class ImageRecognitionService {
    * 存在確認、形式チェック、サイズ制限などを適用
    */
   private validateImageFile(imagePath: string): void {
-    const fs = require('fs')
-    const path = require('path')
-
     // ファイル存在確認
     if (!fs.existsSync(imagePath)) {
       throw new Error(`Image file not found: ${imagePath}`)
@@ -229,8 +226,6 @@ export class ImageRecognitionService {
     prompt: string,
     modelId: string
   ): Promise<string> {
-    const path = require('path')
-
     // ConverseServiceをインポート
     const converseService = new ConverseService(this.context)
 

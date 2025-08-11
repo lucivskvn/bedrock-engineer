@@ -29,7 +29,7 @@ async function loadSharedAgents(): Promise<{ agents: CustomAgent[]; error: strin
     // Check if the directory exists
     try {
       await fs.promises.access(agentsDir)
-    } catch (error) {
+    } catch {
       // If directory doesn't exist, just return empty array
       return { agents: [], error: null }
     }

@@ -80,7 +80,7 @@ function extractCompleteObjects(text: string): GeneratedScenario[] {
           if (isValidScenario(parsed)) {
             scenarios.push(parsed)
           }
-        } catch (e) {
+        } catch {
           // パースに失敗した場合は無視
         }
         currentObject = ''

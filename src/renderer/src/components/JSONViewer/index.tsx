@@ -40,7 +40,7 @@ export const JSONViewer: React.FC<JSONViewerProps> = ({
 
     const elements: React.ReactNode[] = []
     const regex =
-      /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g
+      /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g
     let lastIndex = 0
 
     sanitized.replace(regex, (match, _p1, offset) => {

@@ -89,7 +89,7 @@ export function parseServerConfigJson(
       success: false,
       error: 'Invalid JSON format. Expected "mcpServers" field with server configurations.'
     }
-  } catch (error) {
+  } catch {
     return { success: false, error: 'Invalid JSON format.' }
   }
 }

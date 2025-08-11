@@ -823,12 +823,12 @@ export class NovaSonicBidirectionalStreamClient {
                   this.dispatchEvent(sessionId, 'unknown', jsonResponse)
                 }
               }
-            } catch (e) {
-                logger.debug(
-                  `Raw text response for session ${sessionId}(parse error): `,
-                  { textResponse }
-                )
-            }
+              } catch {
+                  logger.debug(
+                    `Raw text response for session ${sessionId}(parse error): `,
+                    { textResponse }
+                  )
+              }
           } catch (e) {
             logger.error(`Error processing response chunk for session ${sessionId}: `, { error: e })
           }

@@ -1,4 +1,5 @@
 import { IpcMainInvokeEvent } from 'electron'
+import { homedir } from 'os'
 import { TodoSessionManager, TodoItemUpdate } from '../store/todoSession'
 import { log } from '../../common/logger'
 import { store } from '../../preload/store'
@@ -20,7 +21,7 @@ export const todoHandlers = {
   ) => {
     try {
       const { sessionId, items } = params
-      const projectPath = store.get('projectPath') || require('os').homedir()
+      const projectPath = store.get('projectPath') || homedir()
 
       log.info('Initializing todo list', {
         sessionId,

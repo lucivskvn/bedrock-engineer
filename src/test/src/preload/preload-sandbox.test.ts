@@ -1,11 +1,11 @@
 import { jest } from '@jest/globals'
 
 describe('preload sandbox', () => {
-  test('exposes APIs in isolated context', () => {
+  test('exposes APIs in isolated context', async () => {
     const expose = jest.fn()
     const originalContext = (process as any).contextIsolated
 
-    jest.isolateModules(() => {
+    await jest.isolateModulesAsync(async () => {
       ;(process as any).contextIsolated = true
       jest.doMock('electron', () => ({
         contextBridge: { exposeInMainWorld: expose },
@@ -24,7 +24,7 @@ describe('preload sandbox', () => {
       jest.doMock('../../../preload/ipc-client', () => ({ ipcClient: {} }))
       jest.doMock('../../../preload/tools', () => ({ executeTool: jest.fn() }))
       jest.doMock('../../../preload/tools/registry', () => ({ ToolMetadataCollector: { getToolSpecs: jest.fn() } }))
-      require('../../../preload/index')
+      await import('../../../preload/index')
     })
 
     ;(process as any).contextIsolated = originalContext

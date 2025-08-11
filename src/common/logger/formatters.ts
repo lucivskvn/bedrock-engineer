@@ -17,7 +17,7 @@ export const customFormat = format.printf(({ level, message, timestamp, ...metad
     if (Object.keys(metaObj).length > 0) {
       try {
         extraInfo = `\n${JSON.stringify(metaObj, null, 2)}`
-      } catch (e) {
+      } catch {
         extraInfo = `\n[Metadata serialization error]`
       }
     }
