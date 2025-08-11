@@ -3,7 +3,6 @@ import {
   CommandConfig,
   CommandExecutionResult,
   CommandInput,
-  CommandPattern,
   CommandStdinInput,
   DetachedProcessInfo,
   InputDetectionPattern,
@@ -129,44 +128,45 @@ export class CommandService {
     return env
   }
 
-  private parseCommandPattern(commandStr: string): CommandPattern {
-    const parts = commandStr.split(' ')
-    const hasWildcard = parts.some((part) => part === '*')
-
+  private parseCommand(commandStr: string): { command: string; args: string[] } {
+    const parts = commandStr.trim().split(/\s+/).filter(Boolean)
     return {
       command: parts[0],
-      args: parts.slice(1),
-      wildcard: hasWildcard
+      args: parts.slice(1)
+    }
+  }
+
+  private sanitizeArgs(args: string[]): void {
+    for (const arg of args) {
+      // Reject potentially dangerous characters
+      if (/[^\w@%+=:,\.\/\-]/.test(arg)) {
+        throw new Error(`Invalid characters in argument: ${arg}`)
+      }
     }
   }
 
   private isCommandAllowed(commandToExecute: string): boolean {
-    const executeParts = this.parseCommandPattern(commandToExecute)
+    const executeParts = this.parseCommand(commandToExecute)
 
     // allowedCommands が未定義の場合は空の配列として処理
     const allowedCommands = this.config.allowedCommands || []
 
     return allowedCommands.some((allowedCmd) => {
-      const allowedParts = this.parseCommandPattern(allowedCmd.pattern)
-
-      if (allowedParts.command !== executeParts.command) {
+      if (allowedCmd.pattern.includes('*')) {
         return false
       }
 
-      if (allowedParts.wildcard) {
-        return true
+      const allowedParts = this.parseCommand(allowedCmd.pattern)
+
+      if (allowedParts.command !== executeParts.command) {
+        return false
       }
 
       if (allowedParts.args.length !== executeParts.args.length) {
         return false
       }
 
-      return allowedParts.args.every((arg, index) => {
-        if (arg === '*') {
-          return true
-        }
-        return arg === executeParts.args[index]
-      })
+      return allowedParts.args.every((arg, index) => arg === executeParts.args[index])
     })
   }
 
@@ -237,9 +237,11 @@ export class CommandService {
         return
       }
 
-      // シェルの存在確認（Windows環境での追加チェック）
-      if (!this.config.shell) {
-        reject(new Error('Shell configuration is missing'))
+      const parsed = this.parseCommand(input.command)
+      try {
+        this.sanitizeArgs([parsed.command, ...parsed.args])
+      } catch (err) {
+        reject(err)
         return
       }
 
@@ -254,41 +256,22 @@ export class CommandService {
       // Electron特有の環境変数問題を解決
       const spawnEnv = this.getEnhancedEnvironment(isWindows)
 
-      let childProcess
-
-      if (isWindows) {
-        // Windows: shell=trueを使用してコマンドを直接実行
-        // Node.js公式推奨方法: spawn(command, {shell: true})
-        childProcess = spawn(input.command, {
-          cwd: input.cwd,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          shell: true, // Windowsでは必須
-          env: spawnEnv,
-          windowsHide: true // コンソールウィンドウを隠す
-        })
-      } else {
-        // Unix系: 従来通りシェルに引数を渡す
-        childProcess = spawn(this.config.shell, ['-ic', input.command], {
-          cwd: input.cwd,
-          detached: true,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          env: spawnEnv
-        })
-      }
+      const childProcess = spawn(parsed.command, parsed.args, {
+        cwd: input.cwd,
+        detached: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: spawnEnv
+      })
 
       if (typeof childProcess.pid === 'undefined') {
         const errorMessage = `Failed to start process: PID is undefined
 Platform: ${process.platform}
-Shell: ${this.config.shell}
 Command: ${input.command}
-Working Directory: ${input.cwd}
-Spawn Method: ${isWindows ? 'shell=true' : 'shell+args'}`
+Working Directory: ${input.cwd}`
         log.error('Process spawn failed:', {
           platform: process.platform,
-          shell: this.config.shell,
           command: input.command,
           cwd: input.cwd,
-          spawnMethod: isWindows ? 'shell=true' : 'shell+args',
           spawnfile: childProcess.spawnfile,
           spawnargs: childProcess.spawnargs
         })
