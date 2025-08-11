@@ -26,7 +26,7 @@ const JSONEditor: React.FC<JSONEditorProps> = ({
       const formatted = JSON.stringify(value || defaultValue, null, 2)
       setJsonText(formatted)
       setLocalError('')
-    } catch (e) {
+    } catch {
       setLocalError('Invalid JSON structure')
     }
   }, [value, defaultValue])
@@ -40,7 +40,7 @@ const JSONEditor: React.FC<JSONEditorProps> = ({
       const parsedValue = JSON.parse(text)
       onChange(parsedValue)
       setLocalError('')
-    } catch (e) {
+    } catch {
       setLocalError('Invalid JSON syntax')
       // エラーがあってもテキスト自体の更新は許可
     }

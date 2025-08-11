@@ -102,7 +102,7 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
       if (!hasConfigChanged(mcpServers)) {
         return
       }
-    } catch (error) {
+    } catch {
       // エラーがあっても継続して新しい初期化を開始
     }
   }
@@ -115,7 +115,7 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
         clients.map(async ({ client }) => {
           try {
             await client.cleanup()
-          } catch (e) {
+          } catch {
             // クリーンアップエラーは無視
           }
         })
@@ -167,7 +167,7 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
                 serverConfig.env
               )
               return { name: serverConfig.name, client }
-            } catch (e) {
+            } catch {
               return undefined
             }
           })

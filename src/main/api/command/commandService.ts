@@ -139,7 +139,7 @@ export class CommandService {
   private sanitizeArgs(args: string[]): void {
     for (const arg of args) {
       // Reject potentially dangerous characters
-      if (/[^\w@%+=:,\.\/\-]/.test(arg)) {
+        if (/[^a-zA-Z0-9@%+=:,./-]/.test(arg)) {
         throw new Error(`Invalid characters in argument: ${arg}`)
       }
     }

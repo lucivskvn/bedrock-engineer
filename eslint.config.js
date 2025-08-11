@@ -46,6 +46,12 @@ export default [
         }
       ]
     }
+  },
+  {
+    files: ['**/*.{js,jsx,cjs,mjs}'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off'
+    }
   }
 ]
 

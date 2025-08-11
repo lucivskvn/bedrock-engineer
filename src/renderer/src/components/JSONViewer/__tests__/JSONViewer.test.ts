@@ -10,8 +10,10 @@ import { TextEncoder, TextDecoder } from 'util'
 ;(global as any).TextDecoder = TextDecoder
 
 // Import after polyfills to avoid ReferenceError in react-dom/server
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { renderToString } = require('react-dom/server')
+let renderToString: typeof import('react-dom/server')['renderToString']
+beforeAll(async () => {
+  ;({ renderToString } = await import('react-dom/server'))
+})
 
 describe('JSONViewer sanitization', () => {
   test('renders script tags as harmless text', () => {
