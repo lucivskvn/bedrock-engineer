@@ -20,7 +20,9 @@ module.exports = {
       'ts-jest',
       {
         tsconfig: 'tsconfig.test.json',
-        useESM: false
+        useESM: false,
+        diagnostics: false,
+        isolatedModules: true
       }
     ],
     '^.+\\.[jt]sx?$': 'babel-jest'
