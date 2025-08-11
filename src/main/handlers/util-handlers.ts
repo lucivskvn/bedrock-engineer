@@ -4,6 +4,7 @@ import axios from 'axios'
 import { log } from '../../common/logger'
 import { store } from '../../preload/store'
 import { createUtilProxyAgent } from '../lib/proxy-utils'
+import { isUrlSafe } from '../lib/url-utils'
 
 export const utilHandlers = {
   'get-app-path': async (_event: IpcMainInvokeEvent) => {
@@ -13,12 +14,18 @@ export const utilHandlers = {
   'fetch-website': async (_event: IpcMainInvokeEvent, params: [string, any?]) => {
     const [url, options] = params
     try {
+      // Validate URL and block private network access
+      if (!(await isUrlSafe(url))) {
+        throw new Error('Disallowed URL')
+      }
+
       // Get proxy configuration from store
       const awsConfig = store.get('aws')
       const proxyAgents = createUtilProxyAgent(awsConfig?.proxyConfig)
       const axiosConfig: any = {
         method: options?.method || 'GET',
         url: url,
+        timeout: options?.timeout ?? 10000,
         headers: {
           ...options?.headers,
           'User-Agent':
