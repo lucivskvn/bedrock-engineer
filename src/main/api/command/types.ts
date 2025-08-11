@@ -39,12 +39,6 @@ export interface CommandExecutionResult {
   prompt?: string
 }
 
-export interface CommandPattern {
-  command: string
-  args: string[]
-  wildcard: boolean
-}
-
 export interface ProcessOutput {
   stdout: string
   stderr: string
