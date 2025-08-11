@@ -164,6 +164,7 @@ async function createPreviewWindow(
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, '../preload/index.js'),
       webSecurity: true,
       additionalArguments: [`--camera-device-id=${deviceId}`, `--camera-device-name=${deviceName}`]
