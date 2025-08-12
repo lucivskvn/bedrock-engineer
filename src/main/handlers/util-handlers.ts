@@ -22,10 +22,16 @@ export const utilHandlers = {
       // Get proxy configuration from store
       const awsConfig = store.get('aws')
       const proxyAgents = createUtilProxyAgent(awsConfig?.proxyConfig)
+      const method = (options?.method || 'GET').toUpperCase()
+      if (!['GET', 'POST'].includes(method)) {
+        throw new Error('Unsupported HTTP method')
+      }
       const axiosConfig: any = {
-        method: options?.method || 'GET',
+        method,
         url: url,
         timeout: options?.timeout ?? 10000,
+        maxContentLength: 5 * 1024 * 1024, // 5MB
+        maxBodyLength: 5 * 1024 * 1024, // 5MB
         headers: {
           ...options?.headers,
           'User-Agent':
