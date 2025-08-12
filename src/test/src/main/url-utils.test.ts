@@ -1,5 +1,5 @@
 import dns from 'dns/promises'
-import { isUrlSafe } from '../../../main/lib/url-utils'
+import { isUrlAllowed, isUrlSafe } from '../../../main/lib/url-utils'
 
 jest.mock('dns/promises')
 
@@ -20,11 +20,25 @@ describe('isUrlSafe', () => {
   })
 
   test('rejects private network URLs', async () => {
-    expect(await isUrlSafe('http://127.0.0.1')).toBe(false)
+    expect(await isUrlSafe('https://127.0.0.1')).toBe(false)
   })
 
-  test('allows whitelisted HTTP URLs', async () => {
+  test('rejects whitelisted HTTP URLs', async () => {
+    expect(await isUrlSafe('http://github.com')).toBe(false)
+  })
+
+  test('allows whitelisted HTTPS URLs', async () => {
     lookupMock.mockResolvedValue([{ address: '1.1.1.1', family: 4 }] as any)
-    expect(await isUrlSafe('http://github.com')).toBe(true)
+    expect(await isUrlSafe('https://github.com')).toBe(true)
+  })
+})
+
+describe('isUrlAllowed', () => {
+  test('rejects http URLs', () => {
+    expect(isUrlAllowed('http://github.com')).toBe(false)
+  })
+
+  test('accepts allowlisted https URLs', () => {
+    expect(isUrlAllowed('https://github.com')).toBe(true)
   })
 })

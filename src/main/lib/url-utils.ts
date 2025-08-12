@@ -16,7 +16,7 @@ const ALLOWED_HOSTS = ['github.com']
 export function isUrlAllowed(targetUrl: string, allowedHosts: string[] = ALLOWED_HOSTS): boolean {
   try {
     const { protocol, hostname } = new URL(targetUrl)
-    if (protocol !== 'http:' && protocol !== 'https:') {
+    if (protocol !== 'https:') {
       return false
     }
     if (allowedHosts.length > 0 && !allowedHosts.includes(hostname)) {
