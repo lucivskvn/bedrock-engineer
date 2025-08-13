@@ -40,7 +40,7 @@ const DEFAULT_INFERENCE_PARAMS: InferenceParameters = {
   temperature: 0.5,
   topP: 0.9
 }
-const DEFAULT_THINKING_MODE = {
+const DEFAULT_THINKING_MODE: ThinkingMode = {
   type: 'enabled',
   budget_tokens: ThinkingModeBudget.NORMAL
 }
@@ -51,7 +51,7 @@ const DEFAULT_BEDROCK_SETTINGS = {
   enableInferenceProfiles: false
 }
 
-const DEFAULT_GUARDRAIL_SETTINGS = {
+const DEFAULT_GUARDRAIL_SETTINGS: NonNullable<StoreScheme['guardrailSettings']> = {
   enabled: false,
   guardrailIdentifier: '',
   guardrailVersion: 'DRAFT',
@@ -255,7 +255,7 @@ const init = async () => {
   if (!awsConfig) {
     electronStore.set('aws', {
       region: 'us-west-2'
-    })
+    } as any)
   }
 
   const [storedAccessKeyId, storedSecretAccessKey, storedSessionToken] = await Promise.all([
@@ -279,7 +279,7 @@ const init = async () => {
       useProfile: awsConfig.useProfile,
       profile: awsConfig.profile,
       proxyConfig: awsConfig.proxyConfig
-    })
+    } as any)
   } else {
     cachedCredentials = {
       accessKeyId: storedAccessKeyId || '',

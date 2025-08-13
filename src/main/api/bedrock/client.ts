@@ -85,6 +85,7 @@ export function createAgentRuntimeClient(awsCredentials: AWSCredentials) {
 
 export function createNovaSonicClient(awsCredentials: AWSCredentials) {
   // Lazily require to avoid loading heavy dependencies when not needed
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { NovaSonicBidirectionalStreamClient } = require('../sonic/client')
   const { region, useProfile, profile, ...credentials } = awsCredentials
   const httpOptions = createHttpOptions(awsCredentials)
