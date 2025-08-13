@@ -107,6 +107,9 @@ type StoreScheme = {
   /** アプリケーションの表示言語設定（日本語または英語） */
   language: 'ja' | 'en'
 
+  /** スケジューラで使用するタイムゾーン */
+  timezone?: string
+
   /** エージェントチャットの設定（無視するファイル一覧、コンテキスト長など） */
   agentChatConfig: AgentChatConfig
 
@@ -249,6 +252,11 @@ const init = async () => {
   const language = electronStore.get('language')
   if (language === undefined) {
     electronStore.set('language', 'en')
+  }
+
+  const timezone = electronStore.get('timezone')
+  if (!timezone) {
+    electronStore.set('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone)
   }
 
   // Initialize AWS settings if not present

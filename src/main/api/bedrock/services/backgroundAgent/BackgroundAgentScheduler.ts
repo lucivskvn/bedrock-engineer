@@ -15,15 +15,17 @@ export class BackgroundAgentScheduler {
   private cronJobs: Map<string, cron.ScheduledTask> = new Map()
   private backgroundAgentService: BackgroundAgentService
   private context: ServiceContext
-  private executionHistoryStore: Store<{
-    executionHistory: { [key: string]: TaskExecutionResult[] }
-  }>
+  private executionHistoryStore: any
   private notificationService: MainNotificationService
-
-  constructor(context: ServiceContext) {
+  private timezone: string
+  constructor(context: ServiceContext, timezone?: string) {
     this.context = context
     this.backgroundAgentService = new BackgroundAgentService(context)
     this.notificationService = new MainNotificationService(context)
+    this.timezone =
+      timezone ||
+      (this.context.store.get('timezone') as string | undefined) ||
+      Intl.DateTimeFormat().resolvedOptions().timeZone
 
     // 実行履歴用のストアを初期化
     this.executionHistoryStore = new Store({
@@ -31,7 +33,7 @@ export class BackgroundAgentScheduler {
       defaults: {
         executionHistory: {} as { [key: string]: TaskExecutionResult[] }
       }
-    })
+    }) as any
 
     // BackgroundAgentServiceにコールバックを設定してリアルタイム更新を有効化
     this.backgroundAgentService.setExecutionHistoryUpdateCallback(
@@ -289,7 +291,7 @@ export class BackgroundAgentScheduler {
           await this.executeTask(taskId)
         },
         {
-          timezone: 'Asia/Tokyo' // タイムゾーンを設定
+          timezone: this.timezone // タイムゾーンを設定
         }
       )
 

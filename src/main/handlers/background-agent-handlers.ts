@@ -36,7 +36,10 @@ function getBackgroundAgentScheduler(): BackgroundAgentScheduler {
       const context: ServiceContext = {
         store: store
       }
-      backgroundAgentScheduler = new BackgroundAgentScheduler(context)
+      backgroundAgentScheduler = new BackgroundAgentScheduler(
+        context,
+        store.get('timezone')
+      )
       logger.info('BackgroundAgentScheduler instance created')
     } catch (error: any) {
       logger.error('Failed to create BackgroundAgentScheduler instance', {

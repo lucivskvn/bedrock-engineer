@@ -901,7 +901,10 @@ export class BackgroundAgentService {
   async getTaskSystemPrompt(taskId: string): Promise<string> {
     try {
       // BackgroundAgentSchedulerから対象タスクを取得
-      const scheduler = new BackgroundAgentScheduler(this.context)
+      const scheduler = new BackgroundAgentScheduler(
+        this.context,
+        this.context.store.get('timezone') as string | undefined
+      )
       const task = scheduler.getTask(taskId)
 
       if (!task) {
