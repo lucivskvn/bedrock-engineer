@@ -110,6 +110,15 @@ npm run test:integration
 ```
 
 
+### URL Allowlist
+
+Bedrock Engineer restricts external navigation to a configurable set of hosts.
+Customize this list by setting the `ALLOWED_HOSTS` environment variable to a
+comma-separated list of hostnames (for example,
+`ALLOWED_HOSTS=github.com,example.com`). If not provided, the application
+defaults to allowing only `github.com`.
+
+
 ## Agent Chat
 
 The autonomous AI agent capable of development assists your development process. It provides functionality similar to AI assistants like [Cline](https://github.com/cline/cline), but with its own UI that doesn't depend on editors like VS Code. This enables richer diagramming and interactive experiences in Bedrock Engineer's agent chat feature. Additionally, with agent customization capabilities, you can utilize agents for use cases beyond development.

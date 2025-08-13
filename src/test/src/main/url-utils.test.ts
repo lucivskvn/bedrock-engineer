@@ -1,9 +1,9 @@
-import dns from 'dns/promises'
+import { promises as dns } from 'dns'
 import { isUrlAllowed, isUrlSafe } from '../../../main/lib/url-utils'
 
-jest.mock('dns/promises')
+jest.mock('dns', () => ({ promises: { lookup: jest.fn() } }))
 
-const lookupMock = dns.lookup as jest.MockedFunction<typeof dns.lookup>
+const lookupMock = dns.lookup as unknown as jest.MockedFunction<typeof dns.lookup>
 
 describe('isUrlSafe', () => {
   beforeEach(() => {

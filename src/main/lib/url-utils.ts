@@ -1,11 +1,26 @@
-import dns from 'dns/promises'
+import { promises as dns } from 'dns'
 import net from 'node:net'
 
 /**
- * List of hosts that are considered trusted. If empty, all hosts are allowed
- * (subject to other validation rules).
+ * List of hosts that are considered trusted. This list is sourced from the
+ * `ALLOWED_HOSTS` environment variable (comma separated) and falls back to a
+ * default value when not provided.
  */
-const ALLOWED_HOSTS = ['github.com']
+const DEFAULT_ALLOWED_HOSTS = ['github.com']
+
+export function getAllowedHosts(): string[] {
+  const envHosts = process.env.ALLOWED_HOSTS
+  if (envHosts) {
+    const parsed = envHosts
+      .split(',')
+      .map((h) => h.trim())
+      .filter((h) => h.length > 0)
+    if (parsed.length > 0) {
+      return parsed
+    }
+  }
+  return DEFAULT_ALLOWED_HOSTS
+}
 
 /**
  * Checks if a URL uses http/https schemes and optionally if it belongs to the
@@ -13,7 +28,7 @@ const ALLOWED_HOSTS = ['github.com']
  * network lookups. It is used in places where a quick validation is required
  * (e.g. Electron navigation handling).
  */
-export function isUrlAllowed(targetUrl: string, allowedHosts: string[] = ALLOWED_HOSTS): boolean {
+export function isUrlAllowed(targetUrl: string, allowedHosts: string[] = getAllowedHosts()): boolean {
   try {
     const { protocol, hostname } = new URL(targetUrl)
     if (protocol !== 'https:') {
@@ -79,7 +94,7 @@ async function resolvesToPrivateIp(hostname: string): Promise<boolean> {
  */
 export async function isUrlSafe(
   targetUrl: string,
-  allowedHosts: string[] = ALLOWED_HOSTS
+  allowedHosts: string[] = getAllowedHosts()
 ): Promise<boolean> {
   if (!isUrlAllowed(targetUrl, allowedHosts)) {
     return false
@@ -91,5 +106,3 @@ export async function isUrlSafe(
     return false
   }
 }
-
-export { ALLOWED_HOSTS }

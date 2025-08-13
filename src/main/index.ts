@@ -8,7 +8,7 @@ import Store from 'electron-store'
 import getRandomPort from '../preload/lib/random-port'
 import { store } from '../preload/store'
 import { resolveProxyConfig, convertToElectronProxyConfig } from './lib/proxy-utils'
-import { isUrlAllowed } from './lib/url-utils'
+import { isUrlAllowed, getAllowedHosts } from './lib/url-utils'
 import {
   initLoggerConfig,
   initLogger,
@@ -251,7 +251,6 @@ async function createWindow(): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: false,
-      enableRemoteModule: false,
       // Zoom related settings
       zoomFactor: 1.0,
       enableWebSQL: false
@@ -346,8 +345,9 @@ async function createWindow(): Promise<void> {
     }
   })
 
+  const allowedHosts = getAllowedHosts()
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    if (isUrlAllowed(details.url)) {
+    if (isUrlAllowed(details.url, allowedHosts)) {
       shell.openExternal(details.url)
     } else {
       log.warn('Blocked navigation to disallowed URL', { url: details.url })

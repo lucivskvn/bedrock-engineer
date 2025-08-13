@@ -1,5 +1,5 @@
 import { expect, test } from '@jest/globals'
-import * as fs from 'fs/promises'
+import { promises as fs } from 'fs'
 import { applyPatch } from 'diff'
 
 export async function applyPatchToFile(filePath: string, patch: string): Promise<string> {
