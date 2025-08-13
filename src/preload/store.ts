@@ -219,10 +219,11 @@ const createElectronStore = async () => {
   return encryptedStore
 }
 
-const electronStore = await createElectronStore()
-log.debug(`store path ${electronStore.path}`)
+let electronStore!: Store<StoreScheme>
 
 const init = async () => {
+  electronStore = await createElectronStore()
+  log.debug(`store path ${electronStore.path}`)
   // Initialize userDataPath if not present
   const userDataPath = electronStore.get('userDataPath')
   if (!userDataPath) {
@@ -383,7 +384,7 @@ const init = async () => {
   }
 }
 
-await init()
+void init()
 
 type Key = keyof StoreScheme
 export const store = {
