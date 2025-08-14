@@ -297,6 +297,9 @@ Working Directory: ${input.cwd}`
       let isCompleted = false
 
       const cleanup = () => {
+        childProcess.stdout.removeAllListeners()
+        childProcess.stderr.removeAllListeners()
+        childProcess.removeAllListeners()
         this.runningProcesses.delete(pid)
         this.processStates.delete(pid)
       }
@@ -444,7 +447,7 @@ Working Directory: ${input.cwd}`
 
       const TIMEOUT = 60000 * 5 // 5分
       // タイムアウト処理
-      setTimeout(() => {
+      setTimeout(async () => {
         if (!isCompleted) {
           const state = this.processStates.get(pid)
           if (!state) return
@@ -459,6 +462,9 @@ Working Directory: ${input.cwd}`
             ) {
               completeWithSuccess()
             } else {
+              await this.stopProcess(pid).catch((err) =>
+                log.error(`Failed to stop process ${pid}:`, err)
+              )
               completeWithError('Command timed out')
             }
           }
@@ -598,17 +604,42 @@ Working Directory: ${input.cwd}`
   }
 
   async stopProcess(pid: number): Promise<void> {
-    const processInfo = this.runningProcesses.get(pid)
-    if (processInfo) {
-      try {
-        process.kill(-pid) // プロセスグループ全体を終了
+    const state = this.processStates.get(pid)
+    const childProcess = state?.process
+
+    if (!this.runningProcesses.has(pid)) {
+      return
+    }
+
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        childProcess?.stdout?.removeAllListeners()
+        childProcess?.stderr?.removeAllListeners()
+        childProcess?.removeAllListeners()
         this.runningProcesses.delete(pid)
         this.processStates.delete(pid)
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        throw new Error(`Failed to stop process ${pid}: ${errorMessage}`)
+        resolve()
       }
-    }
+
+      if (childProcess) {
+        childProcess.stdout?.removeAllListeners()
+        childProcess.stderr?.removeAllListeners()
+        childProcess.removeAllListeners('error')
+        childProcess.removeAllListeners('exit')
+        childProcess.once('exit', cleanup)
+      } else {
+        cleanup()
+      }
+
+      try {
+        // プロセスグループ全体を終了
+        process.kill(-pid)
+      } catch (error) {
+        childProcess?.removeAllListeners('exit')
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        reject(new Error(`Failed to stop process ${pid}: ${errorMessage}`))
+      }
+    })
   }
 
   getRunningProcesses(): DetachedProcessInfo[] {
