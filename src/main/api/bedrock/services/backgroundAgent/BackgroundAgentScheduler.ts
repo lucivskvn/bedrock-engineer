@@ -7,8 +7,31 @@ import { ScheduleConfig, ScheduledTask, TaskExecutionResult, BackgroundAgentConf
 import { BackgroundAgentService } from './BackgroundAgentService'
 import { ServiceContext } from '../../types'
 import { MainNotificationService } from '../NotificationService'
+import { z } from 'zod'
 
 const logger = createCategoryLogger('background-agent:scheduler')
+
+const persistedTaskSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  cronExpression: z.string(),
+  agentId: z.string(),
+  modelId: z.string(),
+  projectDirectory: z.string().optional(),
+  wakeWord: z.string(),
+  enabled: z.boolean(),
+  createdAt: z.number(),
+  lastRun: z.number().optional(),
+  nextRun: z.number().optional(),
+  runCount: z.number(),
+  lastError: z.string().optional(),
+  inferenceConfig: z.any().optional(),
+  continueSession: z.boolean().optional(),
+  continueSessionPrompt: z.string().optional(),
+  lastSessionId: z.string().optional(),
+  isExecuting: z.boolean().optional(),
+  lastExecutionStarted: z.number().optional()
+})
 
 export class BackgroundAgentScheduler {
   private scheduledTasks: Map<string, ScheduledTask> = new Map()
@@ -154,11 +177,25 @@ export class BackgroundAgentScheduler {
       const persistedTasksData = this.context.store.get('backgroundAgentScheduledTasks')
       const persistedTasks = Array.isArray(persistedTasksData) ? persistedTasksData : []
 
+      if (!Array.isArray(persistedTasksData)) {
+        logger.warn('Persisted tasks data is not an array', { persistedTasksData })
+      }
+
       for (const taskData of persistedTasks) {
+        const parsed = persistedTaskSchema.safeParse(taskData)
+        if (!parsed.success) {
+          logger.warn('Invalid persisted task skipped', {
+            errors: parsed.error.issues,
+            taskData
+          })
+          continue
+        }
+
+        const validTask = parsed.data
         const task: ScheduledTask = {
-          ...taskData,
+          ...validTask,
           // 次回実行時刻を再計算
-          nextRun: this.calculateNextRun(taskData.cronExpression)
+          nextRun: this.calculateNextRun(validTask.cronExpression)
         }
 
         this.scheduledTasks.set(task.id, task)
@@ -168,9 +205,13 @@ export class BackgroundAgentScheduler {
         }
       }
 
+      const restoredCount = this.scheduledTasks.size
+      const enabledCount = Array.from(this.scheduledTasks.values()).filter((t) => t.enabled)
+        .length
       logger.info('Restored persisted scheduled tasks', {
-        count: persistedTasks.length,
-        enabledCount: persistedTasks.filter((t: any) => t.enabled).length
+        count: restoredCount,
+        enabledCount,
+        skippedCount: persistedTasks.length - restoredCount
       })
     } catch (error: any) {
       logger.error('Failed to restore persisted tasks', {
