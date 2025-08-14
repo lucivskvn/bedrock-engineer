@@ -599,15 +599,27 @@ Working Directory: ${input.cwd}`
 
   async stopProcess(pid: number): Promise<void> {
     const processInfo = this.runningProcesses.get(pid)
-    if (processInfo) {
-      try {
-        process.kill(-pid) // プロセスグループ全体を終了
-        this.runningProcesses.delete(pid)
-        this.processStates.delete(pid)
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        throw new Error(`Failed to stop process ${pid}: ${errorMessage}`)
+    if (!processInfo) return
+
+    const state = this.processStates.get(pid)
+    const childProcess = state?.process
+
+    try {
+      if (process.platform === 'win32') {
+        // Windowsではプロセスツリーを終了するためにtaskkillを使用
+        spawn('taskkill', ['/pid', pid.toString(), '/t', '/f'])
+      } else if (childProcess && typeof childProcess.kill === 'function') {
+        // Unix系では子プロセスのkillメソッドを使用
+        childProcess.kill('SIGTERM')
+      } else {
+        process.kill(pid)
       }
+
+      this.runningProcesses.delete(pid)
+      this.processStates.delete(pid)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      throw new Error(`Failed to stop process ${pid}: ${errorMessage}`)
     }
   }
 
