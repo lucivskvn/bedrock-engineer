@@ -34,12 +34,12 @@ export function replacePlaceholders(text: string, placeholders: PlaceholderValue
   const yyyyMMdd = new Date().toISOString().slice(0, 10)
 
   return text
-    .replace(/{{projectPath}}/g, projectPath)
-    .replace(/{{date}}/g, yyyyMMdd)
-    .replace(/{{allowedCommands}}/g, JSON.stringify(allowedCommands))
-    .replace(/{{allowedWindows}}/g, JSON.stringify(allowedWindows))
-    .replace(/{{allowedCameras}}/g, JSON.stringify(allowedCameras))
-    .replace(/{{knowledgeBases}}/g, JSON.stringify(knowledgeBases))
-    .replace(/{{bedrockAgents}}/g, JSON.stringify(bedrockAgents))
-    .replace(/{{flows}}/g, JSON.stringify(flows))
+    .replace(/{{projectPath}}/g, () => projectPath)
+    .replace(/{{date}}/g, () => yyyyMMdd)
+    .replace(/{{allowedCommands}}/g, () => JSON.stringify(allowedCommands))
+    .replace(/{{allowedWindows}}/g, () => JSON.stringify(allowedWindows))
+    .replace(/{{allowedCameras}}/g, () => JSON.stringify(allowedCameras))
+    .replace(/{{knowledgeBases}}/g, () => JSON.stringify(knowledgeBases))
+    .replace(/{{bedrockAgents}}/g, () => JSON.stringify(bedrockAgents))
+    .replace(/{{flows}}/g, () => JSON.stringify(flows))
 }
