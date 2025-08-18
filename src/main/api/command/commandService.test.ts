@@ -1,6 +1,5 @@
 import { CommandService } from './commandService'
 import { CommandConfig } from './types'
-const childProcess = require('child_process')
 
 describe('CommandService', () => {
   const cwd = process.cwd()
@@ -26,9 +25,9 @@ describe('CommandService', () => {
     ).rejects.toThrow('Invalid characters')
   })
 
-  test('stopProcess kills process on unix platforms', async () => {
+  test('stopProcess kills the process group on unix platforms', async () => {
     const pid = 123
-    const mockKill = jest.fn()
+    const killSpy = jest.spyOn(process, 'kill').mockImplementation(() => true)
 
     ;(service as any).runningProcesses.set(pid, {
       pid,
@@ -38,20 +37,19 @@ describe('CommandService', () => {
     ;(service as any).processStates.set(pid, {
       isRunning: true,
       hasError: false,
-      output: { stdout: '', stderr: '', code: null },
-      process: { kill: mockKill }
+      output: { stdout: '', stderr: '', code: null }
+      // no process object needed for this test
     })
 
-    const original = process.platform
-    Object.defineProperty(process, 'platform', { value: 'linux' })
     await service.stopProcess(pid)
-    expect(mockKill).toHaveBeenCalled()
-    Object.defineProperty(process, 'platform', { value: original })
+
+    expect(killSpy).toHaveBeenCalledWith(-pid)
+    killSpy.mockRestore()
   })
 
-  test('stopProcess uses taskkill on windows platforms', async () => {
+  test('stopProcess kills the process group on windows platforms', async () => {
     const pid = 456
-    const mockKill = jest.fn()
+    const killSpy = jest.spyOn(process, 'kill').mockImplementation(() => true)
 
     ;(service as any).runningProcesses.set(pid, {
       pid,
@@ -61,27 +59,16 @@ describe('CommandService', () => {
     ;(service as any).processStates.set(pid, {
       isRunning: true,
       hasError: false,
-      output: { stdout: '', stderr: '', code: null },
-      process: { kill: mockKill }
+      output: { stdout: '', stderr: '', code: null }
     })
 
-    const originalSpawn = childProcess.spawn
-    ;(childProcess as any).spawn = jest.fn().mockReturnValue({})
     const original = process.platform
     Object.defineProperty(process, 'platform', { value: 'win32' })
 
     await service.stopProcess(pid)
 
-    expect((childProcess.spawn as jest.Mock).mock.calls[0][0]).toBe('taskkill')
-    expect((childProcess.spawn as jest.Mock).mock.calls[0][1]).toEqual([
-      '/pid',
-      pid.toString(),
-      '/t',
-      '/f'
-    ])
-    expect(mockKill).not.toHaveBeenCalled()
-
-    ;(childProcess as any).spawn = originalSpawn
+    expect(killSpy).toHaveBeenCalledWith(-pid)
+    killSpy.mockRestore()
     Object.defineProperty(process, 'platform', { value: original })
   })
 })
