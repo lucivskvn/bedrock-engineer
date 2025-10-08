@@ -1,12 +1,41 @@
-import { IpcMainInvokeEvent, BrowserWindow, screen } from 'electron'
+import { IpcMainInvokeEvent, BrowserWindow, screen, app } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
 import { promisify } from 'util'
 import { log } from '../../common/logger'
+import { store } from '../../preload/store'
+import { buildAllowedOutputDirectories, resolveSafeOutputPath } from '../security/path-utils'
 
 const writeFile = promisify(fs.writeFile)
 const stat = promisify(fs.stat)
+
+function getAllowedCameraDirectories(): string[] {
+  const projectPathValue = store.get('projectPath')
+  const projectPath =
+    typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+      ? projectPathValue
+      : undefined
+  const userDataPathValue = store.get('userDataPath')
+  const userDataPath =
+    typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+      ? userDataPathValue
+      : undefined
+
+  return buildAllowedOutputDirectories({
+    projectPath,
+    userDataPath,
+    additional: [
+      path.join(app.getPath('pictures'), 'bedrock-engineer'),
+      path.join(app.getPath('downloads'), 'bedrock-engineer'),
+      app.getPath('pictures'),
+      app.getPath('downloads'),
+      app.getPath('documents'),
+      app.getPath('videos'),
+      os.tmpdir()
+    ]
+  })
+}
 
 // カメラプレビューウィンドウの管理（複数ウィンドウ対応）
 const cameraPreviewWindows: Map<string, BrowserWindow> = new Map()
@@ -167,6 +196,9 @@ async function createPreviewWindow(
       sandbox: true,
       preload: path.join(__dirname, '../preload/index.js'),
       webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      spellcheck: false,
       additionalArguments: [`--camera-device-id=${deviceId}`, `--camera-device-name=${deviceName}`]
     }
   })
@@ -540,8 +572,17 @@ export const cameraHandlers = {
 
       // 出力パスの決定
       const timestamp = Date.now()
-      const filename = `camera_capture_${timestamp}.${request.format}`
-      const outputPath = request.outputPath || path.join(os.tmpdir(), filename)
+      const allowedDirectories = getAllowedCameraDirectories()
+      const defaultDirectory = path.join(app.getPath('pictures'), 'bedrock-engineer')
+      const { fullPath: outputPath } = resolveSafeOutputPath({
+        requestedPath: request.outputPath,
+        defaultDirectory,
+        defaultFileName: `camera_capture_${timestamp}`,
+        allowedDirectories,
+        extension: `.${request.format}`
+      })
+
+      await fs.promises.mkdir(path.dirname(outputPath), { recursive: true, mode: 0o700 })
 
       // ファイルに保存
       await writeFile(outputPath, new Uint8Array(imageBuffer))

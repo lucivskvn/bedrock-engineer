@@ -12,7 +12,9 @@ describe('CommandService timeout handling', () => {
   test('kills long running process when timeout elapses', async () => {
     const service = new CommandService({
       allowedCommands: [{ pattern: 'sleep 1000', description: 'test' }],
-      shell: '/bin/bash'
+      shell: '/bin/bash',
+      allowedWorkingDirectories: [process.cwd()],
+      projectPath: process.cwd()
     })
 
     const promise = service.executeCommand({

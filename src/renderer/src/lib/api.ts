@@ -1,4 +1,5 @@
 import { rendererLogger as log } from '@renderer/lib/logger';
+import { getTrustedApiEndpoint } from '@renderer/lib/security/apiEndpoint';
 import { LLM } from '@/types/llm'
 import { RetrieveAndGenerateCommandInput } from '@aws-sdk/client-bedrock-agent-runtime'
 import {
@@ -15,18 +16,30 @@ export type StreamChatCompletionProps = {
   toolConfig?: ToolConfiguration
 }
 
-const API_ENDPOINT = window.store.get('apiEndpoint')
+const getApiEndpoint = () => getTrustedApiEndpoint()
+
+const withAuthHeaders = (headers: Record<string, string>) => {
+  const apiAuthToken = window.store.get('apiAuthToken') as string | undefined
+  if (apiAuthToken && apiAuthToken.length > 0) {
+    return {
+      ...headers,
+      'X-API-Key': apiAuthToken
+    }
+  }
+  return headers
+}
 
 export async function* streamChatCompletion(
   props: StreamChatCompletionProps,
   abortSignal?: AbortSignal
 ): AsyncGenerator<ConverseStreamOutput, void, unknown> {
-  const res = await fetch(`${API_ENDPOINT}/converse/stream`, {
+  const endpoint = getApiEndpoint()
+  const res = await fetch(`${endpoint}/converse/stream`, {
     method: 'POST',
     body: JSON.stringify(props),
-    headers: {
+    headers: withAuthHeaders({
       'Content-Type': 'application/json'
-    },
+    }),
     signal: abortSignal
   })
   const reader = res.body?.getReader()
@@ -91,12 +104,13 @@ type ConverseProps = {
 }
 
 export async function converse(props: ConverseProps, abortSignal?: AbortSignal) {
-  const res = await fetch(`${API_ENDPOINT}/converse`, {
+  const endpoint = getApiEndpoint()
+  const res = await fetch(`${endpoint}/converse`, {
     method: 'POST',
     body: JSON.stringify(props),
-    headers: {
+    headers: withAuthHeaders({
       'Content-Type': 'application/json'
-    },
+    }),
     signal: abortSignal
   })
   return res.json()
@@ -106,33 +120,36 @@ export async function retrieveAndGenerate(
   props: RetrieveAndGenerateCommandInput,
   abortSignal?: AbortSignal
 ) {
-  const res = await fetch(`${API_ENDPOINT}/retrieveAndGenerate`, {
+  const endpoint = getApiEndpoint()
+  const res = await fetch(`${endpoint}/retrieveAndGenerate`, {
     method: 'POST',
     body: JSON.stringify(props),
-    headers: {
+    headers: withAuthHeaders({
       'Content-Type': 'application/json'
-    },
+    }),
     signal: abortSignal
   })
   return res
 }
 
 export async function listModels(): Promise<LLM[]> {
-  const res = await fetch(`${API_ENDPOINT}/listModels`, {
+  const endpoint = getApiEndpoint()
+  const res = await fetch(`${endpoint}/listModels`, {
     method: 'GET',
-    headers: {
+    headers: withAuthHeaders({
       'Content-Type': 'application/json'
-    }
+    })
   })
   return res.json()
 }
 
 export async function listAgentTags(): Promise<string[]> {
-  const res = await fetch(`${API_ENDPOINT}/listAgentTags`, {
+  const endpoint = getApiEndpoint()
+  const res = await fetch(`${endpoint}/listAgentTags`, {
     method: 'GET',
-    headers: {
+    headers: withAuthHeaders({
       'Content-Type': 'application/json'
-    }
+    })
   })
   return res.json()
 }

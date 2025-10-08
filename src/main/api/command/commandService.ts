@@ -1,4 +1,5 @@
-import { spawn } from 'child_process'
+import path from 'node:path'
+import { spawn } from 'node:child_process'
 import {
   CommandConfig,
   CommandExecutionResult,
@@ -10,6 +11,29 @@ import {
   CommandPatternConfig
 } from './types'
 import { log } from '../../../common/logger'
+import { ensureDirectoryWithinAllowed } from '../../security/path-utils'
+
+const SAFE_ENV_KEY_PATTERN = /^[A-Z0-9_]+$/
+
+const BASE_ENV_ALLOWLIST = [
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'PWD',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'SHELL',
+  'TERM',
+  'NODE_ENV',
+  'ELECTRON_RUN_AS_NODE',
+  'ELECTRON_NO_ATTACH_CONSOLE'
+]
+
+const WINDOWS_ENV_ALLOWLIST = ['SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT']
 
 export class CommandService {
   private config: CommandConfig
@@ -73,6 +97,26 @@ export class CommandService {
     this.config = config
   }
 
+  private resolveWorkingDirectory(cwd: string): string {
+    const allowedDirectories = this.config.allowedWorkingDirectories || []
+    if (allowedDirectories.length === 0) {
+      throw new Error('No allowed working directories configured')
+    }
+
+    const trimmed = cwd?.trim()
+    if (!trimmed) {
+      throw new Error('Working directory must be provided')
+    }
+
+    const candidate = path.isAbsolute(trimmed)
+      ? trimmed
+      : this.config.projectPath
+      ? path.resolve(this.config.projectPath, trimmed)
+      : path.resolve(trimmed)
+
+    return ensureDirectoryWithinAllowed(candidate, allowedDirectories)
+  }
+
   /**
    * Electron環境で適切な環境変数を取得
    * Windows特有のPATH問題を解決
@@ -128,6 +172,52 @@ export class CommandService {
     return env
   }
 
+  private buildCommandEnvironment(isWindows: boolean): NodeJS.ProcessEnv {
+    const baseEnv = this.getEnhancedEnvironment(isWindows)
+    const allowedKeys = new Set<string>([
+      ...BASE_ENV_ALLOWLIST,
+      ...(isWindows ? WINDOWS_ENV_ALLOWLIST : []),
+      ...(this.config.passthroughEnvKeys
+        ?.filter((key) => SAFE_ENV_KEY_PATTERN.test(key))
+        .map((key) => key.trim()) ?? [])
+    ])
+
+    const sanitizedEnv: NodeJS.ProcessEnv = {}
+
+    for (const key of allowedKeys) {
+      const value = baseEnv[key] ?? process.env[key]
+      if (typeof value === 'string' && value.length > 0) {
+        sanitizedEnv[key] = value
+      }
+    }
+
+    const pathSeparator = isWindows ? ';' : ':'
+    const pathEntries = new Set<string>()
+
+    const basePath = baseEnv.PATH ?? baseEnv.Path ?? ''
+    basePath
+      .split(pathSeparator)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .forEach((entry) => pathEntries.add(entry))
+
+    for (const entry of this.config.additionalPathEntries ?? []) {
+      if (typeof entry === 'string' && entry.trim().length > 0) {
+        pathEntries.add(entry.trim())
+      }
+    }
+
+    if (pathEntries.size > 0) {
+      const normalisedPath = Array.from(pathEntries).join(pathSeparator)
+      sanitizedEnv.PATH = normalisedPath
+      if (isWindows) {
+        sanitizedEnv.Path = normalisedPath
+      }
+    }
+
+    return sanitizedEnv
+  }
+
   private parseCommand(commandStr: string): { command: string; args: string[] } {
     const parts = commandStr.trim().split(/\s+/).filter(Boolean)
     return {
@@ -139,7 +229,7 @@ export class CommandService {
   private sanitizeArgs(args: string[]): void {
     for (const arg of args) {
       // Reject potentially dangerous characters
-        if (/[^a-zA-Z0-9@%+=:,./-]/.test(arg)) {
+      if (/[^a-zA-Z0-9@%+=:,./-]/.test(arg)) {
         throw new Error(`Invalid characters in argument: ${arg}`)
       }
     }
@@ -237,6 +327,22 @@ export class CommandService {
         return
       }
 
+      const maxConcurrent = this.config.maxConcurrentProcesses
+      if (typeof maxConcurrent === 'number' && maxConcurrent > 0) {
+        if (this.runningProcesses.size >= maxConcurrent) {
+          reject(new Error('Maximum concurrent command limit reached'))
+          return
+        }
+      }
+
+      let resolvedCwd: string
+      try {
+        resolvedCwd = this.resolveWorkingDirectory(input.cwd)
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)))
+        return
+      }
+
       const parsed = this.parseCommand(input.command)
       try {
         this.sanitizeArgs([parsed.command, ...parsed.args])
@@ -254,10 +360,10 @@ export class CommandService {
       const isWindows = process.platform === 'win32'
 
       // Electron特有の環境変数問題を解決
-      const spawnEnv = this.getEnhancedEnvironment(isWindows)
+      const spawnEnv = this.buildCommandEnvironment(isWindows)
 
       const childProcess = spawn(parsed.command, parsed.args, {
-        cwd: input.cwd,
+        cwd: resolvedCwd,
         detached: true,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: spawnEnv
@@ -477,6 +583,15 @@ Working Directory: ${input.cwd}`
     const state = this.processStates.get(input.pid)
     if (!state || !state.process) {
       throw new Error(`No running process found with PID: ${input.pid}`)
+    }
+
+    if (typeof this.config.maxStdinBytes === 'number' && this.config.maxStdinBytes > 0) {
+      const payloadSize = Buffer.byteLength(input.stdin ?? '', 'utf8')
+      if (payloadSize > this.config.maxStdinBytes) {
+        throw new Error(
+          `stdin payload exceeds configured limit of ${this.config.maxStdinBytes} bytes`
+        )
+      }
     }
 
     return new Promise((resolve, reject) => {

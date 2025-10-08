@@ -3,6 +3,7 @@ import fs from 'fs'
 import Store from 'electron-store'
 import { store } from '../../preload/store'
 import { log } from '../../common/logger'
+import { ensureValidStorageKey } from '../../common/security/pathGuards'
 
 export interface TodoItem {
   id: string
@@ -82,10 +83,18 @@ export class TodoSessionManager {
         const todoFiles = files.filter((file) => file.endsWith('_todos.json'))
 
         for (const file of todoFiles) {
-          const fileId = file.replace('_todos.json', '')
-          const todoList = this.readTodoFile(fileId)
+          try {
+            const fileId = file.replace('_todos.json', '')
+            const safeSessionId = this.normalizeSessionId(fileId)
+            const todoList = this.readTodoFile(safeSessionId)
           if (todoList) {
-            this.updateMetadata(fileId, todoList)
+              this.updateMetadata(safeSessionId, todoList)
+          }
+          } catch (error) {
+            log.warn('Skipping todo metadata initialization for malformed session id', {
+              file,
+              error: error instanceof Error ? error.message : String(error)
+            })
           }
         }
 
@@ -96,12 +105,17 @@ export class TodoSessionManager {
     }
   }
 
+  private normalizeSessionId(sessionId: string): string {
+    return ensureValidStorageKey(sessionId, {
+      label: 'Todo session ID',
+      prefix: 'session_',
+      maxLength: 160
+    })
+  }
+
   private getTodoFilePath(sessionId: string): string {
-    // sessionIdが'session_'で始まっていない場合は追加
-    const fileName = sessionId.startsWith('session_')
-      ? `${sessionId}_todos.json`
-      : `session_${sessionId}_todos.json`
-    return path.join(this.todosDir, fileName)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    return path.join(this.todosDir, `${safeSessionId}_todos.json`)
   }
 
   private readTodoFile(sessionId: string): TodoList | null {
@@ -142,6 +156,7 @@ export class TodoSessionManager {
   }
 
   async createTodoList(sessionId: string, projectPath: string, items: string[]): Promise<TodoList> {
+    const safeSessionId = this.normalizeSessionId(sessionId)
     const todoId = `todolist-${Date.now()}`
     const now = new Date().toISOString()
 
@@ -156,20 +171,21 @@ export class TodoSessionManager {
       })),
       createdAt: now,
       updatedAt: now,
-      sessionId,
+      sessionId: safeSessionId,
       projectPath
     }
 
-    await this.writeTodoFile(sessionId, todoList)
-    this.updateMetadata(sessionId, todoList)
-    this.updateRecentTodos(sessionId)
+    await this.writeTodoFile(safeSessionId, todoList)
+    this.updateMetadata(safeSessionId, todoList)
+    this.updateRecentTodos(safeSessionId)
 
     return todoList
   }
 
   async updateTodoList(sessionId: string, updates: TodoItemUpdate[]): Promise<TodoUpdateResult> {
     try {
-      const todoList = this.readTodoFile(sessionId)
+      const safeSessionId = this.normalizeSessionId(sessionId)
+      const todoList = this.readTodoFile(safeSessionId)
       if (!todoList) {
         return {
           success: false,
@@ -205,9 +221,9 @@ export class TodoSessionManager {
         updatedAt: now
       }
 
-      await this.writeTodoFile(sessionId, updatedList)
-      this.updateMetadata(sessionId, updatedList)
-      this.updateRecentTodos(sessionId)
+      await this.writeTodoFile(safeSessionId, updatedList)
+      this.updateMetadata(safeSessionId, updatedList)
+      this.updateRecentTodos(safeSessionId)
 
       return {
         success: true,
@@ -222,17 +238,27 @@ export class TodoSessionManager {
   }
 
   getTodoList(sessionId: string): TodoList | null {
-    return this.readTodoFile(sessionId)
+    try {
+      return this.readTodoFile(this.normalizeSessionId(sessionId))
+    } catch (error) {
+      log.warn('Rejected todo list access for invalid session id', {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return null
+    }
   }
 
   deleteTodoList(sessionId: string): void {
-    const filePath = this.getTodoFilePath(sessionId)
+    try {
+      const safeSessionId = this.normalizeSessionId(sessionId)
+      const filePath = this.getTodoFilePath(safeSessionId)
     try {
       fs.unlinkSync(filePath)
 
       // メタデータからも削除
       const metadata = this.metadataStore.get('metadata')
-      delete metadata[sessionId]
+        delete metadata[safeSessionId]
       this.metadataStore.set('metadata', metadata)
       } catch (error) {
         log.error(`Error deleting todo file ${sessionId}:`, { error })
@@ -241,13 +267,20 @@ export class TodoSessionManager {
     const recentTodos = this.metadataStore.get('recentTodos')
     this.metadataStore.set(
       'recentTodos',
-      recentTodos.filter((id) => id !== sessionId)
+      recentTodos.filter((id) => id !== safeSessionId)
     )
+    } catch (error) {
+      log.warn('Failed to delete todo list due to invalid session id', {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
   }
 
   private updateRecentTodos(sessionId: string): void {
+    const safeSessionId = this.normalizeSessionId(sessionId)
     const recentTodos = this.metadataStore.get('recentTodos')
-    const updated = [sessionId, ...recentTodos.filter((id) => id !== sessionId)].slice(0, 10)
+    const updated = [safeSessionId, ...recentTodos.filter((id) => id !== safeSessionId)].slice(0, 10)
     this.metadataStore.set('recentTodos', updated)
   }
 
@@ -278,10 +311,24 @@ export class TodoSessionManager {
   }
 
   setActiveTodoList(sessionId: string | undefined): void {
-    this.metadataStore.set('activeTodoListId', sessionId)
+    const value = sessionId ? this.normalizeSessionId(sessionId) : undefined
+    this.metadataStore.set('activeTodoListId', value)
   }
 
   getActiveTodoListId(): string | undefined {
-    return this.metadataStore.get('activeTodoListId')
+    const stored = this.metadataStore.get('activeTodoListId')
+    if (!stored) {
+      return undefined
+    }
+    try {
+      return this.normalizeSessionId(stored)
+    } catch (error) {
+      log.warn('Removing invalid active todo session id', {
+        sessionId: stored,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      this.metadataStore.delete('activeTodoListId')
+      return undefined
+    }
   }
 }

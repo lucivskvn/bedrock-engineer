@@ -1,8 +1,6 @@
 import { limitContextLength } from '../'
 import { Message } from '@aws-sdk/client-bedrock-runtime'
 import { describe, test, expect } from '@jest/globals'
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
 describe('limitContextLength', () => {
   describe('Claude 3.5', () => {
     test('ToolUse, ToolResult のペアがキリよく取り出せる場合、10個の messages から送信対象の 5個を取り出すと messages の新しい方から順番に 5 つ取り出し、ToolUse, ToolResult のペアも残す', () => {

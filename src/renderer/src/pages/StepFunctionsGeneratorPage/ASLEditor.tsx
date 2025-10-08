@@ -1,5 +1,3 @@
-/* eslint-disable react/prop-types */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Editor } from '@monaco-editor/react'
 import { useRef } from 'react'
 

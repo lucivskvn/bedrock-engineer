@@ -1,4 +1,3 @@
-/* eslint-disable react/no-unescaped-entities */
 import { memo, useState, useMemo } from 'react'
 import { CommandConfig, AVAILABLE_SHELLS } from '.'
 import { EditIcon, RemoveIcon } from '@renderer/components/icons/ToolIcons'

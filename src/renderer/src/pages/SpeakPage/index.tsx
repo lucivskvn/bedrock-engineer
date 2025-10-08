@@ -21,8 +21,6 @@ import { usePermissionHelpModal } from './components/PermissionHelpModal'
 import { RegionWarningBanner } from './components/RegionWarningBanner'
 import { checkNovaSonicRegionSupport, type RegionCheckResult } from '@renderer/lib/api/novaSonic'
 
-const API_ENDPOINT = window.store.get('apiEndpoint')
-
 // ============================================================================
 // 共通コンポーネント定義
 // ============================================================================
@@ -494,6 +492,14 @@ export const SpeakPage: React.FC = () => {
   // 現在のエージェントのツール情報を取得
   const agentTools = getAgentTools(selectedAgentId)
 
+  let apiEndpoint: string | undefined
+  try {
+    apiEndpoint = getTrustedApiEndpoint()
+  } catch (error) {
+    log.error('Failed to resolve API endpoint', { error })
+    apiEndpoint = undefined
+  }
+
   const {
     status,
     isConnected,
@@ -507,7 +513,7 @@ export const SpeakPage: React.FC = () => {
     startRecording,
     stopRecording,
     systemPrompt
-  } = useSpeakChat(API_ENDPOINT, currentAgentSystemPrompt, agentTools, selectedVoiceId)
+  } = useSpeakChat(apiEndpoint, currentAgentSystemPrompt, agentTools, selectedVoiceId)
 
   // Check region support when component mounts
   useEffect(() => {

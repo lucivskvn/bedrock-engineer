@@ -3,6 +3,8 @@
  */
 
 import * as fs from 'fs/promises'
+import path from 'path'
+import os from 'os'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult, ReadFileOptions } from '../../base/types'
@@ -14,6 +16,12 @@ import {
 } from '../../../lib/line-range-utils'
 import { PdfReader } from '../../../lib/PdfReader'
 import { DocxReader } from '../../../lib/DocxReader'
+import {
+  buildAllowedOutputDirectories,
+  ensurePathWithinAllowedDirectories
+} from '../../../../common/security/pathGuards'
+
+const MAX_TEXT_FILE_BYTES = 5 * 1024 * 1024
 
 /**
  * Input type for ReadFilesTool
@@ -34,6 +42,64 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
 
   readonly name = ReadFilesTool.toolName
   readonly description = ReadFilesTool.toolDescription
+
+  private getFilesystemContext(): { projectPath?: string; userDataPath?: string } {
+    const projectPathValue = this.store.get('projectPath')
+    const projectPath =
+      typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+        ? (projectPathValue as string)
+        : undefined
+    const userDataPathValue = this.store.get('userDataPath')
+    const userDataPath =
+      typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+        ? (userDataPathValue as string)
+        : undefined
+
+    return { projectPath, userDataPath }
+  }
+
+  private getAllowedReadDirectories(): string[] {
+    const { projectPath, userDataPath } = this.getFilesystemContext()
+    return buildAllowedOutputDirectories({
+      projectPath,
+      userDataPath,
+      additional: [os.tmpdir()]
+    }).sort()
+  }
+
+  private resolveInputPath(filePath: string): string {
+    const allowedDirectories = this.getAllowedReadDirectories()
+    const trimmed = filePath?.trim()
+    if (!trimmed) {
+      throw new Error('File path must be provided')
+    }
+
+    const { projectPath } = this.getFilesystemContext()
+    const candidate = path.isAbsolute(trimmed)
+      ? trimmed
+      : projectPath
+      ? path.resolve(projectPath, trimmed)
+      : path.resolve(trimmed)
+
+    return ensurePathWithinAllowedDirectories(candidate, allowedDirectories)
+  }
+
+  private async readTextFileSafe(
+    filePath: string,
+    encoding: BufferEncoding
+  ): Promise<{ content: string; safePath: string }> {
+    const safePath = this.resolveInputPath(filePath)
+    const stats = await fs.stat(safePath)
+    if (stats.size > MAX_TEXT_FILE_BYTES) {
+      throw new ExecutionError(
+        `File ${filePath} is too large to read (max ${MAX_TEXT_FILE_BYTES} bytes)`,
+        this.name
+      )
+    }
+
+    const content = await fs.readFile(safePath, encoding)
+    return { content, safePath }
+  }
 
   /**
    * AWS Bedrock tool specification
@@ -145,23 +211,29 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
     this.logger.debug(`Reading single file: ${filePath}`)
 
     try {
+      const safePath = this.resolveInputPath(filePath)
+
       // Check if it's a PDF file
-      if (PdfReader.isPdfFile(filePath)) {
-        return this.readPdfFile(filePath, options)
+      if (PdfReader.isPdfFile(safePath)) {
+        return this.readPdfFile(safePath, options)
       }
 
       // Check if it's a DOCX file
-      if (DocxReader.isDocxFile(filePath)) {
-        return this.readDocxFile(filePath, options)
+      if (DocxReader.isDocxFile(safePath)) {
+        return this.readDocxFile(safePath, options)
       }
 
-      const content = await fs.readFile(filePath, options?.encoding || 'utf-8')
+      const { content, safePath: sanitizedPath } = await this.readTextFileSafe(
+        safePath,
+        (options?.encoding as BufferEncoding) || 'utf-8'
+      )
 
       this.logger.debug(`File read successfully: ${filePath}`, {
-        contentLength: content.length
+        contentLength: content.length,
+        safePath: sanitizedPath
       })
 
-      return this.formatFileContent(filePath, content, options)
+      return this.formatFileContent(sanitizedPath, content, options)
     } catch (error) {
       this.logger.error(`Error reading file: ${filePath}`, {
         error: error instanceof Error ? error.message : String(error)
@@ -179,30 +251,28 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
    * Read PDF file with optional line range filtering
    */
   private async readPdfFile(filePath: string, options?: ReadFileOptions): Promise<string> {
-    this.logger.debug(`Reading PDF file: ${filePath}`, {
+    const safePath = this.resolveInputPath(filePath)
+    this.logger.debug(`Reading PDF file: ${safePath}`, {
       hasLineRange: !!options?.lines
     })
 
     try {
-      // Extract text from PDF with line range support
-      const content = await PdfReader.extractText(filePath, options?.lines)
+      const content = await PdfReader.extractText(safePath, options?.lines)
 
-      // Log metadata for large PDFs without line range
       if (!options?.lines) {
-        const pdfContent = await PdfReader.extractTextWithMetadata(filePath)
+        const pdfContent = await PdfReader.extractTextWithMetadata(safePath)
         this.logger.info(`PDF processed successfully`, {
-          filePath,
+          filePath: safePath,
           totalLines: pdfContent.totalLines,
           pages: pdfContent.metadata.pages,
           title: pdfContent.metadata.title
         })
 
-        // Suggest line range for very large PDFs
         if (pdfContent.totalLines > 400) {
           const suggestion = PdfReader.suggestLineRange(pdfContent.totalLines)
           if (suggestion.warning) {
             this.logger.warn(`Large PDF detected`, {
-              filePath,
+              filePath: safePath,
               totalLines: pdfContent.totalLines,
               suggestion: suggestion.warning
             })
@@ -210,7 +280,7 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
         }
       }
 
-      return this.formatFileContent(filePath, content, options)
+      return this.formatFileContent(safePath, content, options)
     } catch (error) {
       this.logger.error(`Error reading PDF file: ${filePath}`, {
         error: error instanceof Error ? error.message : String(error)
@@ -228,30 +298,28 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
    * Read DOCX file with optional line range filtering
    */
   private async readDocxFile(filePath: string, options?: ReadFileOptions): Promise<string> {
-    this.logger.debug(`Reading DOCX file: ${filePath}`, {
+    const safePath = this.resolveInputPath(filePath)
+    this.logger.debug(`Reading DOCX file: ${safePath}`, {
       hasLineRange: !!options?.lines
     })
 
     try {
-      // Extract text from DOCX with line range support
-      const content = await DocxReader.extractText(filePath, options?.lines)
+      const content = await DocxReader.extractText(safePath, options?.lines)
 
-      // Log metadata for large DOCX files without line range
       if (!options?.lines) {
-        const docxContent = await DocxReader.extractTextWithMetadata(filePath)
+        const docxContent = await DocxReader.extractTextWithMetadata(safePath)
         this.logger.info(`DOCX processed successfully`, {
-          filePath,
+          filePath: safePath,
           totalLines: docxContent.totalLines,
           wordCount: docxContent.metadata.wordCount,
           characterCount: docxContent.metadata.characterCount
         })
 
-        // Suggest line range for very large DOCX files
         if (docxContent.totalLines > 400) {
           const suggestion = DocxReader.suggestLineRange(docxContent.totalLines)
           if (suggestion.warning) {
             this.logger.warn(`Large DOCX detected`, {
-              filePath,
+              filePath: safePath,
               totalLines: docxContent.totalLines,
               suggestion: suggestion.warning
             })
@@ -259,7 +327,7 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
         }
       }
 
-      return this.formatFileContent(filePath, content, options)
+      return this.formatFileContent(safePath, content, options)
     } catch (error) {
       this.logger.error(`Error reading DOCX file: ${filePath}`, {
         error: error instanceof Error ? error.message : String(error)
@@ -287,18 +355,22 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
         this.logger.verbose(`Reading file: ${filePath}`)
 
         let formattedContent: string
+        const safePath = this.resolveInputPath(filePath)
 
         // Check if it's a PDF file
-        if (PdfReader.isPdfFile(filePath)) {
-          const content = await PdfReader.extractText(filePath, options?.lines)
-          formattedContent = this.formatFileContent(filePath, content, options)
-        } else if (DocxReader.isDocxFile(filePath)) {
+        if (PdfReader.isPdfFile(safePath)) {
+          const content = await PdfReader.extractText(safePath, options?.lines)
+          formattedContent = this.formatFileContent(safePath, content, options)
+        } else if (DocxReader.isDocxFile(safePath)) {
           // Check if it's a DOCX file
-          const content = await DocxReader.extractText(filePath, options?.lines)
-          formattedContent = this.formatFileContent(filePath, content, options)
+          const content = await DocxReader.extractText(safePath, options?.lines)
+          formattedContent = this.formatFileContent(safePath, content, options)
         } else {
-          const content = await fs.readFile(filePath, options?.encoding || 'utf-8')
-          formattedContent = this.formatFileContent(filePath, content, options)
+          const { content } = await this.readTextFileSafe(
+            safePath,
+            (options?.encoding as BufferEncoding) || 'utf-8'
+          )
+          formattedContent = this.formatFileContent(safePath, content, options)
         }
 
         fileContents.push(formattedContent)

@@ -1,13 +1,13 @@
 import { dialog, OpenDialogOptions } from 'electron'
 import { ipcRenderer } from 'electron'
-import { promisify } from 'util'
 import fs from 'fs'
 import path from 'path'
 import { CustomAgent } from '../types/agent-chat'
-import yaml from 'js-yaml'
 // 直接storeをインポート
 import { store } from './store'
 import { log } from './logger'
+import { parseYaml } from '../common/security/yaml'
+import { readAgentFileSafely } from '../common/security/agentGuards'
 
 async function readSharedAgents(): Promise<{ agents: CustomAgent[]; error?: Error }> {
   try {
@@ -23,13 +23,14 @@ async function readSharedAgents(): Promise<{ agents: CustomAgent[]; error?: Erro
 
     // Check if the shared agents directory exists
     try {
-      await promisify(fs.access)(sharedAgentsDir)
+      await fs.promises.access(sharedAgentsDir)
     } catch {
       return { agents: [] }
     }
 
     // Read all files in the directory
-    const files = await promisify(fs.readdir)(sharedAgentsDir)
+    const entries = await fs.promises.readdir(sharedAgentsDir, { withFileTypes: true })
+    const files = entries.filter((entry) => entry.isFile()).map((entry) => entry.name)
 
     // Filter only yaml files
     const yamlFiles = files.filter((file) => file.endsWith('.yaml') || file.endsWith('.yml'))
@@ -39,8 +40,8 @@ async function readSharedAgents(): Promise<{ agents: CustomAgent[]; error?: Erro
       yamlFiles.map(async (file) => {
         try {
           const filePath = path.join(sharedAgentsDir, file)
-          const content = await promisify(fs.readFile)(filePath, 'utf8')
-          const agent = yaml.load(content) as CustomAgent
+          const safeContent = await readAgentFileSafely(filePath, sharedAgentsDir)
+          const agent = parseYaml<CustomAgent>(safeContent)
 
           // Flag this agent as shared
           agent.isShared = true
@@ -85,14 +86,15 @@ async function readDirectoryAgents(): Promise<{ agents: CustomAgent[]; error?: E
 
     // Check if the directory agents directory exists
     try {
-      await promisify(fs.access)(agentsDir)
+      await fs.promises.access(agentsDir)
     } catch {
       log.debug(`Directory agents directory not found: ${agentsDir}`)
       return { agents: [] }
     }
 
     // Read all files in the directory
-    const files = await promisify(fs.readdir)(agentsDir)
+    const entries = await fs.promises.readdir(agentsDir, { withFileTypes: true })
+    const files = entries.filter((entry) => entry.isFile()).map((entry) => entry.name)
 
     // Filter only yaml files
     const yamlFiles = files.filter((file) => file.endsWith('.yaml') || file.endsWith('.yml'))
@@ -102,8 +104,8 @@ async function readDirectoryAgents(): Promise<{ agents: CustomAgent[]; error?: E
       yamlFiles.map(async (file) => {
         try {
           const filePath = path.join(agentsDir, file)
-          const content = await promisify(fs.readFile)(filePath, 'utf8')
-          const agent = yaml.load(content) as CustomAgent
+          const safeContent = await readAgentFileSafely(filePath, agentsDir)
+          const agent = parseYaml<CustomAgent>(safeContent)
 
           // Flag this agent as a directory agent
           agent.directoryOnly = true

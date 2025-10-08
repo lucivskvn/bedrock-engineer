@@ -1,25 +1,44 @@
 import type { BrowserWindowConstructorOptions } from 'electron'
 
-const loadFileMock = jest.fn().mockResolvedValue(undefined)
-const showMock = jest.fn()
-const onMock = jest.fn()
-const closeMock = jest.fn()
+jest.mock('electron', () => {
+  const mockLoadFile = jest.fn().mockResolvedValue(undefined)
+  const mockShow = jest.fn()
+  const mockOn = jest.fn()
+  const mockClose = jest.fn()
 
-const BrowserWindowMock = jest.fn().mockImplementation((_: BrowserWindowConstructorOptions) => ({
-  loadURL: jest.fn().mockResolvedValue(undefined),
-  loadFile: loadFileMock,
-  show: showMock,
-  close: closeMock,
-  on: onMock,
-  isDestroyed: jest.fn().mockReturnValue(false)
-}))
+  const mockBrowserWindow = jest
+    .fn()
+    .mockImplementation((_: BrowserWindowConstructorOptions) => ({
+      loadURL: jest.fn().mockResolvedValue(undefined),
+      loadFile: mockLoadFile,
+      show: mockShow,
+      close: mockClose,
+      on: mockOn,
+      isDestroyed: jest.fn().mockReturnValue(false)
+    }))
 
-jest.mock('electron', () => ({
-  BrowserWindow: BrowserWindowMock,
-  screen: {
-    getPrimaryDisplay: () => ({ workAreaSize: { width: 1920, height: 1080 } })
+  return {
+    BrowserWindow: mockBrowserWindow,
+    screen: {
+      getPrimaryDisplay: () => ({ workAreaSize: { width: 1920, height: 1080 } })
+    },
+    __browserWindowMocks: {
+      mockBrowserWindow,
+      mockLoadFile,
+      mockShow,
+      mockOn,
+      mockClose
+    }
   }
-}))
+})
+
+const {
+  __browserWindowMocks: { mockBrowserWindow }
+} = jest.requireMock('electron') as {
+  __browserWindowMocks: {
+    mockBrowserWindow: jest.Mock
+  }
+}
 
 jest.mock('../../../common/logger', () => ({
   log: {
@@ -38,14 +57,14 @@ describe('camera preview window security', () => {
   })
 
   beforeEach(() => {
-    BrowserWindowMock.mockClear()
+    mockBrowserWindow.mockClear()
   })
 
   test('uses sandboxed renderer with isolation', async () => {
     const result = await cameraHandlers['camera:show-preview-window']({} as any, { cameraIds: ['default'] })
     expect(result.success).toBe(true)
-    expect(BrowserWindowMock).toHaveBeenCalled()
-    const opts = BrowserWindowMock.mock.calls[0][0]
+    expect(mockBrowserWindow).toHaveBeenCalled()
+    const opts = mockBrowserWindow.mock.calls[0][0]
     expect(opts.webPreferences?.sandbox).toBe(true)
     expect(opts.webPreferences?.nodeIntegration).toBe(false)
     expect(opts.webPreferences?.contextIsolation).toBe(true)

@@ -76,7 +76,11 @@ export const preloadTaskHistoryWindow = async (): Promise<void> => {
         sandbox: true,
         nodeIntegration: false,
         contextIsolation: true,
-        devTools: true
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+        experimentalFeatures: false,
+        spellcheck: false,
+        devTools: is.dev
       }
     })
 
@@ -185,7 +189,11 @@ export const windowHandlers = {
         sandbox: true,
         nodeIntegration: false,
         contextIsolation: true,
-        devTools: true
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+        experimentalFeatures: false,
+        spellcheck: false,
+        devTools: is.dev
       }
     })
 

@@ -6,6 +6,27 @@ export interface CommandPatternConfig {
 export interface CommandConfig {
   allowedCommands?: CommandPatternConfig[]
   shell: string
+  allowedWorkingDirectories?: string[]
+  projectPath?: string
+  /**
+   * Maximum number of concurrent commands allowed. When undefined the service
+   * does not enforce a limit.
+   */
+  maxConcurrentProcesses?: number
+  /**
+   * Maximum stdin payload (in bytes) accepted when piping input to a running
+   * process.
+   */
+  maxStdinBytes?: number
+  /**
+   * Environment variable keys that are safe to pass through to spawned
+   * processes. Keys must be alphanumeric/underscore to be honoured.
+   */
+  passthroughEnvKeys?: string[]
+  /**
+   * Additional PATH entries appended to the sanitised environment.
+   */
+  additionalPathEntries?: string[]
 }
 
 export interface ProcessInfo {

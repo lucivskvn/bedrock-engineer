@@ -2,6 +2,7 @@ import { rendererLogger } from '@renderer/lib/logger';
 const log: any = rendererLogger;
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
+import { resolveTrustedApiEndpoint } from '@renderer/lib/security/apiEndpoint'
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -37,13 +38,29 @@ export function useSocketConnection(
   const lastErrorTimeRef = useRef<number>(0)
   const ERROR_THROTTLE_MS = 5000 // 5秒間は同じエラーを出力しない
 
+  const resolveServerUrl = useCallback(() => {
+    const store = (window as any).store
+    const candidate = serverUrl ?? (store?.get('apiEndpoint') as string | undefined)
+    if (!candidate) {
+      return undefined
+    }
+    try {
+      return resolveTrustedApiEndpoint(candidate)
+    } catch (error) {
+      log.error('Rejected unsafe server URL', { error })
+      return undefined
+    }
+  }, [serverUrl])
+
   // Connect to server
   const connect = useCallback(() => {
     if (socketRef.current?.connected) {
       return
     }
 
-    if (!serverUrl) {
+    const resolvedServerUrl = resolveServerUrl()
+
+    if (!resolvedServerUrl) {
       log.error('Cannot connect: serverUrl is required')
       setStatus('error')
       events?.error?.(new Error('Server URL is required'))
@@ -53,7 +70,11 @@ export function useSocketConnection(
     setStatus('connecting')
 
     try {
-      const socket = io(serverUrl)
+      const token = ((window as any).store?.get('apiAuthToken') as string | undefined)
+      const socket = io(resolvedServerUrl, {
+        auth: token ? { token } : undefined,
+        withCredentials: true
+      })
       socketRef.current = socket
 
       // Connection event handlers
@@ -201,7 +222,7 @@ export function useSocketConnection(
       setStatus('error')
       events?.error?.(error)
     }
-  }, [serverUrl, events])
+  }, [events, resolveServerUrl])
 
   // Disconnect from server
   const disconnect = useCallback(() => {

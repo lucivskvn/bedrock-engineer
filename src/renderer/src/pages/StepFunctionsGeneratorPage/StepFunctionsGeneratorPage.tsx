@@ -30,7 +30,6 @@ function StepFunctionsGeneratorPage() {
 
   const systemPrompt = prompts.StepFunctonsGenerator.system(lng)
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_asl, setAsl] = useState(SAMPLE_ASL_PARALLEL)
   const [editorValue, setEditorValue] = useState(JSON.stringify(SAMPLE_ASL_PARALLEL, null, 2))
   const [userInput, setUserInput] = useState('')
