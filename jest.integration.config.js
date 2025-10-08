@@ -1,6 +1,6 @@
 require('dotenv').config()
 
-/** @type {import('ts-jest').JestConfigWithTsJest} */
+/** @type {import('jest').Config} */
 const esModules = [
   'node-fetch',
   'data-uri-to-buffer',
@@ -16,17 +16,8 @@ module.exports = {
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   transformIgnorePatterns: [`/node_modules/(?!${esModules.join('|')})`],
   transform: {
-    '^.+\\.tsx?$': [
-      'ts-jest',
-      {
-        tsconfig: 'tsconfig.test.json',
-        useESM: false,
-        diagnostics: false,
-        isolatedModules: true
-      }
-    ],
-    '^.+\\.[jt]sx?$': 'babel-jest'
+    '^.+\\.[tj]sx?$': ['babel-jest', { configFile: './babel.config.js' }]
   },
-  testMatch: ['**/*.integration.test.ts'],
+  testMatch: ['**/*.integration.test.ts', '**/*.integration.test.tsx'],
   setupFiles: ['<rootDir>/jest.integration.setup.js']
 }

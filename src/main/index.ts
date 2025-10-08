@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, Menu, MenuItem } from 'electron'
+import { app, shell, BrowserWindow, Menu, MenuItem, session } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../build/icon.ico?asset'
@@ -6,9 +6,11 @@ import { server } from './api'
 import type { Server as HTTPServer } from 'http'
 import Store from 'electron-store'
 import getRandomPort from '../preload/lib/random-port'
-import { store } from '../preload/store'
+import { store, storeReady } from '../preload/store'
 import { resolveProxyConfig, convertToElectronProxyConfig } from './lib/proxy-utils'
 import { isUrlAllowed, getAllowedHosts } from './lib/url-utils'
+import { randomBytes } from 'crypto'
+import fixPath from 'fix-path'
 import {
   initLoggerConfig,
   initLogger,
@@ -16,7 +18,8 @@ import {
   log,
   createCategoryLogger
 } from '../common/logger'
-import { registerIpcHandlers, registerLogHandler } from './lib/ipc-handler'
+import { isApiTokenStrong, normalizeApiToken, MIN_API_TOKEN_LENGTH } from '../common/security'
+import { configureIpcSecurity, registerIpcHandlers, registerLogHandler } from './lib/ipc-handler'
 import { bedrockHandlers } from './handlers/bedrock-handlers'
 import { fileHandlers } from './handlers/file-handlers'
 import { pdfHandlers } from './handlers/pdf-handlers'
@@ -37,19 +40,41 @@ import {
 } from './handlers/background-agent-handlers'
 import { pubsubHandlers } from './handlers/pubsub-handlers'
 import { todoHandlers } from './handlers/todo-handlers'
+import type {
+  PermissionRequest,
+  WebContents,
+  Session,
+  DisplayMediaRequestHandlerHandlerRequest,
+  OnBeforeRequestListenerDetails
+} from 'electron'
+import {
+  getAllowedPermissions,
+  isPermissionAllowed,
+  isTrustedRendererUrl
+} from './security/policy'
+import { isLoopbackHostname, normalizeHttpOrigin } from '../common/security/urlGuards'
 
-// 動的インポートを使用してfix-pathパッケージを読み込む
-// eslint-disable-next-line no-restricted-syntax
-import('fix-path')
-  .then((fixPathModule) => {
-    fixPathModule.default()
+app.enableSandbox()
+
+try {
+  fixPath()
+} catch (error) {
+  log.error('Failed to initialize fix-path module', {
+    error: error instanceof Error ? error.message : String(error)
   })
-  .catch((err) => {
-    log.error('Failed to load fix-path module:', { error: err })
-  })
+}
 
 // No need to track project path anymore as we always read from disk
 Store.initRenderer()
+
+app.on('select-client-certificate', (event, webContents, url) => {
+  event.preventDefault()
+  const ownerUrl = webContents && typeof webContents.getURL === 'function' ? webContents.getURL() : undefined
+  log.warn('Blocked client certificate selection request', {
+    url,
+    ownerUrl
+  })
+})
 
 // Initialize category loggers
 const apiLogger = createCategoryLogger('api')
@@ -57,6 +82,279 @@ const agentsLogger = createCategoryLogger('agents')
 
 // プロキシ認証情報を保存するグローバル変数
 let currentProxyConfig: any = null
+
+const isDevelopmentEnvironment =
+  is.dev || process.env.NODE_ENV === 'development' || !!process.env.ELECTRON_RENDERER_URL
+
+function tryNormalizeTrustedOrigin(origin: string): string | null {
+  try {
+    return normalizeHttpOrigin(origin, { allowLoopbackHttp: true })
+  } catch {
+    return null
+  }
+}
+
+function resolveTrustedOrigins(): string[] {
+  const origins = new Set<string>()
+  const envOrigins = process.env.ALLOWED_ORIGINS
+  if (envOrigins) {
+    envOrigins
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0 && origin !== '*')
+      .forEach((origin) => {
+        const sanitized = tryNormalizeTrustedOrigin(origin)
+        if (sanitized) {
+          origins.add(sanitized)
+        } else {
+          log.warn('Ignoring invalid origin in ALLOWED_ORIGINS for navigation trust', { origin })
+        }
+      })
+  }
+
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL
+  if (rendererUrl) {
+    const sanitizedRenderer = tryNormalizeTrustedOrigin(rendererUrl)
+    if (sanitizedRenderer) {
+      origins.add(sanitizedRenderer)
+    }
+  }
+
+  if (isDevelopmentEnvironment) {
+    origins.add('http://localhost:5173')
+    origins.add('http://127.0.0.1:5173')
+    origins.add('http://[::1]:5173')
+  }
+
+  return Array.from(origins)
+}
+
+const trustedOrigins = resolveTrustedOrigins()
+
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  event.preventDefault()
+
+  const ownerUrl = webContents && typeof webContents.getURL === 'function' ? webContents.getURL() : undefined
+
+  log.warn('Blocked navigation due to TLS certificate error', {
+    url,
+    ownerUrl,
+    error,
+    certificateSubject: certificate?.subjectName,
+    certificateIssuer: certificate?.issuerName
+  })
+
+  callback(false)
+})
+
+const allowFileProtocol = !isDevelopmentEnvironment
+
+configureIpcSecurity({
+  trustedOrigins,
+  allowFileProtocol
+})
+
+const allowedPermissions = Array.from(getAllowedPermissions())
+
+const hardenedSessions = new WeakSet<Session>()
+
+function shouldBlockRendererRequest(url: string): boolean {
+  if (!url || url.startsWith('blob:') || url.startsWith('data:')) {
+    return false
+  }
+
+  try {
+    const parsed = new URL(url)
+    const protocol = parsed.protocol
+
+    if (protocol === 'file:' || protocol === 'app:' || protocol === 'devtools:' || protocol === 'chrome-devtools:') {
+      return false
+    }
+
+    if (protocol === 'http:' || protocol === 'ws:') {
+      if (isLoopbackHostname(parsed.hostname)) {
+        return false
+      }
+
+      if (isDevelopmentEnvironment || process.env.ALLOW_HTTP_ORIGINS === 'true') {
+        return false
+      }
+
+      return true
+    }
+
+    if (protocol === 'https:' || protocol === 'wss:') {
+      return false
+    }
+
+    return true
+  } catch {
+    return true
+  }
+}
+
+function applySessionSecurity(targetSession: Session): void {
+  if (hardenedSessions.has(targetSession)) {
+    return
+  }
+
+  hardenedSessions.add(targetSession)
+
+  targetSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const requestDetails = details as PermissionRequest & { requestingOrigin?: string }
+    const origin = requestDetails.requestingOrigin || requestDetails.requestingUrl || webContents.getURL()
+
+    if (
+      !isTrustedRendererUrl(origin, trustedOrigins, allowFileProtocol) ||
+      !isPermissionAllowed(permission, details, {
+        allowedOrigins: trustedOrigins,
+        allowFileProtocol,
+        origin
+      })
+    ) {
+      log.warn('Denied permission request', {
+        permission,
+        origin,
+        ownerUrl: webContents.getURL()
+      })
+      callback(false)
+      return
+    }
+
+    log.debug('Permission request approved', {
+      permission,
+      origin,
+      ownerUrl: webContents.getURL()
+    })
+    callback(true)
+  })
+
+  targetSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    const origin = requestingOrigin || details?.requestingUrl || webContents?.getURL() || ''
+
+    if (
+      origin &&
+      (!isTrustedRendererUrl(origin, trustedOrigins, allowFileProtocol) ||
+        !isPermissionAllowed(permission, details, {
+          allowedOrigins: trustedOrigins,
+          allowFileProtocol,
+          origin
+        }))
+    ) {
+      return false
+    }
+
+    return isPermissionAllowed(permission, details, {
+      allowedOrigins: trustedOrigins,
+      allowFileProtocol,
+      origin
+    })
+  })
+
+  targetSession.setDisplayMediaRequestHandler(
+    (request: DisplayMediaRequestHandlerHandlerRequest, callback) => {
+      const origin = request.securityOrigin
+      if (!origin || !isTrustedRendererUrl(origin, trustedOrigins, allowFileProtocol)) {
+        log.warn('Blocked untrusted display media request', {
+          origin: origin || 'unknown'
+        })
+        callback({})
+        return
+      }
+
+      log.warn('Rejected direct display media request; use vetted screen capture APIs', {
+        origin
+      })
+      callback({})
+    },
+    { useSystemPicker: false }
+  )
+
+  targetSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details: OnBeforeRequestListenerDetails, callback) => {
+    if (!details.webContentsId) {
+      callback({})
+      return
+    }
+
+    if (shouldBlockRendererRequest(details.url)) {
+      log.warn('Blocked renderer network request to insecure target', {
+        url: details.url,
+        resourceType: details.resourceType
+      })
+      callback({ cancel: true })
+      return
+    }
+
+    callback({})
+  })
+
+  const storagePath = typeof targetSession.getStoragePath === 'function' ? targetSession.getStoragePath() : undefined
+  const persistent = typeof targetSession.isPersistent === 'function' ? targetSession.isPersistent() : undefined
+
+  log.info('Applied session hardening', {
+    storagePath: storagePath || 'memory',
+    persistent
+  })
+}
+
+function attachContentSecurityHooks(contents: WebContents): void {
+  const currentUrl = typeof contents.getURL === 'function' ? contents.getURL() : ''
+  if (currentUrl.startsWith('devtools://')) {
+    return
+  }
+
+  contents.on('will-attach-webview', (event, _webPreferences, params) => {
+    event.preventDefault()
+    log.warn('Blocked attempt to attach <webview>', {
+      targetUrl: params?.src,
+      ownerUrl: contents.getURL()
+    })
+  })
+
+  contents.on('will-navigate', (event, url) => {
+    if (!isTrustedRendererUrl(url, trustedOrigins, allowFileProtocol)) {
+      event.preventDefault()
+      log.warn('Blocked navigation to untrusted URL', {
+        targetUrl: url,
+        ownerUrl: contents.getURL()
+      })
+    }
+  })
+
+  contents.setWindowOpenHandler((details) => {
+    if (isUrlAllowed(details.url, getAllowedHosts())) {
+      void shell.openExternal(details.url)
+    } else {
+      log.warn('Blocked attempt to open external window', {
+        targetUrl: details.url,
+        ownerUrl: contents.getURL()
+      })
+    }
+    return { action: 'deny' }
+  })
+}
+
+function setupSessionPermissionHandlers(): void {
+  const defaultSession = session.defaultSession
+  if (!defaultSession) {
+    log.warn('Default session unavailable; skipping permission hardening')
+    return
+  }
+
+  applySessionSecurity(defaultSession)
+
+  app.on('session-created', (createdSession) => {
+    applySessionSecurity(createdSession)
+  })
+
+  log.info('Permission handlers registered', {
+    allowedPermissions
+  })
+}
+
+app.on('web-contents-created', (_event, contents) => {
+  attachContentSecurityHooks(contents)
+})
 
 /**
  * プロキシ認証ハンドラーを設定
@@ -162,10 +460,9 @@ function createMenu(window: BrowserWindow) {
     {
       label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
+        ...(is.dev
+          ? [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' }]
+          : []),
         {
           label: 'Zoom In',
           accelerator: 'CommandOrControl+Plus',
@@ -236,6 +533,7 @@ function createMenu(window: BrowserWindow) {
 }
 
 async function createWindow(): Promise<void> {
+  await storeReady
   // Create the browser window.
   mainWindow = new BrowserWindow({
     minWidth: 640,
@@ -251,6 +549,10 @@ async function createWindow(): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      spellcheck: false,
       // Zoom related settings
       zoomFactor: 1.0,
       enableWebSQL: false
@@ -277,7 +579,7 @@ async function createWindow(): Promise<void> {
       } else if (input.key === '0') {
         mainWindow!.webContents.setZoomFactor(1.0)
         event.preventDefault()
-      } else if (input.key === 'r') {
+      } else if (is.dev && input.key === 'r') {
         mainWindow!.reload()
         event.preventDefault()
       }
@@ -345,22 +647,40 @@ async function createWindow(): Promise<void> {
     }
   })
 
-  const allowedHosts = getAllowedHosts()
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    if (isUrlAllowed(details.url, allowedHosts)) {
-      shell.openExternal(details.url)
-    } else {
-      log.warn('Blocked navigation to disallowed URL', { url: details.url })
+  const envToken = normalizeApiToken(process.env.API_AUTH_TOKEN)
+  if (process.env.API_AUTH_TOKEN && !envToken) {
+    apiLogger.warn('Ignoring weak API_AUTH_TOKEN value from environment', {
+      minLength: MIN_API_TOKEN_LENGTH
+    })
+  }
+
+  let storedToken = store.get('apiAuthToken')
+  if (!isApiTokenStrong(storedToken)) {
+    if (typeof storedToken === 'string' && storedToken.trim().length > 0) {
+      apiLogger.warn('Stored API token failed strength validation; regenerating a new token')
     }
-    return { action: 'deny' }
-  })
+    storedToken = undefined
+  }
+
+  let apiAuthToken = envToken ?? storedToken ?? randomBytes(32).toString('hex')
+
+  if (!isApiTokenStrong(apiAuthToken)) {
+    apiLogger.warn('Generated API token did not meet strength requirements; regenerating')
+    apiAuthToken = randomBytes(32).toString('hex')
+  }
+
+  if (!storedToken || storedToken !== apiAuthToken) {
+    store.set('apiAuthToken', apiAuthToken)
+  }
+
+  process.env.API_AUTH_TOKEN = apiAuthToken
 
   const port = await getRandomPort()
-  store.set('apiEndpoint', `http://localhost:${port}`)
+  store.set('apiEndpoint', `http://127.0.0.1:${port}`)
 
-  apiServer = server.listen(port, () => {
+  apiServer = server.listen(port, '127.0.0.1', () => {
     apiLogger.info('API server started', {
-      endpoint: `http://localhost:${port}`
+      endpoint: `http://127.0.0.1:${port}`
     })
   })
 
@@ -393,6 +713,7 @@ let apiServer: HTTPServer | null = null
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
+  await storeReady
   // Set userDataPath in store
   store.set('userDataPath', userDataPath)
 
@@ -405,6 +726,8 @@ app.whenReady().then(async () => {
 
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
+
+  setupSessionPermissionHandlers()
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.

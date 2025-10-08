@@ -8,6 +8,7 @@ import { NodeHttp2Handler, NodeHttp2HandlerOptions } from '@smithy/node-http-han
 import { Provider } from '@smithy/types'
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
+import os from 'os'
 import { InferenceConfig } from './types'
 import { Subject } from 'rxjs'
 import * as path from 'path'
@@ -25,6 +26,8 @@ import { ToolInput } from '../../../types/tools'
 import { ProxyConfiguration } from '../bedrock/types'
 import { createSonicHttpOptions } from '../../lib/proxy-utils'
 import { createCategoryLogger } from '../../../common/logger'
+import { app } from 'electron'
+import { buildAllowedOutputDirectories, resolveSafeOutputPath } from '../../security/path-utils'
 
 const logger = createCategoryLogger('sonic:client')
 
@@ -458,37 +461,52 @@ export class NovaSonicBidirectionalStreamClient {
    * Apply defaults for generateImage tool
    */
   private applyGenerateImageDefaults(toolInput: any, projectPath: string): void {
+    const allowedDirectories = this.getAllowedToolOutputDirectories(projectPath)
     // Handle both outputPath and output_path (Nova Sonic sometimes uses underscore format)
     const currentOutputPath = toolInput.outputPath || toolInput.output_path
 
-    if (
-      !currentOutputPath ||
-      typeof currentOutputPath !== 'string' ||
-      currentOutputPath.trim() === ''
-    ) {
-      const timestamp = Date.now()
-      const defaultFileName = `generated_image_${timestamp}.png`
-      const defaultPath = path.join(projectPath, defaultFileName)
+    const timestamp = Date.now()
+    let requestedPath: string | undefined
 
-      // Set both formats to ensure compatibility
-      toolInput.outputPath = defaultPath
-      toolInput.output_path = defaultPath
-
-      logger.debug(`Applied default outputPath for generateImage: ${defaultPath}`)
-    } else if (!path.isAbsolute(currentOutputPath)) {
-      // Convert relative path to absolute
-      const absolutePath = path.resolve(projectPath, currentOutputPath)
-
-      // Set both formats to ensure compatibility
-      toolInput.outputPath = absolutePath
-      toolInput.output_path = absolutePath
-
-      logger.debug(`Converted relative outputPath to absolute: ${absolutePath}`)
-    } else {
-      // Ensure both formats are set with the absolute path
-      toolInput.outputPath = currentOutputPath
-      toolInput.output_path = currentOutputPath
+    if (typeof currentOutputPath === 'string' && currentOutputPath.trim().length > 0) {
+      const trimmed = currentOutputPath.trim()
+      requestedPath = path.isAbsolute(trimmed)
+        ? trimmed
+        : path.resolve(projectPath, trimmed)
     }
+
+    const { fullPath } = resolveSafeOutputPath({
+      requestedPath,
+      defaultDirectory: projectPath,
+      defaultFileName: `generated_image_${timestamp}`,
+      allowedDirectories,
+      extension: '.png'
+    })
+
+    toolInput.outputPath = fullPath
+    toolInput.output_path = fullPath
+
+    logger.debug(`Normalized outputPath for generateImage: ${fullPath}`)
+  }
+
+  private getAllowedToolOutputDirectories(projectPath: string): string[] {
+    const userDataPathValue = store.get('userDataPath')
+    const userDataPath =
+      typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+        ? userDataPathValue
+        : undefined
+
+    return buildAllowedOutputDirectories({
+      projectPath,
+      userDataPath,
+      additional: [
+        path.join(app.getPath('downloads'), 'bedrock-engineer'),
+        app.getPath('downloads'),
+        app.getPath('pictures'),
+        app.getPath('documents'),
+        os.tmpdir()
+      ]
+    })
   }
 
   /**

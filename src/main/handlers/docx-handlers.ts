@@ -2,10 +2,17 @@
  * DOCX handlers for main process
  */
 
-import { IpcMainInvokeEvent } from 'electron'
+import { IpcMainInvokeEvent, app } from 'electron'
 import * as path from 'path'
+import os from 'os'
+import fs from 'fs/promises'
 import mammoth from 'mammoth'
 import { log } from '../../common/logger'
+import { store } from '../../preload/store'
+import {
+  buildAllowedOutputDirectories,
+  ensurePathWithinAllowedDirectories
+} from '../security/path-utils'
 
 export interface LineRange {
   from?: number
@@ -62,13 +69,64 @@ function isDocxFile(filePath: string): boolean {
   return ext === '.docx'
 }
 
-/**
- * Validate DOCX file path
- */
-function validateDocxFile(filePath: string): void {
-  if (!isDocxFile(filePath)) {
+const MAX_DOCX_BYTES = 25 * 1024 * 1024
+
+function getDocxPathContext(): { projectPath?: string; userDataPath?: string } {
+  const projectPathValue = store.get('projectPath')
+  const projectPath =
+    typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+      ? projectPathValue
+      : undefined
+  const userDataPathValue = store.get('userDataPath')
+  const userDataPath =
+    typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+      ? userDataPathValue
+      : undefined
+
+  return { projectPath, userDataPath }
+}
+
+function getAllowedDocxDirectories(): string[] {
+  const { projectPath, userDataPath } = getDocxPathContext()
+
+  return buildAllowedOutputDirectories({
+    projectPath,
+    userDataPath,
+    additional: [
+      app.getPath('documents'),
+      path.join(app.getPath('documents'), 'bedrock-engineer'),
+      app.getPath('downloads'),
+      path.join(app.getPath('downloads'), 'bedrock-engineer'),
+      os.tmpdir()
+    ]
+  })
+}
+
+function resolveDocxPath(filePath: string): string {
+  const { projectPath } = getDocxPathContext()
+  const allowedDirectories = getAllowedDocxDirectories()
+  const candidatePath = path.isAbsolute(filePath)
+    ? filePath
+    : projectPath
+    ? path.resolve(projectPath, filePath)
+    : path.resolve(filePath)
+
+  return ensurePathWithinAllowedDirectories(candidatePath, allowedDirectories)
+}
+
+async function assertDocxFileSafe(filePath: string): Promise<string> {
+  const safePath = resolveDocxPath(filePath)
+
+  if (!isDocxFile(safePath)) {
     throw new Error(`File ${filePath} is not a DOCX file`)
   }
+
+  const stats = await fs.stat(safePath)
+  if (stats.size > MAX_DOCX_BYTES) {
+    throw new Error('DOCX file is too large to process safely')
+  }
+
+  return safePath
 }
 
 /**
@@ -91,13 +149,13 @@ export const docxHandlers = {
     log.info('Extracting text from DOCX', { filePath, hasLineRange: !!lineRange })
 
     try {
-      validateDocxFile(filePath)
+      const safePath = await assertDocxFileSafe(filePath)
 
-      const result = await mammoth.extractRawText({ path: filePath })
+      const result = await mammoth.extractRawText({ path: safePath })
 
       if (result.messages.length > 0) {
         log.warn('DOCX extraction warnings', {
-          filePath,
+          filePath: safePath,
           warnings: result.messages.map((m) => m.message)
         })
       }
@@ -106,7 +164,7 @@ export const docxHandlers = {
       const filteredResult = filterByLineRange(cleanedText, lineRange)
 
       log.info('DOCX text extraction successful', {
-        filePath,
+        filePath: safePath,
         originalLength: cleanedText.length,
         filteredLength: filteredResult.length,
         warningCount: result.messages.length
@@ -133,9 +191,9 @@ export const docxHandlers = {
     log.info('Extracting DOCX metadata', { filePath })
 
     try {
-      validateDocxFile(filePath)
+      const safePath = await assertDocxFileSafe(filePath)
 
-      const result = await mammoth.extractRawText({ path: filePath })
+      const result = await mammoth.extractRawText({ path: safePath })
       const cleanedText = cleanupText(result.value)
       const lines = cleanedText.split('\n')
 
@@ -155,7 +213,7 @@ export const docxHandlers = {
       }
 
       log.info('DOCX metadata extraction successful', {
-        filePath,
+        filePath: safePath,
         totalLines: docxContent.totalLines,
         wordCount: docxContent.metadata.wordCount,
         characterCount: docxContent.metadata.characterCount
@@ -182,10 +240,10 @@ export const docxHandlers = {
     log.info('Getting DOCX info', { filePath })
 
     try {
-      validateDocxFile(filePath)
+      const safePath = await assertDocxFileSafe(filePath)
 
       // Extract only a portion of text for estimation to avoid processing large files
-      const result = await mammoth.extractRawText({ path: filePath })
+      const result = await mammoth.extractRawText({ path: safePath })
       const text = cleanupText(result.value)
 
       // Estimate word count from the first 2000 characters
@@ -202,7 +260,7 @@ export const docxHandlers = {
       }
 
       log.info('DOCX info extraction successful', {
-        filePath,
+        filePath: safePath,
         estimatedWordCount
       })
 

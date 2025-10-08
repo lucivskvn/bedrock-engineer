@@ -1,16 +1,50 @@
+import { EventEmitter } from 'events'
+import path from 'node:path'
+import * as childProcess from 'child_process'
 import { CommandService } from './commandService'
 import { CommandConfig } from './types'
+
+const createMockChildProcess = () => {
+  const child = new EventEmitter() as unknown as childProcess.ChildProcess
+  const stdout = new EventEmitter() as unknown as NodeJS.ReadableStream
+  const stderr = new EventEmitter() as unknown as NodeJS.ReadableStream
+  const stdin = {
+    write: jest.fn().mockReturnValue(true),
+    end: jest.fn(),
+    destroy: jest.fn()
+  } as unknown as NodeJS.WritableStream
+
+  Object.assign(child, {
+    stdout,
+    stderr,
+    stdin,
+    pid: 1234,
+    spawnargs: ['echo', 'hello'],
+    removeAllListeners: jest.fn().mockReturnValue(child),
+    kill: jest.fn()
+  })
+
+  return { child, stdout, stderr, stdin }
+}
 
 describe('CommandService', () => {
   const cwd = process.cwd()
   const config: CommandConfig = {
     allowedCommands: [{ pattern: 'echo hello', description: 'echo hello' }],
-    shell: '/bin/sh'
+    shell: '/bin/sh',
+    allowedWorkingDirectories: [cwd],
+    projectPath: cwd
   }
   let service: CommandService
 
   beforeEach(() => {
     service = new CommandService(config)
+  })
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+    delete process.env.SAFE_KEY
+    delete process.env.API_AUTH_TOKEN
   })
 
   test('rejects disallowed command', async () => {
@@ -70,5 +104,58 @@ describe('CommandService', () => {
     expect(killSpy).toHaveBeenCalledWith(-pid)
     killSpy.mockRestore()
     Object.defineProperty(process, 'platform', { value: original })
+  })
+
+  test('enforces concurrency limit', async () => {
+    const limitedService = new CommandService({ ...config, maxConcurrentProcesses: 1 })
+    ;(limitedService as any).runningProcesses.set(999, {
+      pid: 999,
+      command: 'echo hello',
+      timestamp: Date.now()
+    })
+
+    await expect(
+      limitedService.executeCommand({ command: 'echo hello', cwd })
+    ).rejects.toThrow('Maximum concurrent command limit')
+  })
+
+  test('constructs sanitized spawn environment', () => {
+    process.env.SAFE_KEY = 'visible'
+    process.env.API_AUTH_TOKEN = 'sensitive'
+
+    const secureService = new CommandService({
+      ...config,
+      passthroughEnvKeys: ['SAFE_KEY', 'INVALID KEY'],
+      additionalPathEntries: [path.join(cwd, 'bin')]
+    })
+
+    const env = (secureService as any).buildCommandEnvironment(false) as NodeJS.ProcessEnv
+
+    expect(env).toBeDefined()
+    expect(env.SAFE_KEY).toBe('visible')
+    expect(env.API_AUTH_TOKEN).toBeUndefined()
+    expect(env.PATH).toContain(path.join(cwd, 'bin'))
+  })
+
+  test('rejects stdin payloads that exceed configured limit', async () => {
+    const limitedService = new CommandService({ ...config, maxStdinBytes: 1024 })
+    const { child } = createMockChildProcess()
+
+    ;(limitedService as any).runningProcesses.set(1, {
+      pid: 1,
+      command: 'echo hello',
+      timestamp: Date.now()
+    })
+    ;(limitedService as any).processStates.set(1, {
+      isRunning: true,
+      hasError: false,
+      output: { stdout: '', stderr: '', code: null },
+      process: child
+    })
+
+    const oversized = 'A'.repeat(2 * 1024)
+    await expect(
+      limitedService.sendInput({ pid: 1, stdin: oversized })
+    ).rejects.toThrow('stdin payload exceeds')
   })
 })

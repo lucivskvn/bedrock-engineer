@@ -1,20 +1,28 @@
-/** @type {import('ts-jest').JestConfigWithTsJest} **/
-const esModules = ['get-port']
+/** @type {import('jest').Config} **/
+const esModules = [
+  'get-port',
+  'electron-store',
+  'conf',
+  'dot-prop',
+  'env-paths',
+  'atomically',
+  'stubborn-fs',
+  'when-exit',
+  'debounce-fn',
+  'mimic-function',
+  'uint8array-extras'
+]
 
 module.exports = {
-  preset: 'ts-jest',
   testEnvironment: 'node',
   transformIgnorePatterns: [`/node_modules/(?!${esModules.join('|')})`],
   transform: {
-    '^.+.tsx?$': [
-      'ts-jest',
-      {
-        tsconfig: 'tsconfig.test.json'
-      }
-    ],
-    '^.+\\.[jt]sx?$': 'babel-jest'
+    '^.+\\.[tj]sx?$': ['babel-jest', { configFile: './babel.config.js' }]
   },
-  testMatch: ['**/*.test.ts'],
+  moduleNameMapper: {
+    '^keytar$': '<rootDir>/src/test/__mocks__/keytar.ts'
+  },
+  testMatch: ['**/*.test.ts', '**/*.test.tsx'],
   testPathIgnorePatterns: [
     '<rootDir>/node_modules/',
     '\\.integration\\.test\\.ts$' // .integration.test.ts で終わるファイルを除外

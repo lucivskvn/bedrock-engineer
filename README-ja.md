@@ -31,6 +31,15 @@ Windows:
 
 MacOS に最適化されていますが、Windows, Linux OS でもビルドして使用できます。不具合がある場合、issue に起票ください。
 
+> **2025年10月のセキュリティアップデート** — コマンド実行には次の強化された既定値が適用されます。
+>
+> - `maxConcurrentProcesses`: 同時に起動できるプロセス数を制限します（既定値は `2`。`0` を指定すると上限を無効化できます）。
+> - `maxStdinBytes`: 過大な標準入力ペイロードを遮断します（既定値は `65536` バイト、上限は `262144` バイト）。
+> - `passthroughEnvKeys`: サブプロセスに引き継ぐ環境変数の許可リストです（大文字の `[A-Z0-9_]` のみが有効）。
+> - `additionalPathEntries`: `commandSearchPaths` 設定を介してマスクされた `PATH` を安全に拡張します。
+>
+> これらの値は **設定 → 詳細設定 → コマンド実行** から、または暗号化ストアの `commandMaxConcurrentProcesses`、`commandMaxStdinBytes`、`commandPassthroughEnvKeys`、`commandSearchPaths` キーを編集して調整できます。
+
 <details>
 <summary>Tips for Installation</summary>
 
@@ -94,6 +103,22 @@ npm run build:linux
 ```
 
 `dist`ディレクトリに保存されたアプリケーションを使用します。
+
+### URL許可リスト
+
+Bedrock Engineerでは、外部ナビゲーションを許可リストに登録されたホストに制限しています。
+`ALLOWED_HOSTS` 環境変数にカンマ区切りでホスト名（例: `ALLOWED_HOSTS=github.com,example.com`）を設定することでリストを変更できます。
+設定しない場合は `github.com` のみが許可されます。
+
+### 信頼できるAPIエンドポイントの正規化
+
+レンダラー、preloadブリッジ、組み込みのExpressサーバーは共通の正規化レイヤーで`apiEndpoint`や`ELECTRON_RENDERER_URL`、`ALLOWED_ORIGINS`の値を検証します。
+
+- 認証情報、パス、クエリ、ハッシュを含むURLは拒否されます。
+- ループバックインターフェース（IPv6の`http://[::1]:…`を含む）の場合のみHTTPを許可し、それ以外はHTTPSが必須です。
+- プロトコルとホスト名は小文字に統一され、比較時の一貫性を保ちます。
+
+検証に失敗したエンドポイントは無視され、警告ログが出力されます。意図しない設定でローカルAPIが安全でない通信経路に晒されないよう、アプリ内設定画面や`window.store`から登録する値はこれらの制約を満たすもののみ使用してください。
 
 ## エージェントチャット
 

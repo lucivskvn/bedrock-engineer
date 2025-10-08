@@ -4,10 +4,12 @@ import {
   GetAsyncInvokeCommand
 } from '@aws-sdk/client-bedrock-runtime'
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { app } from 'electron'
 import { createWriteStream } from 'fs'
 import { promises as fs } from 'fs'
 import { pipeline } from 'stream/promises'
 import path from 'path'
+import os from 'os'
 import type { ServiceContext } from '../types'
 import { createRuntimeClient, createS3Client } from '../client'
 import type {
@@ -28,6 +30,12 @@ import {
   NOVA_REEL_REGION_SUPPORT
 } from '../types/movie'
 import { log } from '../../../../common/logger'
+import {
+  buildAllowedOutputDirectories,
+  ensurePathWithinAllowedDirectories
+} from '../../../security/path-utils'
+
+const MAX_INPUT_IMAGE_BYTES = 10 * 1024 * 1024
 
 export class VideoService {
   private runtimeClient: BedrockRuntimeClient
@@ -60,6 +68,64 @@ export class VideoService {
 
     // S3 client for downloading generated videos
     this.s3Client = createS3Client(awsCredentials)
+  }
+
+  private getMediaPathContext(): { projectPath?: string; userDataPath?: string } {
+    const projectPathValue = this.context.store.get('projectPath')
+    const projectPath =
+      typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+        ? projectPathValue
+        : undefined
+    const userDataPathValue = this.context.store.get('userDataPath')
+    const userDataPath =
+      typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+        ? userDataPathValue
+        : undefined
+
+    return { projectPath, userDataPath }
+  }
+
+  private getAllowedMediaDirectories(): string[] {
+    const { projectPath, userDataPath } = this.getMediaPathContext()
+
+    return buildAllowedOutputDirectories({
+      projectPath,
+      userDataPath,
+      additional: [
+        app.getPath('pictures'),
+        path.join(app.getPath('pictures'), 'bedrock-engineer'),
+        app.getPath('downloads'),
+        path.join(app.getPath('downloads'), 'bedrock-engineer'),
+        app.getPath('documents'),
+        os.tmpdir()
+      ]
+    })
+  }
+
+  private resolveImagePath(imagePath: string): string {
+    const { projectPath } = this.getMediaPathContext()
+    const allowedDirectories = this.getAllowedMediaDirectories()
+    const candidatePath = path.isAbsolute(imagePath)
+      ? imagePath
+      : projectPath
+      ? path.resolve(projectPath, imagePath)
+      : path.resolve(imagePath)
+
+    return ensurePathWithinAllowedDirectories(candidatePath, allowedDirectories)
+  }
+
+  private async readSafeImageBuffer(imagePath: string): Promise<{ buffer: Buffer; safePath: string }> {
+    const safePath = this.resolveImagePath(imagePath)
+    const stats = await fs.stat(safePath)
+    if (!stats.isFile()) {
+      throw new Error(`Input image must be a regular file: ${safePath}`)
+    }
+    if (stats.size > MAX_INPUT_IMAGE_BYTES) {
+      throw new Error('Input image exceeds maximum allowed size')
+    }
+
+    const buffer = await fs.readFile(safePath)
+    return { buffer, safePath }
   }
 
   private validateRequest(request: GenerateMovieRequest): void {
@@ -134,7 +200,8 @@ export class VideoService {
    * Detect image format from file extension
    */
   private detectImageFormat(imagePath: string): 'png' | 'jpeg' {
-    const ext = imagePath.toLowerCase().split('.').pop()
+    const safePath = this.resolveImagePath(imagePath)
+    const ext = safePath.toLowerCase().split('.').pop()
     if (ext === 'png') return 'png'
     if (ext === 'jpg' || ext === 'jpeg') return 'jpeg'
     throw new Error(`Unsupported image format: ${ext}`)
@@ -145,8 +212,8 @@ export class VideoService {
    */
   private async readImageAsBase64(imagePath: string): Promise<string> {
     try {
-      const imageData = await fs.readFile(imagePath)
-      return imageData.toString('base64')
+      const { buffer } = await this.readSafeImageBuffer(imagePath)
+      return buffer.toString('base64')
     } catch (error) {
       throw new Error(`Failed to read image file ${imagePath}: ${error}`)
     }
@@ -165,21 +232,19 @@ export class VideoService {
 
       const bucket = s3Match[1]
       const timestamp = Date.now()
-      const fileName = path.basename(imagePath)
+      const { buffer, safePath } = await this.readSafeImageBuffer(imagePath)
+      const fileName = path.basename(safePath)
       const s3Key = `temp-images/${timestamp}/${fileName}`
 
-      // Read image file
-      const imageData = await fs.readFile(imagePath)
-
       // Detect content type
-      const format = this.detectImageFormat(imagePath)
+      const format = this.detectImageFormat(safePath)
       const contentType = format === 'png' ? 'image/png' : 'image/jpeg'
 
       // Upload to S3
       const command = new PutObjectCommand({
         Bucket: bucket,
         Key: s3Key,
-        Body: imageData,
+        Body: buffer,
         ContentType: contentType
       })
 

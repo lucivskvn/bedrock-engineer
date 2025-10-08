@@ -1,10 +1,13 @@
 import { InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime'
+import { app } from 'electron'
 import { createRuntimeClient } from '../client'
 import type { ServiceContext } from '../types'
 import { createCategoryLogger } from '../../../../common/logger'
 import { ConverseService } from './converseService'
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
+import { buildAllowedOutputDirectories, ensurePathWithinAllowedDirectories } from '../../../security/path-utils'
 
 // 画像認識サービス専用のカテゴリロガーを作成
 const imageLogger = createCategoryLogger('bedrock:image')
@@ -15,6 +18,31 @@ const imageLogger = createCategoryLogger('bedrock:image')
  */
 export class ImageRecognitionService {
   constructor(private context: ServiceContext) {}
+
+  private getAllowedImageDirectories(): string[] {
+    const projectPathValue = this.context.store.get('projectPath')
+    const projectPath =
+      typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+        ? projectPathValue
+        : undefined
+    const userDataPathValue = this.context.store.get('userDataPath')
+    const userDataPath =
+      typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+        ? userDataPathValue
+        : undefined
+
+    return buildAllowedOutputDirectories({
+      projectPath,
+      userDataPath,
+      additional: [
+        path.join(app.getPath('pictures'), 'bedrock-engineer'),
+        app.getPath('pictures'),
+        app.getPath('downloads'),
+        app.getPath('documents'),
+        os.tmpdir()
+      ]
+    })
+  }
 
   /**
    * 画像認識を実行する
@@ -107,6 +135,10 @@ export class ImageRecognitionService {
    * 存在確認、形式チェック、サイズ制限などを適用
    */
   private validateImageFile(imagePath: string): void {
+    const allowedDirectories = this.getAllowedImageDirectories()
+
+    ensurePathWithinAllowedDirectories(imagePath, allowedDirectories)
+
     // ファイル存在確認
     if (!fs.existsSync(imagePath)) {
       throw new Error(`Image file not found: ${imagePath}`)
@@ -122,6 +154,9 @@ export class ImageRecognitionService {
 
     // ファイルサイズの確認
     const stats = fs.statSync(imagePath)
+    if (!stats.isFile()) {
+      throw new Error(`Image path must reference a file: ${imagePath}`)
+    }
     const maxSize = 3.75 * 1024 * 1024 // 3.75MB (Claude/Novaの共通制限)
 
     if (stats.size > maxSize) {

@@ -7,6 +7,7 @@ jest.mock('../../../main/lib/proxy-utils', () => ({ createUtilProxyAgent: jest.f
 
 import { utilHandlers } from '../../../main/handlers/util-handlers'
 import { isUrlSafe } from '../../../main/lib/url-utils'
+import { MAX_FETCH_BODY_BYTES } from '../../../main/handlers/fetch-guards'
 
 const axiosMock = axios as jest.MockedFunction<typeof axios>
 const isUrlSafeMock = isUrlSafe as jest.MockedFunction<typeof isUrlSafe>
@@ -30,8 +31,10 @@ describe('fetch-website handler', () => {
     expect(axiosMock).toHaveBeenCalledWith(
       expect.objectContaining({
         method,
-        maxContentLength: 5 * 1024 * 1024,
-        maxBodyLength: 5 * 1024 * 1024
+        validateStatus: null,
+        maxRedirects: 0,
+        maxContentLength: MAX_FETCH_BODY_BYTES,
+        maxBodyLength: MAX_FETCH_BODY_BYTES
       })
     )
   })
@@ -53,5 +56,41 @@ describe('fetch-website handler', () => {
       utilHandlers['fetch-website']({} as any, ['https://example.com'])
     ).rejects.toThrow('maxContentLength')
     expect(axiosMock).toHaveBeenCalled()
+  })
+
+  test('follows safe redirects for GET requests', async () => {
+    axiosMock
+      .mockResolvedValueOnce({
+        status: 302,
+        headers: { location: '/redirect' },
+        data: '',
+        config: {}
+      } as any)
+      .mockResolvedValueOnce({ status: 200, headers: {}, data: 'redirected' })
+
+    const result = await utilHandlers['fetch-website']({} as any, [
+      'https://github.com/start',
+      { method: 'GET' }
+    ])
+
+    expect(result.data).toBe('redirected')
+    expect(axiosMock).toHaveBeenCalledTimes(2)
+    expect(isUrlSafeMock).toHaveBeenCalledTimes(2)
+  })
+
+  test('rejects redirects to disallowed targets', async () => {
+    isUrlSafeMock.mockResolvedValueOnce(true)
+    isUrlSafeMock.mockResolvedValueOnce(false)
+    axiosMock.mockResolvedValueOnce({
+      status: 301,
+      headers: { location: 'http://127.0.0.1/internal' },
+      data: '',
+      config: {}
+    } as any)
+
+    await expect(
+      utilHandlers['fetch-website']({} as any, ['https://github.com/start'])
+    ).rejects.toThrow('Disallowed URL')
+    expect(axiosMock).toHaveBeenCalledTimes(1)
   })
 })

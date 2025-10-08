@@ -7,6 +7,54 @@ import { IoIosClose } from 'react-icons/io'
 import { VscZoomIn, VscZoomOut, VscScreenFull } from 'react-icons/vsc'
 import DOMPurify from 'dompurify'
 
+const isSafeSvgLink = (value: string): boolean => {
+  if (value.startsWith('#')) {
+    return true
+  }
+
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+DOMPurify.setConfig({
+  USE_PROFILES: { svg: true },
+  FORBID_TAGS: ['foreignObject']
+})
+
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (!(node as Element).removeAttribute) {
+    return
+  }
+
+  const element = node as Element
+  if (element.hasAttribute('target')) {
+    element.removeAttribute('target')
+  }
+  if (element.hasAttribute('rel')) {
+    element.removeAttribute('rel')
+  }
+
+  for (const attr of ['href', 'xlink:href']) {
+    if (element.hasAttribute(attr)) {
+      const value = element.getAttribute(attr) || ''
+      if (!isSafeSvgLink(value)) {
+        element.removeAttribute(attr)
+      }
+    }
+  }
+
+  if (element.hasAttribute('style')) {
+    const style = element.getAttribute('style') || ''
+    if (/url\(/i.test(style) || /expression/i.test(style)) {
+      element.removeAttribute('style')
+    }
+  }
+})
+
 type Props = {
   code: string
   handler?: any

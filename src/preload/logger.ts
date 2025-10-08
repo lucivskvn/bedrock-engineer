@@ -6,6 +6,16 @@ import { LogLevel } from '../common/logger/config'
  * This allows preload and renderer processes to use the centralized logging system
  */
 const sendLogToMain = (level: LogLevel, message: string, meta: any = {}) => {
+  if (!ipcRenderer || typeof ipcRenderer.send !== 'function') {
+    if (process.env.NODE_ENV !== 'test') {
+      process.emitWarning('ipcRenderer unavailable, skipping preload log dispatch', {
+        code: 'IPC_LOGGER_FALLBACK',
+        detail: JSON.stringify({ level, message })
+      })
+    }
+    return
+  }
+
   ipcRenderer.send('logger:log', {
     level,
     message,

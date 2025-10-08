@@ -31,6 +31,15 @@ Windows:
 
 It is optimized for MacOS, but can also be built and used on Windows and Linux OS. If you have any problems, please report an issue.
 
+> **October 2025 security update** — Command execution now ships with hardened defaults:
+>
+> - `maxConcurrentProcesses` limits simultaneous command launches (default `2`; set `0` to disable the cap).
+> - `maxStdinBytes` blocks oversized standard-input payloads (default `65536` bytes, capped at `262144`).
+> - `passthroughEnvKeys` is an explicit allow-list for environment variables that may reach spawned processes (uppercase `[A-Z0-9_]` only).
+> - `additionalPathEntries` extends the sanitised `PATH` via the `commandSearchPaths` preference without leaking host secrets.
+>
+> Configure these values from **Settings → Advanced → Command execution** or by editing the encrypted store keys `commandMaxConcurrentProcesses`, `commandMaxStdinBytes`, `commandPassthroughEnvKeys`, and `commandSearchPaths`.
+
 <details>
 <summary>Tips for Installation</summary>
 
@@ -117,6 +126,62 @@ Customize this list by setting the `ALLOWED_HOSTS` environment variable to a
 comma-separated list of hostnames (for example,
 `ALLOWED_HOSTS=github.com,example.com`). If not provided, the application
 defaults to allowing only `github.com`.
+
+### Trusted API endpoint sanitisation
+
+The renderer, preload bridge, and embedded Express server now share a common
+normalisation layer for local API endpoints. When you set
+`ELECTRON_RENDERER_URL`, `ALLOWED_ORIGINS`, or update the `apiEndpoint` value in
+the encrypted store, the application:
+
+- rejects endpoints with embedded credentials, paths, query strings, or hash
+  fragments;
+- forces HTTPS for remote hosts and only permits HTTP when the hostname resolves
+  to a loopback interface (including IPv6 `http://[::1]:…`);
+- lowercases the protocol and host so equality comparisons remain predictable.
+
+If an endpoint fails validation it will be ignored and a warning is logged. This
+prevents poisoned configuration from exposing the local API over insecure
+transports. Use the in-app settings page or set the `apiEndpoint` via `window.store`
+only with trusted values that meet these constraints.
+
+### API authentication & origin security
+
+The embedded Express + Socket.IO API now requires an authentication token for
+all requests and websocket connections. During startup Bedrock Engineer will:
+
+1. Read the `API_AUTH_TOKEN` environment variable if it is set.
+2. Otherwise generate a 256-bit random token, persist it in the encrypted
+   application store, and share it with the renderer process.
+
+Every HTTP call issued by the renderer automatically sends this token via the
+`X-API-Key` header, and Socket.IO uses it during the connection handshake. If
+you run external tooling that talks to the local API, set the
+`API_AUTH_TOKEN` environment variable explicitly so that the same value can be
+supplied with each request.
+
+For additional protection the backend enforces a strict CORS allowlist. Use the
+`ALLOWED_ORIGINS` environment variable to provide a comma-separated list of
+allowed HTTPS origins. Plain-HTTP localhost origins are accepted only during
+development. Production builds served from the bundled `file://` protocol are
+whitelisted automatically. The same allowlist now governs renderer navigation
+and permission prompts: any attempt to navigate the Electron windows to an
+untrusted origin, open a `<webview>`, or request camera/microphone access from a
+non-allowlisted origin is denied and logged by the main process.
+
+Electron permission handling is likewise locked down. Only clipboard
+operations, fullscreen requests, and audio/video capture originating from a
+trusted origin are granted. Everything else is rejected automatically, which
+prevents malicious content from escalating privileges if it ever reached the
+renderer sandbox.
+
+The embedded HTTP server now binds exclusively to `127.0.0.1`, preventing
+remote hosts on the local network from reaching the API unless you explicitly
+reverse-proxy it. If you do place Bedrock Engineer behind a trusted proxy and
+need to honour `X-Forwarded-For` headers for websocket rate limiting, set
+`TRUST_PROXY_FOR_SOCKETS=true`. Leaving the flag unset instructs the server to
+ignore forwarded addresses and rely on the direct socket IP, which is the safer
+default for desktop deployments.
 
 
 ## Agent Chat
@@ -369,7 +434,51 @@ For detailed setup instructions and examples, see:
 
 ## Security
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+The local API surface is hardened with multiple layers of protection:
+
+* **Prototype pollution guard** – incoming JSON and form payloads are scanned for `__proto__`,
+  `constructor`, and `prototype` keys. Requests containing those keys are rejected with HTTP 400 before
+  they reach any business logic.
+* **Socket.IO hardening** – all websocket connections must originate from an allow‑listed origin,
+  authenticate with the shared API token, and respect sequential audio processing enforced by the
+  streaming queue. Connections that exceed per‑IP rate limits or attempt to send payloads larger than
+  `MAX_AUDIO_PAYLOAD_BYTES` are disconnected.
+* **Standardised rate limiting responses** – HTTP clients now receive structured JSON errors together
+  with RFC 9110 compatible `RateLimit-*` headers, simplifying automated backoff.
+* **Strict HTTP headers** – the API disables the Express `X-Powered-By` header, adds modern Helmet
+  defaults (including `Referrer-Policy: no-referrer`) and publishes a restrictive `Permissions-Policy`
+  (`camera=(), microphone=(), geolocation=()`).
+* **Fetch metadata enforcement** – requests that arrive with `Sec-Fetch-Mode` outside `cors`/`same-origin`,
+  cross-site `Sec-Fetch-Site`, or non-empty destinations are rejected before they reach business logic.
+  File and `app://` origins are only honoured when browsers report an `empty` destination, preventing
+  `<iframe>` or `<img>` abuse of the local API.
+* **No-store caching** – every response carries `Cache-Control: no-store, no-cache, must-revalidate`
+  alongside legacy `Pragma`/`Expires` headers so that intermediaries and browsers do not persist sensitive
+  Bedrock results or AWS credentials.
+* **Restricted disk outputs** – screenshot, camera capture, website download, Bedrock media, and Nova
+  Sonic image generation routines all enforce allow‑listed directories (project workspace, application
+  data, OS downloads/pictures, or temp folders). Attempts to read from or write to arbitrary paths are
+  rejected before any file system access occurs.
+
+### Configurable security knobs
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `SOCKET_MAX_HTTP_BUFFER_SIZE` | `1048576` | Maximum HTTP upgrade payload accepted by Socket.IO (bytes). |
+| `SOCKET_PING_TIMEOUT_MS` | `20000` | Milliseconds to wait for a ping/pong acknowledgement before closing a socket. |
+| `SOCKET_PING_INTERVAL_MS` | `25000` | Milliseconds between ping frames. |
+| `AUDIO_RATE_LIMIT_POINTS` | `120` | Number of audio chunks allowed per client within the configured window. |
+| `AUDIO_RATE_LIMIT_WINDOW_SEC` | `60` | Rate limit window for audio chunks (seconds). |
+| `MAX_AUDIO_PAYLOAD_BYTES` | `1048576` | Maximum size for a single audio chunk emitted by the renderer (bytes). |
+| `MAX_REQUESTS_PER_SOCKET` | `100` | Maximum HTTP requests permitted on a single keep-alive connection before it is recycled. |
+| `TRUST_PROXY` | `false` | When set to `true`, Express honours `X-Forwarded-*` headers from trusted proxies for rate limiting and logging. |
+| `TRUST_PROXY_TRUSTED_ADDRESSES` | `loopback, linklocal, uniquelocal` | Optional comma-separated list passed to `app.set('trust proxy', ...)` when `TRUST_PROXY=true`. |
+
+Update the relevant environment variables when you need to loosen or tighten the defaults for local
+testing. Remember to keep renderer and main‑process configuration in sync when changing the limits.
+
+See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for information on reporting
+vulnerabilities.
 
 ## License
 

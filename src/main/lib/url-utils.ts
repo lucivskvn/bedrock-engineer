@@ -1,43 +1,139 @@
 import { promises as dns } from 'dns'
 import net from 'node:net'
 
-/**
- * List of hosts that are considered trusted. This list is sourced from the
- * `ALLOWED_HOSTS` environment variable (comma separated) and falls back to a
- * default value when not provided.
- */
 const DEFAULT_ALLOWED_HOSTS = ['github.com']
 
-export function getAllowedHosts(): string[] {
+export interface AllowedHostEntry {
+  hostname: string
+  port?: number
+  anyPort?: boolean
+}
+
+function normaliseHostname(hostname: string): string {
+  return hostname.trim().toLowerCase()
+}
+
+function parseAllowedHostEntry(entry: string): AllowedHostEntry | null {
+  if (!entry) {
+    return null
+  }
+
+  let rawValue = entry.trim()
+  if (!rawValue) {
+    return null
+  }
+
+  let anyPort = false
+  if (rawValue.endsWith(':*')) {
+    anyPort = true
+    rawValue = rawValue.slice(0, -2)
+  }
+
+  let candidate = rawValue
+  if (!candidate.includes('://')) {
+    candidate = `https://${candidate}`
+  }
+
+  try {
+    const url = new URL(candidate)
+    if (url.protocol !== 'https:') {
+      return null
+    }
+
+    if (url.username || url.password) {
+      return null
+    }
+
+    if ((url.pathname && url.pathname !== '/' && url.pathname !== '') || url.search || url.hash) {
+      return null
+    }
+
+    const hostname = normaliseHostname(url.hostname)
+    if (!hostname) {
+      return null
+    }
+
+    if (anyPort) {
+      return { hostname, anyPort: true }
+    }
+
+    if (url.port) {
+      const portNumber = Number.parseInt(url.port, 10)
+      if (!Number.isInteger(portNumber) || portNumber <= 0 || portNumber > 65535) {
+        return null
+      }
+      return { hostname, port: portNumber }
+    }
+
+    return { hostname, port: 443 }
+  } catch {
+    return null
+  }
+}
+
+export function getAllowedHosts(): AllowedHostEntry[] {
+  const entries = new Map<string, AllowedHostEntry>()
+
   const envHosts = process.env.ALLOWED_HOSTS
   if (envHosts) {
-    const parsed = envHosts
-      .split(',')
-      .map((h) => h.trim())
-      .filter((h) => h.length > 0)
-    if (parsed.length > 0) {
+    for (const rawEntry of envHosts.split(',')) {
+      const parsed = parseAllowedHostEntry(rawEntry)
+      if (parsed) {
+        const key = `${parsed.hostname}|${parsed.anyPort ? 'any' : parsed.port ?? '443'}`
+        entries.set(key, parsed)
+      }
+    }
+  }
+
+  if (entries.size === 0) {
+    for (const host of DEFAULT_ALLOWED_HOSTS) {
+      const parsed = parseAllowedHostEntry(host)
+      if (parsed) {
+        const key = `${parsed.hostname}|${parsed.anyPort ? 'any' : parsed.port ?? '443'}`
+        entries.set(key, parsed)
+      }
+    }
+  }
+
+  return Array.from(entries.values())
+}
+
+function resolvePort(url: URL): number {
+  if (url.port) {
+    const parsed = Number.parseInt(url.port, 10)
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) {
       return parsed
     }
   }
-  return DEFAULT_ALLOWED_HOSTS
+  return 443
 }
 
-/**
- * Checks if a URL uses http/https schemes and optionally if it belongs to the
- * list of trusted hosts. This check is synchronous and does not perform any
- * network lookups. It is used in places where a quick validation is required
- * (e.g. Electron navigation handling).
- */
-export function isUrlAllowed(targetUrl: string, allowedHosts: string[] = getAllowedHosts()): boolean {
+export function isUrlAllowed(
+  targetUrl: string,
+  allowedHosts: AllowedHostEntry[] = getAllowedHosts()
+): boolean {
   try {
-    const { protocol, hostname } = new URL(targetUrl)
-    if (protocol !== 'https:') {
+    const url = new URL(targetUrl)
+    if (url.protocol !== 'https:') {
       return false
     }
-    if (allowedHosts.length > 0 && !allowedHosts.includes(hostname)) {
+    if (url.username || url.password) {
       return false
     }
-    return true
+
+    const hostname = normaliseHostname(url.hostname)
+    const port = resolvePort(url)
+
+    return allowedHosts.some((allowed) => {
+      if (hostname !== allowed.hostname) {
+        return false
+      }
+      if (allowed.anyPort) {
+        return true
+      }
+      const expectedPort = allowed.port ?? 443
+      return expectedPort === port
+    })
   } catch {
     return false
   }
@@ -94,7 +190,7 @@ async function resolvesToPrivateIp(hostname: string): Promise<boolean> {
  */
 export async function isUrlSafe(
   targetUrl: string,
-  allowedHosts: string[] = getAllowedHosts()
+  allowedHosts: AllowedHostEntry[] = getAllowedHosts()
 ): Promise<boolean> {
   if (!isUrlAllowed(targetUrl, allowedHosts)) {
     return false

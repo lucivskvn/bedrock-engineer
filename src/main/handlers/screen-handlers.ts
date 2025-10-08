@@ -1,12 +1,41 @@
-import { IpcMainInvokeEvent, desktopCapturer } from 'electron'
+import { IpcMainInvokeEvent, desktopCapturer, app } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
 import { promisify } from 'util'
 import { log } from '../../common/logger'
+import { store } from '../../preload/store'
+import { buildAllowedOutputDirectories, resolveSafeOutputPath } from '../security/path-utils'
 
 const writeFile = promisify(fs.writeFile)
 const stat = promisify(fs.stat)
+
+function getAllowedCaptureDirectories(): string[] {
+  const projectPathValue = store.get('projectPath')
+  const projectPath =
+    typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+      ? projectPathValue
+      : undefined
+  const userDataPathValue = store.get('userDataPath')
+  const userDataPath =
+    typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+      ? userDataPathValue
+      : undefined
+
+  return buildAllowedOutputDirectories({
+    projectPath,
+    userDataPath,
+    additional: [
+      path.join(app.getPath('pictures'), 'bedrock-engineer'),
+      path.join(app.getPath('downloads'), 'bedrock-engineer'),
+      app.getPath('pictures'),
+      app.getPath('downloads'),
+      app.getPath('documents'),
+      app.getPath('videos'),
+      os.tmpdir()
+    ]
+  })
+}
 
 interface ScreenCaptureOptions {
   format?: 'png' | 'jpeg'
@@ -98,8 +127,18 @@ export const screenHandlers = {
       // 出力パスの決定
       const timestamp = Date.now()
       const format = options.format || 'png'
-      const filename = `screenshot_${timestamp}.${format}`
-      const outputPath = options.outputPath || path.join(os.tmpdir(), filename)
+
+      const allowedDirectories = getAllowedCaptureDirectories()
+      const defaultDirectory = path.join(app.getPath('pictures'), 'bedrock-engineer')
+      const { fullPath: outputPath } = resolveSafeOutputPath({
+        requestedPath: options.outputPath,
+        defaultDirectory,
+        defaultFileName: `screenshot_${timestamp}`,
+        allowedDirectories,
+        extension: `.${format}`
+      })
+
+      await fs.promises.mkdir(path.dirname(outputPath), { recursive: true, mode: 0o700 })
 
       // 画像の保存
       let buffer: Buffer

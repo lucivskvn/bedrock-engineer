@@ -6,7 +6,7 @@ import globals from 'globals'
 
 export default [
   {
-    ignores: ['node_modules', 'dist', 'out', '.gitignore']
+    ignores: ['node_modules', 'dist', 'out', '.git', 'coverage']
   },
   {
     languageOptions: {

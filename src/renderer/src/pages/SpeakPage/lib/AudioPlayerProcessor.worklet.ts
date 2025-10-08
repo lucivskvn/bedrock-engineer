@@ -1,9 +1,23 @@
 import { rendererLogger as log } from '@renderer/lib/logger';
-// AudioWorklet types - simplified for worklet context
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare const AudioWorkletProcessor: any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare const registerProcessor: any
+
+interface AudioWorkletProcessorBase {
+  readonly port: MessagePort
+  process(
+    inputs: Float32Array[][],
+    outputs: Float32Array[][],
+    parameters: Record<string, Float32Array>
+  ): boolean
+}
+
+declare const AudioWorkletProcessor: {
+  prototype: AudioWorkletProcessorBase
+  new (): AudioWorkletProcessorBase
+}
+
+declare function registerProcessor(
+  name: string,
+  processorCtor: new () => AudioWorkletProcessorBase
+): void
 
 // Audio sample buffer to minimize reallocations
 class ExpandableBuffer {
@@ -103,8 +117,7 @@ interface AudioWorkletMessage {
 
 class AudioPlayerProcessor extends AudioWorkletProcessor {
   private playbackBuffer: ExpandableBuffer
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public port: any
+  public port!: MessagePort
 
   constructor() {
     super()

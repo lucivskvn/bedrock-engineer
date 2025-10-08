@@ -1,16 +1,24 @@
-const infoMock = jest.fn()
-const warnMock = jest.fn()
-const errorMock = jest.fn()
-const debugMock = jest.fn()
+jest.mock('../../../../../../common/logger', () => {
+  const loggerMocks = {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn()
+  }
 
-jest.mock('../../../../../../common/logger', () => ({
-  createCategoryLogger: jest.fn(() => ({
-    info: infoMock,
-    warn: warnMock,
-    error: errorMock,
-    debug: debugMock
-  }))
-}))
+  return {
+    __loggerMocks: loggerMocks,
+    createCategoryLogger: jest.fn(() => loggerMocks)
+  }
+})
+
+const {
+  __loggerMocks: { warn: mockWarn }
+} = jest.requireMock('../../../../../../common/logger') as {
+  __loggerMocks: {
+    warn: jest.Mock
+  }
+}
 
 jest.mock('../BackgroundAgentService', () => ({
   BackgroundAgentService: jest.fn().mockImplementation(() => ({
@@ -96,7 +104,7 @@ describe('restorePersistedTasks validation', () => {
 
   beforeEach(() => {
     scheduleMock.mockClear()
-    warnMock.mockClear()
+    mockWarn.mockClear()
   })
 
   it('restores valid persisted tasks', () => {
@@ -114,7 +122,7 @@ describe('restorePersistedTasks validation', () => {
     const scheduler = createScheduler([validTask])
     expect((scheduler as any).scheduledTasks.size).toBe(1)
     expect(scheduleMock).toHaveBeenCalledTimes(1)
-    expect(warnMock).not.toHaveBeenCalled()
+    expect(mockWarn).not.toHaveBeenCalled()
   })
 
   it('skips invalid persisted tasks', () => {
@@ -133,6 +141,6 @@ describe('restorePersistedTasks validation', () => {
     const scheduler = createScheduler([validTask, invalidTask])
     expect((scheduler as any).scheduledTasks.size).toBe(1)
     expect(scheduleMock).toHaveBeenCalledTimes(1)
-    expect(warnMock).toHaveBeenCalledTimes(1)
+    expect(mockWarn).toHaveBeenCalledTimes(1)
   })
 })
