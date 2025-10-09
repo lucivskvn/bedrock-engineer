@@ -1,4 +1,14 @@
-const API_ENDPOINT = window.store.get('apiEndpoint')
+import { rendererLogger as log } from '@renderer/lib/logger';
+import { getTrustedApiEndpoint } from '@renderer/lib/security/apiEndpoint';
+const getAuthHeaders = () => {
+  const apiAuthToken = window.store.get('apiAuthToken') as string | undefined
+  if (apiAuthToken && apiAuthToken.length > 0) {
+    return { 'X-API-Key': apiAuthToken }
+  }
+  return undefined
+}
+
+const getApiEndpoint = () => getTrustedApiEndpoint()
 
 export interface RegionCheckResult {
   isSupported: boolean
@@ -17,12 +27,14 @@ export interface ConnectivityTestResult {
  */
 export async function checkNovaSonicRegionSupport(region?: string): Promise<RegionCheckResult> {
   try {
-    const url = new URL('/nova-sonic/region-check', API_ENDPOINT)
+    const url = new URL('/nova-sonic/region-check', getApiEndpoint())
     if (region) {
       url.searchParams.set('region', region)
     }
 
-    const response = await fetch(url.toString())
+    const response = await fetch(url.toString(), {
+      headers: getAuthHeaders()
+    })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: { message: 'Unknown error' } }))
@@ -31,7 +43,7 @@ export async function checkNovaSonicRegionSupport(region?: string): Promise<Regi
 
     return await response.json()
   } catch (error) {
-    console.error('Failed to check Nova Sonic region support:', error)
+    log.error('Failed to check Nova Sonic region support:', error)
     return {
       isSupported: false,
       currentRegion: region || 'unknown',
@@ -46,12 +58,14 @@ export async function checkNovaSonicRegionSupport(region?: string): Promise<Regi
  */
 export async function testBedrockConnectivity(region?: string): Promise<ConnectivityTestResult> {
   try {
-    const url = new URL('/bedrock/connectivity-test', API_ENDPOINT)
+    const url = new URL('/bedrock/connectivity-test', getApiEndpoint())
     if (region) {
       url.searchParams.set('region', region)
     }
 
-    const response = await fetch(url.toString())
+    const response = await fetch(url.toString(), {
+      headers: getAuthHeaders()
+    })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: { message: 'Unknown error' } }))
@@ -60,7 +74,7 @@ export async function testBedrockConnectivity(region?: string): Promise<Connecti
 
     return await response.json()
   } catch (error) {
-    console.error('Failed to test Bedrock connectivity:', error)
+    log.error('Failed to test Bedrock connectivity:', error)
     return {
       success: false,
       error: `Connectivity test failed: ${error instanceof Error ? error.message : String(error)}`

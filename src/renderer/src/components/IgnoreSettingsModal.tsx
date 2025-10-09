@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { Modal } from 'flowbite-react'
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -66,7 +67,7 @@ export const IgnoreSettingsModal: React.FC<IgnoreSettingsModalProps> = ({
       const result = await window.api.readProjectIgnore(projectPath)
       setProjectIgnoreContent(result.content)
     } catch (error) {
-      console.error('Failed to load project ignore file:', error)
+      log.error('Failed to load project ignore file:', error)
       setError(t('ignoreSettings.loadError'))
     } finally {
       setIsLoadingProject(false)
@@ -93,7 +94,7 @@ export const IgnoreSettingsModal: React.FC<IgnoreSettingsModalProps> = ({
 
       onClose()
     } catch (error) {
-      console.error('Failed to save ignore settings:', error)
+      log.error('Failed to save ignore settings:', error)
       setError(t('ignoreSettings.saveError'))
     } finally {
       setIsSaving(false)

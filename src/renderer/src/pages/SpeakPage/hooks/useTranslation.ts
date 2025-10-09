@@ -1,3 +1,5 @@
+import { rendererLogger } from '@renderer/lib/logger';
+const log: any = rendererLogger;
 import React, { useState, useCallback, useRef, useMemo } from 'react'
 
 export interface TranslationState {
@@ -60,7 +62,7 @@ export function useTranslation(
       const stats = await window.api.bedrock.getTranslationCacheStats()
       setCacheStats(stats)
     } catch (error) {
-      console.error('Failed to refresh cache stats:', error)
+      log.error('Failed to refresh cache stats:', error)
     }
   }, [])
 
@@ -69,9 +71,9 @@ export function useTranslation(
     try {
       await window.api.bedrock.clearTranslationCache()
       await refreshCacheStats()
-      console.info('Translation cache cleared')
+      log.info('Translation cache cleared')
     } catch (error) {
-      console.error('Failed to clear translation cache:', error)
+      log.error('Failed to clear translation cache:', error)
     }
   }, [refreshCacheStats])
 
@@ -136,11 +138,11 @@ export function useTranslation(
                 appliedSettings: cached.appliedSettings
               })
 
-              console.debug('Translation cache hit', { text: text.substring(0, 50) })
+              log.debug('Translation cache hit', { text: text.substring(0, 50) })
               return
             }
           } catch (cacheError) {
-            console.warn('Cache lookup failed, proceeding with API call', cacheError)
+            log.warn('Cache lookup failed, proceeding with API call', cacheError)
           }
         }
 
@@ -172,7 +174,7 @@ export function useTranslation(
           appliedSettings: result.appliedSettings
         })
 
-        console.info('Translation completed', {
+        log.info('Translation completed', {
           textPreview: text.substring(0, 50),
           sourceLanguage: result.sourceLanguage,
           targetLanguage: result.targetLanguage
@@ -193,7 +195,7 @@ export function useTranslation(
           error: errorMessage
         })
 
-        console.error('Translation failed', {
+        log.error('Translation failed', {
           textPreview: text.substring(0, 50),
           error: errorMessage
         })
@@ -260,7 +262,7 @@ export function useTranslation(
     debounceTimeouts.current.clear()
 
     setTranslationStates(new Map())
-    console.info('All translations cleared')
+    log.info('All translations cleared')
   }, [])
 
   // 特定の翻訳をクリア

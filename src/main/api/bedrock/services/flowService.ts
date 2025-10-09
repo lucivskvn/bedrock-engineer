@@ -10,6 +10,7 @@ import {
 } from '@aws-sdk/client-bedrock-agent-runtime'
 import { createAgentRuntimeClient } from '../client'
 import type { ServiceContext } from '../types'
+import { log } from '../../../../common/logger'
 
 export type InvokeFlowInput = {
   flowIdentifier: string
@@ -78,7 +79,7 @@ export class FlowService {
         ...processedResponse
       }
     } catch (error) {
-      console.error('Error invoking flow:', error)
+      log.error('Error invoking flow:', { error })
       throw error
     }
   }
@@ -176,7 +177,7 @@ export class FlowService {
         }
       }
     } catch (error: any) {
-      console.error('Error processing response stream:', error)
+      log.error('Error processing response stream:', { error })
 
       // セッションコンテキストエラーの場合は特別なハンドリング
       if (

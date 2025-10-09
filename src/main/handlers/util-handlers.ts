@@ -4,6 +4,13 @@ import axios from 'axios'
 import { log } from '../../common/logger'
 import { store } from '../../preload/store'
 import { createUtilProxyAgent } from '../lib/proxy-utils'
+import { isUrlSafe } from '../lib/url-utils'
+import {
+  clampFetchTimeout,
+  sanitizeRequestHeaders,
+  sanitizeRequestBody,
+  MAX_FETCH_BODY_BYTES
+} from './fetch-guards'
 
 export const utilHandlers = {
   'get-app-path': async (_event: IpcMainInvokeEvent) => {
@@ -13,39 +20,80 @@ export const utilHandlers = {
   'fetch-website': async (_event: IpcMainInvokeEvent, params: [string, any?]) => {
     const [url, options] = params
     try {
-      // Get proxy configuration from store
-      const awsConfig = store.get('aws')
-      const proxyAgents = createUtilProxyAgent(awsConfig?.proxyConfig)
-      const axiosConfig: any = {
-        method: options?.method || 'GET',
-        url: url,
-        headers: {
-          ...options?.headers,
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      const method = (options?.method || 'GET').toUpperCase()
+      if (!['GET', 'POST'].includes(method)) {
+        throw new Error('Unsupported HTTP method')
+      }
+
+      const performRequest = async (
+        targetUrl: string,
+        remainingRedirects: number
+      ): Promise<import('axios').AxiosResponse> => {
+        if (!(await isUrlSafe(targetUrl))) {
+          throw new Error('Disallowed URL')
         }
-      }
 
-      // Add request body if provided
-      if (options?.body) {
-        axiosConfig.data = options.body
-      }
+        // Get proxy configuration from store
+        const awsConfig = store.get('aws')
+        const proxyAgents = createUtilProxyAgent(awsConfig?.proxyConfig)
+        const timeout = clampFetchTimeout(options?.timeout)
+        const sanitizedHeaders = sanitizeRequestHeaders(options?.headers)
+        const axiosConfig: any = {
+          method,
+          url: targetUrl,
+          timeout,
+          validateStatus: null,
+          maxRedirects: 0,
+          maxContentLength: MAX_FETCH_BODY_BYTES,
+          maxBodyLength: MAX_FETCH_BODY_BYTES,
+          headers: {
+            ...sanitizedHeaders,
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          }
+        }
 
-      // Apply appropriate proxy agent based on URL protocol
-      if (proxyAgents) {
-        const targetUrl = new URL(url)
-        const agent = proxyAgents.httpsAgent
+        const body = sanitizeRequestBody(options?.body)
+        if (body !== undefined) {
+          if (method !== 'POST') {
+            throw new Error('Request body is only allowed for POST requests')
+          }
+          axiosConfig.data = body
+        }
 
-        if (targetUrl.protocol === 'https:') {
-          axiosConfig.httpsAgent = agent
+        if (proxyAgents) {
+          const target = new URL(targetUrl)
+          const agent = proxyAgents.httpsAgent
+          if (target.protocol === 'https:') {
+            axiosConfig.httpsAgent = agent
+          } else {
+            axiosConfig.httpAgent = agent
+          }
         } else {
-          axiosConfig.httpAgent = agent
+          log.debug('No proxy agent configured, using direct connection', { url: targetUrl })
         }
-      } else {
-        log.debug('No proxy agent configured, using direct connection', { url })
+
+        const response = await axios(axiosConfig)
+
+        if (
+          response.status >= 300 &&
+          response.status < 400 &&
+          response.headers.location
+        ) {
+          if (method !== 'GET') {
+            throw new Error('Redirects are not allowed for non-GET requests')
+          }
+          if (remainingRedirects <= 0) {
+            throw new Error('Too many redirects')
+          }
+          const redirectUrl = new URL(response.headers.location, targetUrl).toString()
+          return performRequest(redirectUrl, remainingRedirects - 1)
+        }
+
+        return response
       }
 
-      const response = await axios(axiosConfig)
+      const response = await performRequest(url, 3)
 
       return {
         status: response.status,

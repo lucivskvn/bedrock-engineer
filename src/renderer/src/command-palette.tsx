@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import 'react-cmdk/dist/cmdk.css'
 import CommandPalette, { filterItems, getItemIndex } from 'react-cmdk'
 import { useEffect, useState } from 'react'
@@ -33,7 +34,7 @@ const CmdK = () => {
             navigate(routes[id - 1].href)
           }
         } catch (e) {
-          console.log(e)
+          log.debug('command palette keydown error', { error: e })
         }
       }
     }

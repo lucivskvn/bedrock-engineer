@@ -1,9 +1,67 @@
-import { IpcMainInvokeEvent } from 'electron'
+import { IpcMainInvokeEvent, app } from 'electron'
 import { handleFileOpen } from '../../preload/file'
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 import { log } from '../../common/logger'
 import { store } from '../../preload/store'
+import {
+  buildAllowedOutputDirectories,
+  ensureDirectoryWithinAllowed,
+  ensurePathWithinAllowedDirectories,
+  sanitizeFilename
+} from '../security/path-utils'
+
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+const ALLOWED_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp'])
+
+function getPathContext(): {
+  projectPath?: string
+  userDataPath?: string
+} {
+  const projectPathValue = store.get('projectPath')
+  const projectPath =
+    typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+      ? projectPathValue
+      : undefined
+  const userDataPathValue = store.get('userDataPath')
+  const userDataPath =
+    typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+      ? userDataPathValue
+      : undefined
+
+  return { projectPath, userDataPath }
+}
+
+function getAllowedFileReadDirectories(): string[] {
+  const { projectPath, userDataPath } = getPathContext()
+
+  return buildAllowedOutputDirectories({
+    projectPath,
+    userDataPath,
+    additional: [
+      app.getPath('downloads'),
+      path.join(app.getPath('downloads'), 'bedrock-engineer'),
+      app.getPath('documents'),
+      app.getPath('pictures'),
+      app.getPath('videos'),
+      app.getPath('desktop'),
+      os.tmpdir()
+    ]
+  })
+}
+
+function resolveReadableFilePath(filePath: string): string {
+  const { projectPath } = getPathContext()
+  const allowedDirectories = getAllowedFileReadDirectories()
+  const candidatePath = path.isAbsolute(filePath)
+    ? filePath
+    : projectPath
+    ? path.resolve(projectPath, filePath)
+    : path.resolve(filePath)
+
+  return ensurePathWithinAllowedDirectories(candidatePath, allowedDirectories)
+}
 
 export const fileHandlers = {
   'open-file': async (_event: IpcMainInvokeEvent) => {
@@ -35,8 +93,20 @@ export const fileHandlers = {
 
   'get-local-image': async (_event: IpcMainInvokeEvent, filePath: string) => {
     try {
-      const data = await fs.promises.readFile(filePath)
-      const ext = filePath.split('.').pop()?.toLowerCase() || 'png'
+      const resolvedPath = resolveReadableFilePath(filePath)
+      const extension = path.extname(resolvedPath).toLowerCase()
+
+      if (!ALLOWED_IMAGE_EXTENSIONS.has(extension)) {
+        throw new Error(`Unsupported image extension: ${extension || 'unknown'}`)
+      }
+
+      const stats = await fs.promises.stat(resolvedPath)
+      if (stats.size > MAX_IMAGE_BYTES) {
+        throw new Error('Image file exceeds maximum allowed size')
+      }
+
+      const data = await fs.promises.readFile(resolvedPath)
+      const ext = extension.slice(1) || 'png'
       const base64 = data.toString('base64')
       return `data:image/${ext};base64,${base64}`
     } catch (error) {
@@ -127,49 +197,62 @@ export const fileHandlers = {
     }
   ) => {
     try {
-      // プロジェクトパスを取得
-      const projectPath = store.get('projectPath') || process.cwd()
+      const projectPathValue = store.get('projectPath')
+      const projectPath =
+        typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+          ? projectPathValue
+          : undefined
+      const userDataPathValue = store.get('userDataPath')
+      const userDataPath =
+        typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+          ? userDataPathValue
+          : undefined
 
-      // 保存先ディレクトリを決定
-      const targetDirectory = directory
-        ? path.resolve(directory)
-        : path.join(projectPath, 'downloads')
+      const defaultDirectory = projectPath
+        ? path.join(projectPath, 'downloads')
+        : path.join(app.getPath('downloads'), 'bedrock-engineer')
 
-      // ディレクトリが存在しない場合は作成
+      const allowedDirectories = buildAllowedOutputDirectories({
+        projectPath,
+        userDataPath,
+        additional: [
+          defaultDirectory,
+          app.getPath('downloads'),
+          app.getPath('documents'),
+          app.getPath('pictures'),
+          app.getPath('videos'),
+          os.tmpdir()
+        ]
+      })
+
+      const targetDirectoryCandidate = directory ?? defaultDirectory
+      const targetDirectory = ensureDirectoryWithinAllowed(targetDirectoryCandidate, allowedDirectories)
+
+      await fs.promises.mkdir(targetDirectory, { recursive: true, mode: 0o700 })
+
+      const extension = format === 'html' ? '.html' : '.txt'
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+
+      let fallbackBase = `website_${timestamp}`
       try {
-        await fs.promises.access(targetDirectory)
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          await fs.promises.mkdir(targetDirectory, { recursive: true })
-          log.info('Created downloads directory', { targetDirectory })
-        } else {
-          throw error
+        const parsedUrl = new URL(url)
+        const domain = parsedUrl.hostname.replace(/^www\./, '')
+        if (domain) {
+          fallbackBase = `${domain}_${timestamp}`
         }
+      } catch {
+        // ignore invalid URLs and keep fallback
       }
 
-      // ファイル名の生成
-      let finalFilename: string
-      if (filename) {
-        // 拡張子が指定されていない場合は追加
-        const extension = format === 'html' ? '.html' : '.txt'
-        finalFilename = filename.endsWith(extension) ? filename : filename + extension
-      } else {
-        // URLからドメイン名を抽出してファイル名を生成
-        try {
-          const urlObj = new URL(url)
-          const domain = urlObj.hostname.replace(/^www\./, '')
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-          const extension = format === 'html' ? '.html' : '.txt'
-          finalFilename = `${domain}_${timestamp}${extension}`
-        } catch {
-          // URLが無効な場合のフォールバック
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-          const extension = format === 'html' ? '.html' : '.txt'
-          finalFilename = `website_${timestamp}${extension}`
-        }
-      }
+      const safeFilename = sanitizeFilename(filename, {
+        fallback: fallbackBase,
+        allowedExtensions: [extension]
+      })
 
-      const filePath = path.join(targetDirectory, finalFilename)
+      const filePath = ensurePathWithinAllowedDirectories(
+        path.join(targetDirectory, safeFilename),
+        allowedDirectories
+      )
 
       // ファイル名の重複を避ける
       let finalPath = filePath
@@ -179,10 +262,16 @@ export const fileHandlers = {
         try {
           await fs.promises.access(finalPath)
           // ファイルが存在する場合、番号を付けて再試行
-          const extension = path.extname(finalFilename)
-          const basename = path.basename(finalFilename, extension)
-          const newFilename = `${basename}_${counter}${extension}`
-          finalPath = path.join(targetDirectory, newFilename)
+          const extname = path.extname(safeFilename)
+          const basename = path.basename(safeFilename, extname)
+          const newFilename = sanitizeFilename(`${basename}_${counter}`, {
+            fallback: `${basename}_${counter}`,
+            allowedExtensions: [extension]
+          })
+          finalPath = ensurePathWithinAllowedDirectories(
+            path.join(targetDirectory, newFilename),
+            allowedDirectories
+          )
           counter++
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code === 'ENOENT') {

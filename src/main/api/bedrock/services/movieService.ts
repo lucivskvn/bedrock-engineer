@@ -4,10 +4,12 @@ import {
   GetAsyncInvokeCommand
 } from '@aws-sdk/client-bedrock-runtime'
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { app } from 'electron'
 import { createWriteStream } from 'fs'
 import { promises as fs } from 'fs'
 import { pipeline } from 'stream/promises'
 import path from 'path'
+import os from 'os'
 import type { ServiceContext } from '../types'
 import { createRuntimeClient, createS3Client } from '../client'
 import type {
@@ -27,6 +29,13 @@ import {
   getTaskTypeForRequest,
   NOVA_REEL_REGION_SUPPORT
 } from '../types/movie'
+import { log } from '../../../../common/logger'
+import {
+  buildAllowedOutputDirectories,
+  ensurePathWithinAllowedDirectories
+} from '../../../security/path-utils'
+
+const MAX_INPUT_IMAGE_BYTES = 10 * 1024 * 1024
 
 export class VideoService {
   private runtimeClient: BedrockRuntimeClient
@@ -41,14 +50,14 @@ export class VideoService {
       (!awsCredentials.useProfile &&
         (!awsCredentials.accessKeyId || !awsCredentials.secretAccessKey))
     ) {
-      console.warn('AWS credentials not configured properly')
+      log.warn('AWS credentials not configured properly')
     }
 
     this.region = awsCredentials.region || 'us-east-1' // Default to us-east-1
 
     // Validate that Nova Reel is supported in the selected region
     if (!isNovaReelSupportedInRegion(this.region)) {
-      console.warn(
+      log.warn(
         `Nova Reel is not available in region ${this.region}. Supported regions: ${Object.keys(
           NOVA_REEL_REGION_SUPPORT
         ).join(', ')}`
@@ -59,6 +68,64 @@ export class VideoService {
 
     // S3 client for downloading generated videos
     this.s3Client = createS3Client(awsCredentials)
+  }
+
+  private getMediaPathContext(): { projectPath?: string; userDataPath?: string } {
+    const projectPathValue = this.context.store.get('projectPath')
+    const projectPath =
+      typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+        ? projectPathValue
+        : undefined
+    const userDataPathValue = this.context.store.get('userDataPath')
+    const userDataPath =
+      typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+        ? userDataPathValue
+        : undefined
+
+    return { projectPath, userDataPath }
+  }
+
+  private getAllowedMediaDirectories(): string[] {
+    const { projectPath, userDataPath } = this.getMediaPathContext()
+
+    return buildAllowedOutputDirectories({
+      projectPath,
+      userDataPath,
+      additional: [
+        app.getPath('pictures'),
+        path.join(app.getPath('pictures'), 'bedrock-engineer'),
+        app.getPath('downloads'),
+        path.join(app.getPath('downloads'), 'bedrock-engineer'),
+        app.getPath('documents'),
+        os.tmpdir()
+      ]
+    })
+  }
+
+  private resolveImagePath(imagePath: string): string {
+    const { projectPath } = this.getMediaPathContext()
+    const allowedDirectories = this.getAllowedMediaDirectories()
+    const candidatePath = path.isAbsolute(imagePath)
+      ? imagePath
+      : projectPath
+      ? path.resolve(projectPath, imagePath)
+      : path.resolve(imagePath)
+
+    return ensurePathWithinAllowedDirectories(candidatePath, allowedDirectories)
+  }
+
+  private async readSafeImageBuffer(imagePath: string): Promise<{ buffer: Buffer; safePath: string }> {
+    const safePath = this.resolveImagePath(imagePath)
+    const stats = await fs.stat(safePath)
+    if (!stats.isFile()) {
+      throw new Error(`Input image must be a regular file: ${safePath}`)
+    }
+    if (stats.size > MAX_INPUT_IMAGE_BYTES) {
+      throw new Error('Input image exceeds maximum allowed size')
+    }
+
+    const buffer = await fs.readFile(safePath)
+    return { buffer, safePath }
   }
 
   private validateRequest(request: GenerateMovieRequest): void {
@@ -133,7 +200,8 @@ export class VideoService {
    * Detect image format from file extension
    */
   private detectImageFormat(imagePath: string): 'png' | 'jpeg' {
-    const ext = imagePath.toLowerCase().split('.').pop()
+    const safePath = this.resolveImagePath(imagePath)
+    const ext = safePath.toLowerCase().split('.').pop()
     if (ext === 'png') return 'png'
     if (ext === 'jpg' || ext === 'jpeg') return 'jpeg'
     throw new Error(`Unsupported image format: ${ext}`)
@@ -144,8 +212,8 @@ export class VideoService {
    */
   private async readImageAsBase64(imagePath: string): Promise<string> {
     try {
-      const imageData = await fs.readFile(imagePath)
-      return imageData.toString('base64')
+      const { buffer } = await this.readSafeImageBuffer(imagePath)
+      return buffer.toString('base64')
     } catch (error) {
       throw new Error(`Failed to read image file ${imagePath}: ${error}`)
     }
@@ -164,21 +232,19 @@ export class VideoService {
 
       const bucket = s3Match[1]
       const timestamp = Date.now()
-      const fileName = path.basename(imagePath)
+      const { buffer, safePath } = await this.readSafeImageBuffer(imagePath)
+      const fileName = path.basename(safePath)
       const s3Key = `temp-images/${timestamp}/${fileName}`
 
-      // Read image file
-      const imageData = await fs.readFile(imagePath)
-
       // Detect content type
-      const format = this.detectImageFormat(imagePath)
+      const format = this.detectImageFormat(safePath)
       const contentType = format === 'png' ? 'image/png' : 'image/jpeg'
 
       // Upload to S3
       const command = new PutObjectCommand({
         Bucket: bucket,
         Key: s3Key,
-        Body: imageData,
+        Body: buffer,
         ContentType: contentType
       })
 
@@ -340,8 +406,10 @@ export class VideoService {
 
     try {
       // Add detailed logging for debugging
-      console.log('Nova Reel Request Structure:', JSON.stringify(novaReelRequest, null, 2))
-      console.log(`Using Nova Reel model: ${modelId} for region: ${this.region}`)
+      log.debug('Nova Reel Request Structure:', {
+        request: JSON.stringify(novaReelRequest, null, 2)
+      })
+      log.debug(`Using Nova Reel model: ${modelId} for region: ${this.region}`)
 
       const command = new StartAsyncInvokeCommand({
         modelId,
@@ -353,9 +421,8 @@ export class VideoService {
         }
       })
 
-      console.log(
-        'AWS Command:',
-        JSON.stringify(
+      log.debug('AWS Command:', {
+        command: JSON.stringify(
           {
             modelId,
             modelInput: novaReelRequest,
@@ -364,7 +431,7 @@ export class VideoService {
           null,
           2
         )
-      )
+      })
 
       const response = await this.runtimeClient.send(command)
 
@@ -387,7 +454,7 @@ export class VideoService {
         }
       }
     } catch (error: any) {
-      console.error('Error starting video generation:', error)
+      log.error('Error starting video generation:', { error })
 
       // If MULTI_SHOT_MANUAL fails with validation error, try fallback to MULTI_SHOT_AUTOMATED
       if (
@@ -395,7 +462,7 @@ export class VideoService {
         novaReelRequest.taskType === 'MULTI_SHOT_MANUAL' &&
         error.message?.includes('textToVideoParams')
       ) {
-        console.log('MULTI_SHOT_MANUAL failed, attempting fallback to MULTI_SHOT_AUTOMATED...')
+        log.debug('MULTI_SHOT_MANUAL failed, attempting fallback to MULTI_SHOT_AUTOMATED...')
 
         try {
           // Create fallback request with combined prompts
@@ -412,7 +479,9 @@ export class VideoService {
             }
           }
 
-          console.log('Fallback Request:', JSON.stringify(fallbackRequest, null, 2))
+          log.debug('Fallback Request:', {
+            request: JSON.stringify(fallbackRequest, null, 2)
+          })
 
           const fallbackCommand = new StartAsyncInvokeCommand({
             modelId,
@@ -430,7 +499,7 @@ export class VideoService {
             throw new Error('Failed to start video generation: No invocation ARN returned')
           }
 
-          console.log('Fallback succeeded! Note: Images were not used due to API limitations.')
+          log.debug('Fallback succeeded! Note: Images were not used due to API limitations.')
 
           return {
             invocationArn: response.invocationArn,
@@ -447,7 +516,7 @@ export class VideoService {
             }
           }
         } catch (fallbackError) {
-          console.error('Fallback also failed:', fallbackError)
+          log.error('Fallback also failed:', { error: fallbackError })
           throw new Error(
             `Both MULTI_SHOT_MANUAL and fallback failed. Original error: ${error.message}. Fallback error: ${fallbackError}`
           )
@@ -492,7 +561,7 @@ export class VideoService {
         failureMessage: response.failureMessage
       }
     } catch (error: any) {
-      console.error('Error getting job status:', error)
+      log.error('Error getting job status:', { error })
       throw error
     }
   }
@@ -528,7 +597,7 @@ export class VideoService {
 
       return localPath
     } catch (error: any) {
-      console.error('Error downloading video from S3:', error)
+      log.error('Error downloading video from S3:', { error })
       throw error
     }
   }
@@ -578,7 +647,7 @@ export class VideoService {
     // Wait for completion
     const finalStatus = await this.waitForCompletion(initialResult.invocationArn, {
       onProgress: (status) => {
-        console.log(`Video generation status: ${status.status}`)
+        log.debug(`Video generation status: ${status.status}`)
       }
     })
 

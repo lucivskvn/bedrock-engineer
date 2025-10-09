@@ -1,3 +1,5 @@
+import { rendererLogger } from '@renderer/lib/logger';
+const log: any = rendererLogger;
 import { Button } from 'flowbite-react'
 import toast from 'react-hot-toast'
 import { useRouteError } from 'react-router'
@@ -5,7 +7,7 @@ import { Link } from 'react-router-dom'
 
 const ErrorPage = () => {
   const error = useRouteError()
-  console.error({ error })
+  log.error('route error', { error })
   toast.error('Oops! Something went wrong.')
 
   return (

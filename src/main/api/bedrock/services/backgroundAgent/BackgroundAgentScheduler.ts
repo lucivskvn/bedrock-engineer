@@ -7,23 +7,48 @@ import { ScheduleConfig, ScheduledTask, TaskExecutionResult, BackgroundAgentConf
 import { BackgroundAgentService } from './BackgroundAgentService'
 import { ServiceContext } from '../../types'
 import { MainNotificationService } from '../NotificationService'
+import { z } from 'zod'
 
 const logger = createCategoryLogger('background-agent:scheduler')
+
+const persistedTaskSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  cronExpression: z.string(),
+  agentId: z.string(),
+  modelId: z.string(),
+  projectDirectory: z.string().optional(),
+  wakeWord: z.string(),
+  enabled: z.boolean(),
+  createdAt: z.number(),
+  lastRun: z.number().optional(),
+  nextRun: z.number().optional(),
+  runCount: z.number(),
+  lastError: z.string().optional(),
+  inferenceConfig: z.any().optional(),
+  continueSession: z.boolean().optional(),
+  continueSessionPrompt: z.string().optional(),
+  lastSessionId: z.string().optional(),
+  isExecuting: z.boolean().optional(),
+  lastExecutionStarted: z.number().optional()
+})
 
 export class BackgroundAgentScheduler {
   private scheduledTasks: Map<string, ScheduledTask> = new Map()
   private cronJobs: Map<string, cron.ScheduledTask> = new Map()
   private backgroundAgentService: BackgroundAgentService
   private context: ServiceContext
-  private executionHistoryStore: Store<{
-    executionHistory: { [key: string]: TaskExecutionResult[] }
-  }>
+  private executionHistoryStore: any
   private notificationService: MainNotificationService
-
-  constructor(context: ServiceContext) {
+  private timezone: string
+  constructor(context: ServiceContext, timezone?: string) {
     this.context = context
     this.backgroundAgentService = new BackgroundAgentService(context)
     this.notificationService = new MainNotificationService(context)
+    this.timezone =
+      timezone ||
+      (this.context.store.get('timezone') as string | undefined) ||
+      Intl.DateTimeFormat().resolvedOptions().timeZone
 
     // 実行履歴用のストアを初期化
     this.executionHistoryStore = new Store({
@@ -31,7 +56,7 @@ export class BackgroundAgentScheduler {
       defaults: {
         executionHistory: {} as { [key: string]: TaskExecutionResult[] }
       }
-    })
+    }) as any
 
     // BackgroundAgentServiceにコールバックを設定してリアルタイム更新を有効化
     this.backgroundAgentService.setExecutionHistoryUpdateCallback(
@@ -152,11 +177,25 @@ export class BackgroundAgentScheduler {
       const persistedTasksData = this.context.store.get('backgroundAgentScheduledTasks')
       const persistedTasks = Array.isArray(persistedTasksData) ? persistedTasksData : []
 
+      if (!Array.isArray(persistedTasksData)) {
+        logger.warn('Persisted tasks data is not an array', { persistedTasksData })
+      }
+
       for (const taskData of persistedTasks) {
+        const parsed = persistedTaskSchema.safeParse(taskData)
+        if (!parsed.success) {
+          logger.warn('Invalid persisted task skipped', {
+            errors: parsed.error.issues,
+            taskData
+          })
+          continue
+        }
+
+        const validTask = parsed.data
         const task: ScheduledTask = {
-          ...taskData,
+          ...validTask,
           // 次回実行時刻を再計算
-          nextRun: this.calculateNextRun(taskData.cronExpression)
+          nextRun: this.calculateNextRun(validTask.cronExpression)
         }
 
         this.scheduledTasks.set(task.id, task)
@@ -166,9 +205,13 @@ export class BackgroundAgentScheduler {
         }
       }
 
+      const restoredCount = this.scheduledTasks.size
+      const enabledCount = Array.from(this.scheduledTasks.values()).filter((t) => t.enabled)
+        .length
       logger.info('Restored persisted scheduled tasks', {
-        count: persistedTasks.length,
-        enabledCount: persistedTasks.filter((t: any) => t.enabled).length
+        count: restoredCount,
+        enabledCount,
+        skippedCount: persistedTasks.length - restoredCount
       })
     } catch (error: any) {
       logger.error('Failed to restore persisted tasks', {
@@ -289,7 +332,7 @@ export class BackgroundAgentScheduler {
           await this.executeTask(taskId)
         },
         {
-          timezone: 'Asia/Tokyo' // タイムゾーンを設定
+          timezone: this.timezone // タイムゾーンを設定
         }
       )
 
@@ -874,7 +917,7 @@ export class BackgroundAgentScheduler {
       // 簡易実装として、現在時刻から1分後を設定
       // 実際のcron計算ロジックは複雑なので簡略化
       return Date.now() + 60000 // 1分後
-    } catch (error) {
+    } catch {
       return Date.now() + 3600000 // エラー時は1時間後
     }
   }

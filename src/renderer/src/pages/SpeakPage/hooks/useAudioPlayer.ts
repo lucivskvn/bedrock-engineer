@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { AudioPlayer, AudioPlayedListener } from '../lib/AudioPlayer'
 
@@ -28,7 +29,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       (status === 'ready' || status === 'initializing') &&
       (statusRef.current === 'ready' || statusRef.current === 'initializing')
     ) {
-      console.log(
+      log.debug(
         'Audio player already initialized or initializing, status:',
         status,
         'statusRef:',
@@ -38,7 +39,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
 
     try {
-      console.log('Starting audio player initialization...')
+      log.debug('Starting audio player initialization...')
       setStatus('initializing')
       statusRef.current = 'initializing'
 
@@ -61,19 +62,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       // Force a re-render to ensure React state is updated
       setTimeout(() => {
         if (statusRef.current === 'ready' && status !== 'ready') {
-          console.log('Forcing state update to ready')
+          log.debug('Forcing state update to ready')
           setStatus('ready')
         }
       }, 0)
 
-      console.log(
+      log.debug(
         'Audio player started successfully, status:',
         'ready',
         'initialized:',
         player.initialized
       )
     } catch (error) {
-      console.error('Error starting audio player:', error)
+      log.error('Error starting audio player:', error)
       setStatus('error')
       statusRef.current = 'error'
       audioPlayerRef.current = null
@@ -96,7 +97,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     (samples: Float32Array) => {
       // Enhanced state checking
       if (!audioPlayerRef.current) {
-        console.warn('Cannot play audio: player not created', {
+        log.warn('Cannot play audio: player not created', {
           status: status,
           statusRef: statusRef.current
         })
@@ -123,10 +124,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             }
           }, 100)
         } catch (error) {
-          console.error('Error during audio playback:', error)
+          log.error('Error during audio playback:', error)
         }
       } else {
-        console.warn('Cannot play audio: player not ready', {
+        log.warn('Cannot play audio: player not ready', {
           hasPlayer: !!audioPlayerRef.current,
           status: status,
           statusRef: statusRef.current,
@@ -140,7 +141,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           statusRef.current !== 'ready' &&
           statusRef.current !== 'playing'
         ) {
-          console.log('Detected state desync, attempting to fix...')
+          log.debug('Detected state desync, attempting to fix...')
           setStatus('ready')
           statusRef.current = 'ready'
         }
@@ -196,7 +197,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
       return float32Array
     } catch (error) {
-      console.error('Error in base64ToFloat32Array:', error)
+      log.error('Error in base64ToFloat32Array:', error)
       throw error
     }
   }, [])
@@ -208,7 +209,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         const audioData = base64ToFloat32Array(base64Data)
         playAudio(audioData)
       } catch (error) {
-        console.error('Error playing audio from base64:', error)
+        log.error('Error playing audio from base64:', error)
       }
     },
     [base64ToFloat32Array, playAudio]

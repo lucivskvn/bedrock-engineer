@@ -100,7 +100,7 @@ When uncertain, deploy this tool. Proactive task management demonstrates diligen
       if (error instanceof z.ZodError) {
         return {
           isValid: false,
-          errors: error.errors.map((e) => `${e.path.join('.')}: ${e.message}`)
+          errors: error.issues.map((e) => `${e.path.join('.')}: ${e.message}`)
         }
       }
       return {

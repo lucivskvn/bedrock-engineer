@@ -1,9 +1,59 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import mermaid from 'mermaid'
 import React from 'react'
 import { useEffect, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { IoIosClose } from 'react-icons/io'
 import { VscZoomIn, VscZoomOut, VscScreenFull } from 'react-icons/vsc'
+import DOMPurify from 'dompurify'
+
+const isSafeSvgLink = (value: string): boolean => {
+  if (value.startsWith('#')) {
+    return true
+  }
+
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+DOMPurify.setConfig({
+  USE_PROFILES: { svg: true },
+  FORBID_TAGS: ['foreignObject']
+})
+
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (!(node as Element).removeAttribute) {
+    return
+  }
+
+  const element = node as Element
+  if (element.hasAttribute('target')) {
+    element.removeAttribute('target')
+  }
+  if (element.hasAttribute('rel')) {
+    element.removeAttribute('rel')
+  }
+
+  for (const attr of ['href', 'xlink:href']) {
+    if (element.hasAttribute(attr)) {
+      const value = element.getAttribute(attr) || ''
+      if (!isSafeSvgLink(value)) {
+        element.removeAttribute(attr)
+      }
+    }
+  }
+
+  if (element.hasAttribute('style')) {
+    const style = element.getAttribute('style') || ''
+    if (/url\(/i.test(style) || /expression/i.test(style)) {
+      element.removeAttribute('style')
+    }
+  }
+})
 
 type Props = {
   code: string
@@ -15,7 +65,7 @@ mermaid.initialize({
   // syntax error が dom node に勝手に追加されないようにする
   // https://github.com/mermaid-js/mermaid/pull/4359
   suppressErrorRendering: true,
-  securityLevel: 'loose', // SVGのレンダリングを許可
+  securityLevel: 'strict',
   theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
   fontFamily: 'monospace', // フォントファミリーを指定
   fontSize: 16, // フォントサイズを指定
@@ -40,12 +90,13 @@ export const MermaidCore: React.FC<Props> = (props) => {
           // SVG要素に必要な属性を設定
           svgElement.setAttribute('width', '100%')
           svgElement.setAttribute('height', '100%')
-          setSvgContent(svgElement.outerHTML)
+          const sanitizedSvg = DOMPurify.sanitize(svgElement.outerHTML)
+          setSvgContent(sanitizedSvg)
           // レンダリング成功時にコールバックを呼び出し
           onRenderComplete?.()
         }
       } catch (error) {
-        console.error(error)
+        log.error('Mermaid render error', { error })
         setSvgContent('<div>Invalid syntax</div>')
         // エラー時はコールバックを呼び出さない
       }

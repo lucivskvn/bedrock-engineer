@@ -1,3 +1,5 @@
+import { rendererLogger } from '@renderer/lib/logger';
+const log: any = rendererLogger;
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useSocketConnection, SocketEvents } from './useSocketConnection'
 import { useAudioRecorder } from './useAudioRecorder'
@@ -140,7 +142,7 @@ export function useSpeakChat(
 
       return float32Array
     } catch (error) {
-      console.error('Error in base64ToFloat32Array:', error)
+      log.error('Error in base64ToFloat32Array:', error)
       throw error
     }
   }, [])
@@ -148,7 +150,7 @@ export function useSpeakChat(
   // Socket event handlers
   const socketEvents: Partial<SocketEvents> = {
     contentStart: (data) => {
-      console.log('Content start received:', data)
+      log.debug('Content start received:', data)
       roleRef.current = data.role
 
       if (data.type === 'TEXT') {
@@ -165,14 +167,14 @@ export function useSpeakChat(
           try {
             if (data.additionalModelFields) {
               const additionalFields = JSON.parse(data.additionalModelFields)
-              console.log('[contentStart] Assistant additionalModelFields:', additionalFields)
+              log.debug('[contentStart] Assistant additionalModelFields:', additionalFields)
 
               // Only hide text if explicitly marked as non-displayable
               const isSpeculative = additionalFields.generationStage === 'SPECULATIVE'
-              console.log('[contentStart] isSpeculative:', isSpeculative)
+              log.debug('[contentStart] isSpeculative:', isSpeculative)
             }
           } catch (e) {
-            console.error('Error parsing additionalModelFields:', e)
+            log.error('Error parsing additionalModelFields:', e)
             // On error, default to showing the text
             displayAssistantTextRef.current = true
           }
@@ -186,7 +188,7 @@ export function useSpeakChat(
     },
 
     textOutput: (data) => {
-      console.log('Received text output:', data)
+      log.debug('Received text output:', data)
 
       if (roleRef.current === 'USER') {
         // When user text is received, show thinking indicator for assistant response
@@ -203,7 +205,7 @@ export function useSpeakChat(
         // Show assistant thinking indicator after user text appears
         setThinkingState((prev) => ({ ...prev, waitingForAssistantResponse: true }))
       } else if (roleRef.current === 'ASSISTANT') {
-        console.log(
+        log.debug(
           '[textOutput] Assistant text received, displayAssistantTextRef:',
           displayAssistantTextRef.current
         )
@@ -215,7 +217,7 @@ export function useSpeakChat(
             })
           }
         } else {
-          console.log('[textOutput] Skipping assistant text (not displaying)')
+          log.debug('[textOutput] Skipping assistant text (not displaying)')
         }
       }
     },
@@ -226,13 +228,13 @@ export function useSpeakChat(
           const audioData = base64ToFloat32Array(data.content)
           audioPlayer.playAudio(audioData)
         } catch (error) {
-          console.error('Error processing audio data:', error)
+          log.error('Error processing audio data:', error)
         }
       }
     },
 
     contentEnd: (data) => {
-      console.log('Content end received:', data)
+      log.debug('Content end received:', data)
 
       if (data.type === 'TEXT') {
         if (roleRef.current === 'USER') {
@@ -253,7 +255,7 @@ export function useSpeakChat(
             chatHistoryManagerRef.current.endTurn()
           }
         } else if (data.stopReason && data.stopReason.toUpperCase() === 'INTERRUPTED') {
-          console.log('Interrupted by user')
+          log.debug('Interrupted by user')
           audioPlayer.bargeIn()
         }
         // Note: PARTIAL_TURN is ignored - don't call endTurn() for partial turns
@@ -266,12 +268,12 @@ export function useSpeakChat(
     },
 
     streamComplete: () => {
-      console.log('Stream completed')
+      log.debug('Stream completed')
       setStatus('ready')
     },
 
     toolUse: (data) => {
-      console.log('Tool use started:', data)
+      log.debug('Tool use started:', data)
       setToolExecutionState({
         isExecuting: true,
         currentTool: {
@@ -282,7 +284,7 @@ export function useSpeakChat(
     },
 
     toolResult: (data) => {
-      console.log('Tool result received:', data)
+      log.debug('Tool result received:', data)
       setToolExecutionState((prev) => ({
         isExecuting: false,
         lastResult: {
@@ -293,7 +295,7 @@ export function useSpeakChat(
     },
 
     error: (error) => {
-      console.error('Socket error:', error)
+      log.error('Socket error:', error)
       setStatus('error')
 
       // Set detailed error state based on the error content
@@ -324,7 +326,7 @@ export function useSpeakChat(
     if (sessionInitializedRef.current) return
 
     try {
-      console.log('Initializing session...')
+      log.debug('Initializing session...')
 
       // Nova Sonicで使用するツールを準備（有効なツールのみ）
       const enabledTools = agentTools?.filter((tool) => tool.enabled) || []
@@ -336,9 +338,9 @@ export function useSpeakChat(
 
       sessionInitializedRef.current = true
       setStatus('ready')
-      console.log('Session initialized successfully')
+      log.debug('Session initialized successfully')
     } catch (error) {
-      console.error('Failed to initialize session:', error)
+      log.error('Failed to initialize session:', error)
       setStatus('error')
     }
   }, [socket, systemPrompt, agentTools])
@@ -347,18 +349,18 @@ export function useSpeakChat(
   const connect = useCallback(async () => {
     try {
       setStatus('connecting')
-      console.log('Starting connection process...')
+      log.debug('Starting connection process...')
 
       // Initialize audio player FIRST and wait for completion
-      console.log('Initializing audio player before socket connection...')
+      log.debug('Initializing audio player before socket connection...')
       await audioPlayer.start()
-      console.log('Audio player initialized successfully, proceeding with socket connection')
+      log.debug('Audio player initialized successfully, proceeding with socket connection')
 
       // Only connect socket after audio player is ready
       socket.connect()
-      console.log('Socket connection initiated')
+      log.debug('Socket connection initiated')
     } catch (error) {
-      console.error('Failed to initialize audio player during connection:', error)
+      log.error('Failed to initialize audio player during connection:', error)
       setStatus('error')
       // Don't proceed with socket connection if audio player fails
     }
@@ -381,7 +383,7 @@ export function useSpeakChat(
   // Start recording
   const startRecording = useCallback(async () => {
     if (socket.status !== 'connected') {
-      console.warn('Cannot start recording: not connected to server')
+      log.warn('Cannot start recording: not connected to server')
       return
     }
 
@@ -398,9 +400,9 @@ export function useSpeakChat(
       transcriptionReceivedRef.current = false
       setThinkingState((prev) => ({ ...prev, waitingForUserTranscription: true }))
 
-      console.log('Recording started')
+      log.debug('Recording started')
     } catch (error) {
-      console.error('Error starting recording:', error)
+      log.error('Error starting recording:', error)
       setStatus('error')
     }
   }, [socket.status, audioRecorder, initializeSession])
@@ -415,14 +417,14 @@ export function useSpeakChat(
       socket.sendStopAudio()
 
       // Don't call endTurn here - let the server-side events handle it properly
-      console.log('Recording stopped')
+      log.debug('Recording stopped')
     }
   }, [audioRecorder, socket])
 
   // Monitor connection during recording and handle disconnections
   useEffect(() => {
     if (audioRecorder.isRecording && socket.status !== 'connected') {
-      console.warn('Socket disconnected during recording, stopping recording')
+      log.warn('Socket disconnected during recording, stopping recording')
       stopRecording()
       setStatus('error')
       setErrorState({

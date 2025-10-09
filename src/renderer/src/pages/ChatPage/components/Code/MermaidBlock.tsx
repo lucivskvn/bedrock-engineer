@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -119,14 +120,14 @@ export const MermaidBlock: React.FC<MermaidBlockProps> = ({ code, className = ''
       }
 
       img.onerror = () => {
-        console.error('Failed to load SVG image for PNG conversion')
+        log.error('Failed to load SVG image for PNG conversion')
       }
 
       // SVGをData URLに直接変換（Blob URLではなく）
       const svgDataUrl = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`
       img.src = svgDataUrl
     } catch (error) {
-      console.error('Failed to download PNG:', error)
+      log.error('Failed to download PNG:', error)
     }
   }
 

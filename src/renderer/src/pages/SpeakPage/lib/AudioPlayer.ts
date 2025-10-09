@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { ObjectExt } from './ObjectsExt'
 
 // Use static path for AudioWorklet that works in both development and production
@@ -39,7 +40,7 @@ export class AudioPlayer {
         this.onAudioPlayedListeners.push(callback)
         break
       default:
-        console.error(
+        log.error(
           'Listener registered for event type: ' + JSON.stringify(event) + ' which is not supported'
         )
     }
@@ -47,41 +48,41 @@ export class AudioPlayer {
 
   async start(): Promise<void> {
     try {
-      console.log('AudioPlayer: Starting initialization...')
+      log.debug('AudioPlayer: Starting initialization...')
 
       // Create audio context
       this.audioContext = new AudioContext({ sampleRate: 24000 })
-      console.log('AudioPlayer: AudioContext created, state:', this.audioContext.state)
+      log.debug('AudioPlayer: AudioContext created', { state: this.audioContext.state })
 
       // Resume context if suspended (required in some browsers)
       if (this.audioContext.state === 'suspended') {
-        console.log('AudioPlayer: Resuming suspended AudioContext...')
+        log.debug('AudioPlayer: Resuming suspended AudioContext...')
         await this.audioContext.resume()
-        console.log('AudioPlayer: AudioContext resumed, state:', this.audioContext.state)
+        log.debug('AudioPlayer: AudioContext resumed', { state: this.audioContext.state })
       }
 
       this.analyser = this.audioContext.createAnalyser()
       this.analyser.fftSize = 512
-      console.log('AudioPlayer: Analyser created')
+      log.debug('AudioPlayer: Analyser created')
 
       // Get the appropriate worklet URL based on environment
       const workletUrl = getAudioWorkletUrl()
-      console.log('AudioPlayer: Loading AudioWorklet from:', workletUrl)
+      log.debug('AudioPlayer: Loading AudioWorklet from', { workletUrl })
 
       try {
         await this.audioContext.audioWorklet.addModule(workletUrl)
-        console.log('AudioPlayer: AudioWorklet module loaded successfully')
+        log.debug('AudioPlayer: AudioWorklet module loaded successfully')
       } catch (error) {
-        console.error('AudioPlayer: Failed to load AudioWorklet module:', error)
+        log.error('AudioPlayer: Failed to load AudioWorklet module:', { error })
         throw new Error(`Failed to load AudioWorklet module: ${error}`)
       }
 
       this.workletNode = new AudioWorkletNode(this.audioContext, 'audio-player-processor')
-      console.log('AudioPlayer: AudioWorkletNode created')
+      log.debug('AudioPlayer: AudioWorkletNode created')
 
       this.workletNode.connect(this.analyser)
       this.analyser.connect(this.audioContext.destination)
-      console.log('AudioPlayer: Audio nodes connected')
+      log.debug('AudioPlayer: Audio nodes connected')
 
       this.recorderNode = this.audioContext.createScriptProcessor(512, 1, 1)
       this.recorderNode.onaudioprocess = (event) => {
@@ -94,13 +95,13 @@ export class AudioPlayer {
         samples.set(outputData)
         this.onAudioPlayedListeners.map((listener) => listener(samples))
       }
-      console.log('AudioPlayer: ScriptProcessorNode created')
+      log.debug('AudioPlayer: ScriptProcessorNode created')
 
       this.maybeOverrideInitialBufferLength()
       this.initialized = true
-      console.log('AudioPlayer: Initialization completed successfully')
+      log.debug('AudioPlayer: Initialization completed successfully')
     } catch (error) {
-      console.error('AudioPlayer: Failed to initialize:', error)
+      log.error('AudioPlayer: Failed to initialize:', { error })
       this.initialized = false
       throw error
     }
@@ -146,10 +147,12 @@ export class AudioPlayer {
       return // No override specified
     }
     const bufferLength = parseInt(value)
-    if (isNaN(bufferLength)) {
-      console.error('Invalid audioPlayerInitialBufferLength value:', JSON.stringify(value))
-      return
-    }
+      if (isNaN(bufferLength)) {
+        log.error('Invalid audioPlayerInitialBufferLength value:', {
+          value: JSON.stringify(value)
+        })
+        return
+      }
     if (this.workletNode) {
       this.workletNode.port.postMessage({
         type: 'initial-buffer-length',
@@ -160,7 +163,7 @@ export class AudioPlayer {
 
   playAudio(samples: Float32Array): void {
     if (!this.initialized) {
-      console.error(
+      log.error(
         'The audio player is not initialized. Call start() before attempting to play audio.'
       )
       return

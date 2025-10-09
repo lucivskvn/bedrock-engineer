@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { McpServerConfig } from '@/types/agent-chat'
@@ -74,7 +75,7 @@ export const McpServerForm: React.FC<McpServerFormProps> = ({
         }
         // 複数サーバーの場合は追加された全サーバーをテスト
         else {
-          console.log(`Testing all ${serversToTest.length} newly added MCP servers...`)
+          log.debug(`Testing all ${serversToTest.length} newly added MCP servers...`)
           // 追加されたサーバーのみループでテスト
           for (const server of serversToTest) {
             testServerConnection(server.name, updatedServers)

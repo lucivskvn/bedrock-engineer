@@ -3,6 +3,7 @@ import type { AWSCredentials } from '../types'
 import { allModels } from '../../../../common/models/models'
 import type { LLM } from '../../../../types/llm'
 import { fromIni } from '@aws-sdk/credential-providers'
+import { log } from '../../../../common/logger'
 
 /**
  * 指定されたモデルIDに対応するモデル情報を取得する
@@ -70,7 +71,7 @@ export async function getAccountId(awsCredentials: AWSCredentials) {
     const res = await sts.send(command)
     return res.Account
   } catch (error) {
-    console.error('Error getting AWS account ID:', error)
+    log.error('Error getting AWS account ID:', { error })
     return null
   }
 }

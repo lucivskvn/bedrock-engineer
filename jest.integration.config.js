@@ -1,21 +1,23 @@
 require('dotenv').config()
 
-/** @type {import('ts-jest').JestConfigWithTsJest} */
+/** @type {import('jest').Config} */
+const esModules = [
+  'node-fetch',
+  'data-uri-to-buffer',
+  'fetch-blob',
+  'formdata-polyfill',
+  'node-domexception',
+  'web-streams-polyfill'
+]
+
 module.exports = {
-  preset: 'ts-jest',
   testEnvironment: 'node',
   testTimeout: 90000,
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  transformIgnorePatterns: [`/node_modules/(?!${esModules.join('|')})`],
   transform: {
-    '^.+\\.tsx?$': [
-      'ts-jest',
-      {
-        tsconfig: 'tsconfig.test.json'
-      }
-    ]
+    '^.+\\.[tj]sx?$': ['babel-jest', { configFile: './babel.config.js' }]
   },
-  testMatch: ['**/*.integration.test.ts'],
-  setupFiles: ['<rootDir>/jest.integration.setup.js'],
-  // Run tests in parallel across multiple workers for faster execution
-  maxWorkers: '50%' // Use 50% of available CPU cores
+  testMatch: ['**/*.integration.test.ts', '**/*.integration.test.tsx'],
+  setupFiles: ['<rootDir>/jest.integration.setup.js']
 }

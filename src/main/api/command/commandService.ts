@@ -1,15 +1,39 @@
-import { spawn } from 'child_process'
+import path from 'node:path'
+import { spawn } from 'node:child_process'
 import {
   CommandConfig,
   CommandExecutionResult,
   CommandInput,
-  CommandPattern,
   CommandStdinInput,
   DetachedProcessInfo,
   InputDetectionPattern,
   ProcessState,
   CommandPatternConfig
 } from './types'
+import { log } from '../../../common/logger'
+import { ensureDirectoryWithinAllowed } from '../../security/path-utils'
+
+const SAFE_ENV_KEY_PATTERN = /^[A-Z0-9_]+$/
+
+const BASE_ENV_ALLOWLIST = [
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'PWD',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'SHELL',
+  'TERM',
+  'NODE_ENV',
+  'ELECTRON_RUN_AS_NODE',
+  'ELECTRON_NO_ATTACH_CONSOLE'
+]
+
+const WINDOWS_ENV_ALLOWLIST = ['SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT']
 
 export class CommandService {
   private config: CommandConfig
@@ -73,6 +97,26 @@ export class CommandService {
     this.config = config
   }
 
+  private resolveWorkingDirectory(cwd: string): string {
+    const allowedDirectories = this.config.allowedWorkingDirectories || []
+    if (allowedDirectories.length === 0) {
+      throw new Error('No allowed working directories configured')
+    }
+
+    const trimmed = cwd?.trim()
+    if (!trimmed) {
+      throw new Error('Working directory must be provided')
+    }
+
+    const candidate = path.isAbsolute(trimmed)
+      ? trimmed
+      : this.config.projectPath
+      ? path.resolve(this.config.projectPath, trimmed)
+      : path.resolve(trimmed)
+
+    return ensureDirectoryWithinAllowed(candidate, allowedDirectories)
+  }
+
   /**
    * Electron環境で適切な環境変数を取得
    * Windows特有のPATH問題を解決
@@ -128,44 +172,91 @@ export class CommandService {
     return env
   }
 
-  private parseCommandPattern(commandStr: string): CommandPattern {
-    const parts = commandStr.split(' ')
-    const hasWildcard = parts.some((part) => part === '*')
+  private buildCommandEnvironment(isWindows: boolean): NodeJS.ProcessEnv {
+    const baseEnv = this.getEnhancedEnvironment(isWindows)
+    const allowedKeys = new Set<string>([
+      ...BASE_ENV_ALLOWLIST,
+      ...(isWindows ? WINDOWS_ENV_ALLOWLIST : []),
+      ...(this.config.passthroughEnvKeys
+        ?.filter((key) => SAFE_ENV_KEY_PATTERN.test(key))
+        .map((key) => key.trim()) ?? [])
+    ])
 
+    const sanitizedEnv: NodeJS.ProcessEnv = {}
+
+    for (const key of allowedKeys) {
+      const value = baseEnv[key] ?? process.env[key]
+      if (typeof value === 'string' && value.length > 0) {
+        sanitizedEnv[key] = value
+      }
+    }
+
+    const pathSeparator = isWindows ? ';' : ':'
+    const pathEntries = new Set<string>()
+
+    const basePath = baseEnv.PATH ?? baseEnv.Path ?? ''
+    basePath
+      .split(pathSeparator)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .forEach((entry) => pathEntries.add(entry))
+
+    for (const entry of this.config.additionalPathEntries ?? []) {
+      if (typeof entry === 'string' && entry.trim().length > 0) {
+        pathEntries.add(entry.trim())
+      }
+    }
+
+    if (pathEntries.size > 0) {
+      const normalisedPath = Array.from(pathEntries).join(pathSeparator)
+      sanitizedEnv.PATH = normalisedPath
+      if (isWindows) {
+        sanitizedEnv.Path = normalisedPath
+      }
+    }
+
+    return sanitizedEnv
+  }
+
+  private parseCommand(commandStr: string): { command: string; args: string[] } {
+    const parts = commandStr.trim().split(/\s+/).filter(Boolean)
     return {
       command: parts[0],
-      args: parts.slice(1),
-      wildcard: hasWildcard
+      args: parts.slice(1)
+    }
+  }
+
+  private sanitizeArgs(args: string[]): void {
+    for (const arg of args) {
+      // Reject potentially dangerous characters
+      if (/[^a-zA-Z0-9@%+=:,./-]/.test(arg)) {
+        throw new Error(`Invalid characters in argument: ${arg}`)
+      }
     }
   }
 
   private isCommandAllowed(commandToExecute: string): boolean {
-    const executeParts = this.parseCommandPattern(commandToExecute)
+    const executeParts = this.parseCommand(commandToExecute)
 
     // allowedCommands が未定義の場合は空の配列として処理
     const allowedCommands = this.config.allowedCommands || []
 
     return allowedCommands.some((allowedCmd) => {
-      const allowedParts = this.parseCommandPattern(allowedCmd.pattern)
-
-      if (allowedParts.command !== executeParts.command) {
+      if (allowedCmd.pattern.includes('*')) {
         return false
       }
 
-      if (allowedParts.wildcard) {
-        return true
+      const allowedParts = this.parseCommand(allowedCmd.pattern)
+
+      if (allowedParts.command !== executeParts.command) {
+        return false
       }
 
       if (allowedParts.args.length !== executeParts.args.length) {
         return false
       }
 
-      return allowedParts.args.every((arg, index) => {
-        if (arg === '*') {
-          return true
-        }
-        return arg === executeParts.args[index]
-      })
+      return allowedParts.args.every((arg, index) => arg === executeParts.args[index])
     })
   }
 
@@ -236,9 +327,27 @@ export class CommandService {
         return
       }
 
-      // シェルの存在確認（Windows環境での追加チェック）
-      if (!this.config.shell) {
-        reject(new Error('Shell configuration is missing'))
+      const maxConcurrent = this.config.maxConcurrentProcesses
+      if (typeof maxConcurrent === 'number' && maxConcurrent > 0) {
+        if (this.runningProcesses.size >= maxConcurrent) {
+          reject(new Error('Maximum concurrent command limit reached'))
+          return
+        }
+      }
+
+      let resolvedCwd: string
+      try {
+        resolvedCwd = this.resolveWorkingDirectory(input.cwd)
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)))
+        return
+      }
+
+      const parsed = this.parseCommand(input.command)
+      try {
+        this.sanitizeArgs([parsed.command, ...parsed.args])
+      } catch (err) {
+        reject(err)
         return
       }
 
@@ -251,43 +360,24 @@ export class CommandService {
       const isWindows = process.platform === 'win32'
 
       // Electron特有の環境変数問題を解決
-      const spawnEnv = this.getEnhancedEnvironment(isWindows)
+      const spawnEnv = this.buildCommandEnvironment(isWindows)
 
-      let childProcess
-
-      if (isWindows) {
-        // Windows: shell=trueを使用してコマンドを直接実行
-        // Node.js公式推奨方法: spawn(command, {shell: true})
-        childProcess = spawn(input.command, {
-          cwd: input.cwd,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          shell: true, // Windowsでは必須
-          env: spawnEnv,
-          windowsHide: true // コンソールウィンドウを隠す
-        })
-      } else {
-        // Unix系: 従来通りシェルに引数を渡す
-        childProcess = spawn(this.config.shell, ['-ic', input.command], {
-          cwd: input.cwd,
-          detached: true,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          env: spawnEnv
-        })
-      }
+      const childProcess = spawn(parsed.command, parsed.args, {
+        cwd: resolvedCwd,
+        detached: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: spawnEnv
+      })
 
       if (typeof childProcess.pid === 'undefined') {
         const errorMessage = `Failed to start process: PID is undefined
 Platform: ${process.platform}
-Shell: ${this.config.shell}
 Command: ${input.command}
-Working Directory: ${input.cwd}
-Spawn Method: ${isWindows ? 'shell=true' : 'shell+args'}`
-        console.error('Process spawn failed:', {
+Working Directory: ${input.cwd}`
+        log.error('Process spawn failed:', {
           platform: process.platform,
-          shell: this.config.shell,
           command: input.command,
           cwd: input.cwd,
-          spawnMethod: isWindows ? 'shell=true' : 'shell+args',
           spawnfile: childProcess.spawnfile,
           spawnargs: childProcess.spawnargs
         })
@@ -313,6 +403,9 @@ Spawn Method: ${isWindows ? 'shell=true' : 'shell+args'}`
       let isCompleted = false
 
       const cleanup = () => {
+        childProcess.stdout.removeAllListeners()
+        childProcess.stderr.removeAllListeners()
+        childProcess.removeAllListeners()
         this.runningProcesses.delete(pid)
         this.processStates.delete(pid)
       }
@@ -460,7 +553,7 @@ Spawn Method: ${isWindows ? 'shell=true' : 'shell+args'}`
 
       const TIMEOUT = 60000 * 5 // 5分
       // タイムアウト処理
-      setTimeout(() => {
+      setTimeout(async () => {
         if (!isCompleted) {
           const state = this.processStates.get(pid)
           if (!state) return
@@ -475,6 +568,9 @@ Spawn Method: ${isWindows ? 'shell=true' : 'shell+args'}`
             ) {
               completeWithSuccess()
             } else {
+              await this.stopProcess(pid).catch((err) =>
+                log.error(`Failed to stop process ${pid}:`, err)
+              )
               completeWithError('Command timed out')
             }
           }
@@ -487,6 +583,15 @@ Spawn Method: ${isWindows ? 'shell=true' : 'shell+args'}`
     const state = this.processStates.get(input.pid)
     if (!state || !state.process) {
       throw new Error(`No running process found with PID: ${input.pid}`)
+    }
+
+    if (typeof this.config.maxStdinBytes === 'number' && this.config.maxStdinBytes > 0) {
+      const payloadSize = Buffer.byteLength(input.stdin ?? '', 'utf8')
+      if (payloadSize > this.config.maxStdinBytes) {
+        throw new Error(
+          `stdin payload exceeds configured limit of ${this.config.maxStdinBytes} bytes`
+        )
+      }
     }
 
     return new Promise((resolve, reject) => {
@@ -614,17 +719,42 @@ Spawn Method: ${isWindows ? 'shell=true' : 'shell+args'}`
   }
 
   async stopProcess(pid: number): Promise<void> {
-    const processInfo = this.runningProcesses.get(pid)
-    if (processInfo) {
-      try {
-        process.kill(-pid) // プロセスグループ全体を終了
+    const state = this.processStates.get(pid)
+    const childProcess = state?.process
+
+    if (!this.runningProcesses.has(pid)) {
+      return
+    }
+
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        childProcess?.stdout?.removeAllListeners()
+        childProcess?.stderr?.removeAllListeners()
+        childProcess?.removeAllListeners()
         this.runningProcesses.delete(pid)
         this.processStates.delete(pid)
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        throw new Error(`Failed to stop process ${pid}: ${errorMessage}`)
+        resolve()
       }
-    }
+
+      if (childProcess) {
+        childProcess.stdout?.removeAllListeners()
+        childProcess.stderr?.removeAllListeners()
+        childProcess.removeAllListeners('error')
+        childProcess.removeAllListeners('exit')
+        childProcess.once('exit', cleanup)
+      } else {
+        cleanup()
+      }
+
+      try {
+        // プロセスグループ全体を終了
+        process.kill(-pid)
+      } catch (error) {
+        childProcess?.removeAllListeners('exit')
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        reject(new Error(`Failed to stop process ${pid}: ${errorMessage}`))
+      }
+    })
   }
 
   getRunningProcesses(): DetachedProcessInfo[] {

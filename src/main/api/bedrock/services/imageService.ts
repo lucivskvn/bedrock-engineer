@@ -1,6 +1,7 @@
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime'
 import type { ServiceContext } from '../types'
 import { createRuntimeClient } from '../client'
+import { log } from '../../../../common/logger'
 import type {
   AspectRatio,
   GenerateImageRequest,
@@ -119,7 +120,7 @@ export class ImageService {
       (!awsCredentials.useProfile &&
         (!awsCredentials.accessKeyId || !awsCredentials.secretAccessKey))
     ) {
-      console.warn('AWS credentials not configured properly')
+      log.warn('AWS credentials not configured properly')
     }
 
     this.runtimeClient = createRuntimeClient(awsCredentials)
@@ -328,7 +329,7 @@ export class ImageService {
 
       throw new Error('Unsupported model type')
     } catch (error: any) {
-      console.error('Error generating image:', error)
+      log.error('Error generating image:', error)
       if (error.name === 'UnrecognizedClientException') {
         throw new Error('AWS authentication failed. Please check your credentials and permissions.')
       }

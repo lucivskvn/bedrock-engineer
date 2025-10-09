@@ -5,13 +5,23 @@ import { LogLevel } from '../common/logger/config'
  * Send log message to main process via IPC
  * This allows preload and renderer processes to use the centralized logging system
  */
-const sendLogToMain = (level: LogLevel, message: string, meta: Record<string, any> = {}) => {
+const sendLogToMain = (level: LogLevel, message: string, meta: any = {}) => {
+  if (!ipcRenderer || typeof ipcRenderer.send !== 'function') {
+    if (process.env.NODE_ENV !== 'test') {
+      process.emitWarning('ipcRenderer unavailable, skipping preload log dispatch', {
+        code: 'IPC_LOGGER_FALLBACK',
+        detail: JSON.stringify({ level, message })
+      })
+    }
+    return
+  }
+
   ipcRenderer.send('logger:log', {
     level,
     message,
     timestamp: new Date().toISOString(),
-    process: 'preload', // Changed from 'renderer' to 'preload' for clarity
-    ...meta
+    process: 'preload',
+    ...(typeof meta === 'object' ? meta : { value: meta })
   })
 }
 
@@ -20,25 +30,20 @@ const sendLogToMain = (level: LogLevel, message: string, meta: Record<string, an
  * This implementation forwards logs to the main process via IPC
  */
 export const preloadLogger = {
-  error: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('error', message, meta)
-    console.error(message, meta)
+  error: (message: string, ...meta: any[]) => {
+    sendLogToMain('error', message, Object.assign({}, ...meta))
   },
-  warn: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('warn', message, meta)
-    console.warn(message, meta)
+  warn: (message: string, ...meta: any[]) => {
+    sendLogToMain('warn', message, Object.assign({}, ...meta))
   },
-  info: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('info', message, meta)
-    console.info(message, meta)
+  info: (message: string, ...meta: any[]) => {
+    sendLogToMain('info', message, Object.assign({}, ...meta))
   },
-  debug: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('debug', message, meta)
-    console.debug(message, meta)
+  debug: (message: string, ...meta: any[]) => {
+    sendLogToMain('debug', message, Object.assign({}, ...meta))
   },
-  verbose: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('verbose', message, meta)
-    console.log(message, meta) // Use standard log for verbose as console.verbose isn't standard
+  verbose: (message: string, ...meta: any[]) => {
+    sendLogToMain('verbose', message, Object.assign({}, ...meta))
   }
 }
 
@@ -47,20 +52,20 @@ export const preloadLogger = {
  */
 export const createPreloadCategoryLogger = (category: string) => {
   return {
-    error: (message: string, meta: Record<string, any> = {}) => {
-      preloadLogger.error(message, { ...meta, category })
+    error: (message: string, ...meta: any[]) => {
+      preloadLogger.error(message, { ...Object.assign({}, ...meta), category })
     },
-    warn: (message: string, meta: Record<string, any> = {}) => {
-      preloadLogger.warn(message, { ...meta, category })
+    warn: (message: string, ...meta: any[]) => {
+      preloadLogger.warn(message, { ...Object.assign({}, ...meta), category })
     },
-    info: (message: string, meta: Record<string, any> = {}) => {
-      preloadLogger.info(message, { ...meta, category })
+    info: (message: string, ...meta: any[]) => {
+      preloadLogger.info(message, { ...Object.assign({}, ...meta), category })
     },
-    debug: (message: string, meta: Record<string, any> = {}) => {
-      preloadLogger.debug(message, { ...meta, category })
+    debug: (message: string, ...meta: any[]) => {
+      preloadLogger.debug(message, { ...Object.assign({}, ...meta), category })
     },
-    verbose: (message: string, meta: Record<string, any> = {}) => {
-      preloadLogger.verbose(message, { ...meta, category })
+    verbose: (message: string, ...meta: any[]) => {
+      preloadLogger.verbose(message, { ...Object.assign({}, ...meta), category })
     }
   }
 }
@@ -69,20 +74,20 @@ export const createPreloadCategoryLogger = (category: string) => {
  * Renderer logger API - exposed to the renderer process
  */
 export const rendererLogger = {
-  error: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('error', message, { ...meta, process: 'renderer' })
+  error: (message: string, ...meta: any[]) => {
+    sendLogToMain('error', message, { ...Object.assign({}, ...meta), process: 'renderer' })
   },
-  warn: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('warn', message, { ...meta, process: 'renderer' })
+  warn: (message: string, ...meta: any[]) => {
+    sendLogToMain('warn', message, { ...Object.assign({}, ...meta), process: 'renderer' })
   },
-  info: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('info', message, { ...meta, process: 'renderer' })
+  info: (message: string, ...meta: any[]) => {
+    sendLogToMain('info', message, { ...Object.assign({}, ...meta), process: 'renderer' })
   },
-  debug: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('debug', message, { ...meta, process: 'renderer' })
+  debug: (message: string, ...meta: any[]) => {
+    sendLogToMain('debug', message, { ...Object.assign({}, ...meta), process: 'renderer' })
   },
-  verbose: (message: string, meta: Record<string, any> = {}) => {
-    sendLogToMain('verbose', message, { ...meta, process: 'renderer' })
+  verbose: (message: string, ...meta: any[]) => {
+    sendLogToMain('verbose', message, { ...Object.assign({}, ...meta), process: 'renderer' })
   }
 }
 
@@ -91,20 +96,20 @@ export const rendererLogger = {
  */
 export const createRendererCategoryLogger = (category: string) => {
   return {
-    error: (message: string, meta: Record<string, any> = {}) => {
-      rendererLogger.error(message, { ...meta, category })
+    error: (message: string, ...meta: any[]) => {
+      rendererLogger.error(message, { ...Object.assign({}, ...meta), category })
     },
-    warn: (message: string, meta: Record<string, any> = {}) => {
-      rendererLogger.warn(message, { ...meta, category })
+    warn: (message: string, ...meta: any[]) => {
+      rendererLogger.warn(message, { ...Object.assign({}, ...meta), category })
     },
-    info: (message: string, meta: Record<string, any> = {}) => {
-      rendererLogger.info(message, { ...meta, category })
+    info: (message: string, ...meta: any[]) => {
+      rendererLogger.info(message, { ...Object.assign({}, ...meta), category })
     },
-    debug: (message: string, meta: Record<string, any> = {}) => {
-      rendererLogger.debug(message, { ...meta, category })
+    debug: (message: string, ...meta: any[]) => {
+      rendererLogger.debug(message, { ...Object.assign({}, ...meta), category })
     },
-    verbose: (message: string, meta: Record<string, any> = {}) => {
-      rendererLogger.verbose(message, { ...meta, category })
+    verbose: (message: string, ...meta: any[]) => {
+      rendererLogger.verbose(message, { ...Object.assign({}, ...meta), category })
     }
   }
 }

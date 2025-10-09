@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { StopReason } from '@aws-sdk/client-bedrock-runtime'
 import { streamChatCompletion } from '@renderer/lib/api'
 import { useCallback, useState } from 'react'
@@ -50,12 +51,12 @@ export const useChat = (props: UseChatProps) => {
           }
 
           if (json.messageStop) {
-            console.log({ stopReason: json.messageStop.stopReason })
+            log.debug('message stop reason', { stopReason: json.messageStop.stopReason })
             setStopReason(json.messageStop.stopReason)
           }
         }
       } catch (error: any) {
-        console.error(error)
+        log.error('useChat error', { error })
         toast.error(t('request error'))
         const msgsToset = [...msgs, { role: 'assistant', content: [{ text: error.message }] }]
         setMessages(msgsToset)

@@ -1,6 +1,7 @@
 import React from 'react'
 import toast from 'react-hot-toast'
 import { useTranslation } from 'react-i18next'
+import DOMPurify from 'dompurify'
 
 interface JSONViewerProps {
   /**
@@ -32,29 +33,49 @@ export const JSONViewer: React.FC<JSONViewerProps> = ({
 }) => {
   const { t } = useTranslation()
 
-  // JSONをハイライト適用して整形する
+  // JSON文字列をサニタイズして安全にハイライトする
   const highlightedJson = React.useMemo(() => {
     const jsonStr = JSON.stringify(data, null, 2)
+    const sanitized = DOMPurify.sanitize(jsonStr)
 
-    return (
-      jsonStr
-        // キーの色を変更（"key": の部分）
-        .replace(/"([^"]+)":/g, '<span class="text-indigo-600 dark:text-indigo-400">"$1"</span>:')
-        // 文字列値の色を変更（": "value" の部分）
-        .replace(/: "([^"]*)"/g, ': <span class="text-green-600 dark:text-green-400">"$1"</span>')
-        // 数値の色を変更
-        .replace(/: (\\d+)(,?)/g, ': <span class="text-blue-600 dark:text-blue-400">$1</span>$2')
-        // ブール値の色を変更
-        .replace(
-          /: (true|false)(,?)/g,
-          ': <span class="text-yellow-600 dark:text-yellow-400">$1</span>$2'
-        )
-        // nullの色を変更
-        .replace(
-          /: (null)(,?)/g,
-          ': <span class="text-purple-600 dark:text-purple-400">$1</span>$2'
-        )
-    )
+    const elements: React.ReactNode[] = []
+    const regex =
+      /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g
+    let lastIndex = 0
+
+    sanitized.replace(regex, (match, _p1, offset) => {
+      if (lastIndex < offset) {
+        elements.push(sanitized.slice(lastIndex, offset))
+      }
+
+      let className = ''
+      if (/^"/.test(match)) {
+        className = /:$/.test(match)
+          ? 'text-indigo-600 dark:text-indigo-400'
+          : 'text-green-600 dark:text-green-400'
+      } else if (/true|false/.test(match)) {
+        className = 'text-yellow-600 dark:text-yellow-400'
+      } else if (/null/.test(match)) {
+        className = 'text-purple-600 dark:text-purple-400'
+      } else {
+        className = 'text-blue-600 dark:text-blue-400'
+      }
+
+      elements.push(
+        <span className={className} key={elements.length}>
+          {match}
+        </span>
+      )
+
+      lastIndex = offset + match.length
+      return match
+    })
+
+    if (lastIndex < sanitized.length) {
+      elements.push(sanitized.slice(lastIndex))
+    }
+
+    return elements
   }, [data])
 
   // クリップボードにJSONをコピー
@@ -97,8 +118,9 @@ export const JSONViewer: React.FC<JSONViewerProps> = ({
             scrollbar-track-gray-100 dark:scrollbar-track-gray-800
           `}
           style={{ maxHeight }}
-          dangerouslySetInnerHTML={{ __html: highlightedJson }}
-        />
+        >
+          {highlightedJson}
+        </pre>
 
         {showCopyButton && (
           <button

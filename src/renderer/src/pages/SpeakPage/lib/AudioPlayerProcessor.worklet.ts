@@ -1,8 +1,23 @@
-// AudioWorklet types - simplified for worklet context
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare const AudioWorkletProcessor: any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare const registerProcessor: any
+import { rendererLogger as log } from '@renderer/lib/logger';
+
+interface AudioWorkletProcessorBase {
+  readonly port: MessagePort
+  process(
+    inputs: Float32Array[][],
+    outputs: Float32Array[][],
+    parameters: Record<string, Float32Array>
+  ): boolean
+}
+
+declare const AudioWorkletProcessor: {
+  prototype: AudioWorkletProcessorBase
+  new (): AudioWorkletProcessorBase
+}
+
+declare function registerProcessor(
+  name: string,
+  processorCtor: new () => AudioWorkletProcessorBase
+): void
 
 // Audio sample buffer to minimize reallocations
 class ExpandableBuffer {
@@ -29,7 +44,7 @@ class ExpandableBuffer {
     const now = Date.now()
     if (this.lastWriteTime !== 0) {
       const elapsed = now - this.lastWriteTime
-      console.debug(`Elapsed time since last audio buffer write: ${elapsed} ms`)
+      log.debug(`Elapsed time since last audio buffer write: ${elapsed} ms`)
     }
     this.lastWriteTime = now
   }
@@ -43,13 +58,13 @@ class ExpandableBuffer {
       if (samples.length <= this.readIndex) {
         // ... but we can shift samples to the beginning of the buffer
         const subarray = this.buffer.subarray(this.readIndex, this.writeIndex)
-        console.debug(`Shifting the audio buffer of length ${subarray.length} by ${this.readIndex}`)
+        log.debug(`Shifting the audio buffer of length ${subarray.length} by ${this.readIndex}`)
         this.buffer.set(subarray)
       } else {
         // ... and we need to grow the buffer capacity to make room for more audio
         const newLength = (samples.length + this.writeIndex - this.readIndex) * 2
         const newBuffer = new Float32Array(newLength)
-        console.debug(`Expanding the audio buffer from ${this.buffer.length} to ${newLength}`)
+        log.debug(`Expanding the audio buffer from ${this.buffer.length} to ${newLength}`)
         newBuffer.set(this.buffer.subarray(this.readIndex, this.writeIndex))
         this.buffer = newBuffer
       }
@@ -61,7 +76,7 @@ class ExpandableBuffer {
     if (this.writeIndex - this.readIndex >= this.initialBufferLength) {
       // Filled the initial buffer length, so we can start playback with some cushion
       this.isInitialBuffering = false
-      console.debug('Initial audio buffer filled')
+      log.debug('Initial audio buffer filled')
     }
   }
 
@@ -74,7 +89,7 @@ class ExpandableBuffer {
     destination.set(this.buffer.subarray(this.readIndex, this.readIndex + copyLength))
     this.readIndex += copyLength
     if (copyLength > 0 && this.underflowedSamples > 0) {
-      console.debug(`Detected audio buffer underflow of ${this.underflowedSamples} samples`)
+      log.debug(`Detected audio buffer underflow of ${this.underflowedSamples} samples`)
       this.underflowedSamples = 0
     }
     if (copyLength < destination.length) {
@@ -102,8 +117,7 @@ interface AudioWorkletMessage {
 
 class AudioPlayerProcessor extends AudioWorkletProcessor {
   private playbackBuffer: ExpandableBuffer
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public port: any
+  public port!: MessagePort
 
   constructor() {
     super()
@@ -115,7 +129,7 @@ class AudioPlayerProcessor extends AudioWorkletProcessor {
         // Override the current playback initial buffer length
         const newLength = event.data.bufferLength
         this.playbackBuffer.initialBufferLength = newLength
-        console.debug(`Changed initial audio buffer length to: ${newLength}`)
+        log.debug(`Changed initial audio buffer length to: ${newLength}`)
       } else if (event.data.type === 'barge-in') {
         this.playbackBuffer.clearBuffer()
       }

@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useMemo, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSettings } from '@renderer/contexts/SettingsContext'
@@ -25,7 +26,7 @@ export const GenerateImageSettingForm: React.FC = () => {
             setGenerateImageModel(models[0].id)
           }
         } catch (error) {
-          console.error('Failed to fetch image generation models:', error)
+          log.error('Failed to fetch image generation models:', error)
           setAvailableModels([])
         }
       }

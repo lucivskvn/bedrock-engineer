@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { BackgroundMessage } from './types'
 import { store } from '../../../../../preload/store'
 import { createCategoryLogger } from '../../../../../common/logger'
+import { ensureValidStorageKey } from '../../../../../common/security/pathGuards'
 
 const logger = createCategoryLogger('background-agent:chat-session')
 
@@ -88,10 +89,17 @@ export class BackgroundChatSessionManager {
         const sessionFiles = files.filter((file) => file.endsWith('.json'))
 
         for (const file of sessionFiles) {
-          const sessionId = file.replace('.json', '')
-          const session = this.readSessionFile(sessionId)
-          if (session) {
-            this.updateMetadata(sessionId, session)
+          try {
+            const sessionId = this.normalizeSessionId(file.replace('.json', ''))
+            const session = this.readSessionFile(sessionId)
+            if (session) {
+              this.updateMetadata(sessionId, session)
+            }
+          } catch (error: any) {
+            logger.warn('Skipping background session metadata initialization', {
+              file,
+              error: error.message
+            })
           }
         }
 
@@ -106,8 +114,16 @@ export class BackgroundChatSessionManager {
     }
   }
 
+  private normalizeSessionId(sessionId: string): string {
+    return ensureValidStorageKey(sessionId, {
+      label: 'Background session ID',
+      maxLength: 200
+    })
+  }
+
   private getSessionFilePath(sessionId: string): string {
-    return path.join(this.sessionsDir, `${sessionId}.json`)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    return path.join(this.sessionsDir, `${safeSessionId}.json`)
   }
 
   private readSessionFile(sessionId: string): BackgroundChatSession | null {
@@ -276,13 +292,15 @@ export class BackgroundChatSessionManager {
    * 新しいセッションを作成
    */
   async createSession(sessionId: string, options: CreateSessionOptions = {}): Promise<void> {
-    if (this.hasValidSession(sessionId)) {
-      logger.warn('Background session already exists', { sessionId })
+    const safeSessionId = this.normalizeSessionId(sessionId)
+
+    if (this.hasValidSession(safeSessionId)) {
+      logger.warn('Background session already exists', { sessionId: safeSessionId })
       return
     }
 
     const session: BackgroundChatSession = {
-      sessionId,
+      sessionId: safeSessionId,
       taskId: options.taskId,
       agentId: options.agentId || '',
       modelId: options.modelId || '',
@@ -292,11 +310,11 @@ export class BackgroundChatSessionManager {
       messages: []
     }
 
-    await this.writeSessionFile(sessionId, session)
-    this.updateMetadata(sessionId, session)
+    await this.writeSessionFile(safeSessionId, session)
+    this.updateMetadata(safeSessionId, session)
 
     logger.info('Background session created', {
-      sessionId,
+      sessionId: safeSessionId,
       taskId: options.taskId,
       agentId: options.agentId,
       projectDirectory: options.projectDirectory
@@ -307,7 +325,8 @@ export class BackgroundChatSessionManager {
    * セッションが存在し、有効かチェック
    */
   hasSession(sessionId: string): boolean {
-    const session = this.readSessionFile(sessionId)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    const session = this.readSessionFile(safeSessionId)
     return session !== null
   }
 
@@ -322,17 +341,18 @@ export class BackgroundChatSessionManager {
    * セッションにメッセージを追加
    */
   async addMessage(sessionId: string, message: BackgroundMessage): Promise<void> {
-    let session = this.readSessionFile(sessionId)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    let session = this.readSessionFile(safeSessionId)
 
     // セッションが存在しない場合は作成
     if (!session) {
       try {
-        await this.createSession(sessionId)
-        session = this.readSessionFile(sessionId)
+        await this.createSession(safeSessionId)
+        session = this.readSessionFile(safeSessionId)
         if (!session) {
-          const error = new Error(`Failed to create session for message: ${sessionId}`)
+          const error = new Error(`Failed to create session for message: ${safeSessionId}`)
           logger.error('Failed to create session for message', {
-            sessionId,
+            sessionId: safeSessionId,
             messageId: message.id,
             error: error.message
           })
@@ -340,7 +360,7 @@ export class BackgroundChatSessionManager {
         }
       } catch (error: any) {
         logger.error('Error creating session for message', {
-          sessionId,
+          sessionId: safeSessionId,
           messageId: message.id,
           error: error.message
         })
@@ -354,18 +374,18 @@ export class BackgroundChatSessionManager {
 
     try {
       // ファイル書き込み（リトライ機能付き）
-      await this.writeSessionFile(sessionId, session)
-      this.updateMetadata(sessionId, session)
+      await this.writeSessionFile(safeSessionId, session)
+      this.updateMetadata(safeSessionId, session)
 
       logger.debug('Message added to background session', {
-        sessionId,
+        sessionId: safeSessionId,
         messageId: message.id,
         role: message.role,
         totalMessages: session.messages.length
       })
     } catch (error: any) {
       logger.error('Failed to save message to session', {
-        sessionId,
+        sessionId: safeSessionId,
         messageId: message.id,
         role: message.role,
         error: error.message
@@ -400,7 +420,8 @@ export class BackgroundChatSessionManager {
    * セッションを削除
    */
   deleteSession(sessionId: string): boolean {
-    const filePath = this.getSessionFilePath(sessionId)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    const filePath = this.getSessionFilePath(safeSessionId)
     try {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath)
@@ -408,14 +429,14 @@ export class BackgroundChatSessionManager {
 
       // メタデータからも削除
       const metadata = this.metadataStore.get('metadata')
-      delete metadata[sessionId]
+      delete metadata[safeSessionId]
       this.metadataStore.set('metadata', metadata)
 
-      logger.info('Background session deleted', { sessionId })
+      logger.info('Background session deleted', { sessionId: safeSessionId })
       return true
     } catch (error: any) {
       logger.error('Error deleting background session', {
-        sessionId,
+        sessionId: safeSessionId,
         error: error.message
       })
       return false
@@ -430,7 +451,18 @@ export class BackgroundChatSessionManager {
       const files = fs.readdirSync(this.sessionsDir)
       const sessionIds = files
         .filter((file) => file.endsWith('.json'))
-        .map((file) => file.replace('.json', ''))
+        .map((file) => {
+          try {
+            return this.normalizeSessionId(file.replace('.json', ''))
+          } catch (error: any) {
+            logger.warn('Skipping invalid background session file during listing', {
+              file,
+              error: error.message
+            })
+            return null
+          }
+        })
+        .filter((id): id is string => id !== null)
 
       logger.debug('Listed background sessions', { count: sessionIds.length })
       return sessionIds
@@ -452,7 +484,8 @@ export class BackgroundChatSessionManager {
     assistantMessages: number
     metadata?: BackgroundSessionMetadata
   } {
-    const session = this.readSessionFile(sessionId)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    const session = this.readSessionFile(safeSessionId)
     if (!session) {
       return {
         exists: false,
@@ -464,7 +497,7 @@ export class BackgroundChatSessionManager {
 
     const userMessages = session.messages.filter((m) => m.role === 'user').length
     const assistantMessages = session.messages.filter((m) => m.role === 'assistant').length
-    const metadata = this.metadataStore.get('metadata')[sessionId]
+    const metadata = this.metadataStore.get('metadata')[safeSessionId]
 
     return {
       exists: true,
@@ -506,7 +539,8 @@ export class BackgroundChatSessionManager {
    * セッションメタデータを取得
    */
   getSessionMetadata(sessionId: string): BackgroundSessionMetadata | undefined {
-    return this.metadataStore.get('metadata')[sessionId]
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    return this.metadataStore.get('metadata')[safeSessionId]
   }
 
   /**
@@ -553,20 +587,21 @@ export class BackgroundChatSessionManager {
     sessionId: string,
     executionMetadata: BackgroundChatSession['executionMetadata']
   ): Promise<void> {
-    const session = this.readSessionFile(sessionId)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    const session = this.readSessionFile(safeSessionId)
     if (!session) {
-      logger.warn('Cannot update execution metadata for non-existent session', { sessionId })
+      logger.warn('Cannot update execution metadata for non-existent session', { sessionId: safeSessionId })
       return
     }
 
     session.executionMetadata = executionMetadata
     session.updatedAt = Date.now()
 
-    await this.writeSessionFile(sessionId, session)
-    this.updateMetadata(sessionId, session)
+    await this.writeSessionFile(safeSessionId, session)
+    this.updateMetadata(safeSessionId, session)
 
     logger.debug('Execution metadata updated', {
-      sessionId,
+      sessionId: safeSessionId,
       success: executionMetadata?.success
     })
   }

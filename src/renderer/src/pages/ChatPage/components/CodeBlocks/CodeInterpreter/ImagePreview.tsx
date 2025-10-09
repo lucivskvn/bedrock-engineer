@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FiMaximize2, FiMinimize2, FiDownload } from 'react-icons/fi'
@@ -22,7 +23,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({ filename, imagePath 
       link.click()
       document.body.removeChild(link)
     } catch (error) {
-      console.error('Failed to download image:', error)
+      log.error('Failed to download image:', error)
     }
   }
 

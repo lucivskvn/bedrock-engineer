@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSettings } from '@renderer/contexts/SettingsContext'
@@ -165,18 +166,18 @@ export const ToolsSection: React.FC<ToolsSectionProps> = ({
           toolsWithConfigurations={toolsWithConfigurations}
           knowledgeBases={knowledgeBases}
           onKnowledgeBasesChange={
-            onKnowledgeBasesChange || (() => console.warn('onKnowledgeBasesChange not provided'))
+            onKnowledgeBasesChange || (() => log.warn('onKnowledgeBasesChange not provided'))
           }
           allowedCommands={allowedCommands}
           onAllowedCommandsChange={
-            onAllowedCommandsChange || (() => console.warn('onAllowedCommandsChange not provided'))
+            onAllowedCommandsChange || (() => log.warn('onAllowedCommandsChange not provided'))
           }
           bedrockAgents={bedrockAgents}
           onBedrockAgentsChange={
-            onBedrockAgentsChange || (() => console.warn('onBedrockAgentsChange not provided'))
+            onBedrockAgentsChange || (() => log.warn('onBedrockAgentsChange not provided'))
           }
           flows={flows}
-          onFlowsChange={onFlowsChange || (() => console.warn('onFlowsChange not provided'))}
+          onFlowsChange={onFlowsChange || (() => log.warn('onFlowsChange not provided'))}
         />
       )}
     </div>

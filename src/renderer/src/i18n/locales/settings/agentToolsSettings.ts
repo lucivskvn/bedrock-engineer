@@ -167,7 +167,6 @@ export const agentToolsSettings = {
     'MCP Tool Info': 'MCP Tool Info',
     'MCP tools are provided by Model Context Protocol servers. Click the JSON button above to view the full tool specification.':
       'MCP tools are provided by Model Context Protocol servers. Click the JSON button above to view the full tool specification.',
-    // TODO tool specific translations
     'tool info.todo.description':
       'Task management and workflow tracking tools for systematic project management.',
     'tool info.todo.functions': 'This tool enables two related functions:',
@@ -446,7 +445,6 @@ export const agentToolsSettings = {
     'MCP Tool Info': 'MCPツール情報',
     'MCP tools are provided by Model Context Protocol servers. Click the JSON button above to view the full tool specification.':
       'MCPツールはModel Context Protocolサーバーによって提供されます。完全なツール仕様を表示するには、上記のJSONボタンをクリックしてください。',
-    // TODO tool specific translations
     'tool info.todo.description':
       'システム的なプロジェクト管理のためのタスク管理とワークフロー追跡ツール。',
     'tool info.todo.functions': 'このツールは2つの関連する機能を有効にします：',

@@ -1,3 +1,5 @@
+import { rendererLogger } from '@renderer/lib/logger';
+const log: any = rendererLogger;
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
@@ -18,8 +20,6 @@ import { SampleTextCarousel } from './components/SampleTextCarousel'
 import { usePermissionHelpModal } from './components/PermissionHelpModal'
 import { RegionWarningBanner } from './components/RegionWarningBanner'
 import { checkNovaSonicRegionSupport, type RegionCheckResult } from '@renderer/lib/api/novaSonic'
-
-const API_ENDPOINT = window.store.get('apiEndpoint')
 
 // ============================================================================
 // 共通コンポーネント定義
@@ -492,6 +492,14 @@ export const SpeakPage: React.FC = () => {
   // 現在のエージェントのツール情報を取得
   const agentTools = getAgentTools(selectedAgentId)
 
+  let apiEndpoint: string | undefined
+  try {
+    apiEndpoint = getTrustedApiEndpoint()
+  } catch (error) {
+    log.error('Failed to resolve API endpoint', { error })
+    apiEndpoint = undefined
+  }
+
   const {
     status,
     isConnected,
@@ -505,7 +513,7 @@ export const SpeakPage: React.FC = () => {
     startRecording,
     stopRecording,
     systemPrompt
-  } = useSpeakChat(API_ENDPOINT, currentAgentSystemPrompt, agentTools, selectedVoiceId)
+  } = useSpeakChat(apiEndpoint, currentAgentSystemPrompt, agentTools, selectedVoiceId)
 
   // Check region support when component mounts
   useEffect(() => {
@@ -520,7 +528,7 @@ export const SpeakPage: React.FC = () => {
           setShowRegionWarning(false)
         }
       } catch (error) {
-        console.error('Failed to check region support:', error)
+        log.error('Failed to check region support:', error)
         setRegionCheck({
           isSupported: false,
           currentRegion: 'unknown',
@@ -543,17 +551,17 @@ export const SpeakPage: React.FC = () => {
     }
 
     if (!regionCheck.isSupported) {
-      console.log('SpeakPage: Skipping connection - Nova Sonic not supported in current region')
+      log.debug('SpeakPage: Skipping connection - Nova Sonic not supported in current region')
       return
     }
 
     // Only connect on initial mount and if not already connected
     const timer = setTimeout(() => {
       if (!isConnected && status === 'disconnected') {
-        console.log('SpeakPage: Attempting to connect to server...')
+        log.debug('SpeakPage: Attempting to connect to server...')
         connect()
       } else {
-        console.log('SpeakPage: Skipping connection (already connected or connecting)', {
+        log.debug('SpeakPage: Skipping connection (already connected or connecting)', {
           isConnected,
           status
         })
@@ -562,7 +570,7 @@ export const SpeakPage: React.FC = () => {
 
     return () => {
       clearTimeout(timer)
-      console.log('SpeakPage: Component unmounting')
+      log.debug('SpeakPage: Component unmounting')
     }
   }, [regionCheck, regionCheckLoading, isConnected, status, connect])
 
@@ -586,7 +594,7 @@ export const SpeakPage: React.FC = () => {
     try {
       await startRecording()
     } catch (error) {
-      console.error('Failed to start recording:', error)
+      log.error('Failed to start recording:', error)
     }
   }
 

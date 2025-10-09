@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useEffect, useState } from 'react'
 import useSetting from '@renderer/hooks/useSetting'
 import { useAgentChat } from './useAgentChat'
@@ -111,7 +112,7 @@ function extractCompleteObjects(text: string): GeneratedScenario[] {
           if (isValidScenario(parsed)) {
             scenarios.push(parsed)
           }
-        } catch (e) {
+        } catch {
           // パースに失敗した場合は無視
         }
         currentObject = ''
@@ -158,7 +159,7 @@ System Prompt: ${systemPrompt}
       const textContent = lastMessage.content?.find((v) => v.text)
       if (textContent && textContent.text) {
         const parsedScenarios = extractCompleteObjects(textContent.text)
-        console.log(parsedScenarios)
+        log.debug('parsed scenarios', parsedScenarios)
         if (parsedScenarios.length > 0) {
           setResult(parsedScenarios)
         }

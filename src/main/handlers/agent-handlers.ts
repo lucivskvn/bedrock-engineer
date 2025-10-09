@@ -1,13 +1,16 @@
 import { IpcMainInvokeEvent } from 'electron'
-import { resolve } from 'path'
+import { resolve, join, parse } from 'path'
 import fs from 'fs'
-import yaml from 'js-yaml'
 import { ListObjectsV2Command, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { CustomAgent } from '../../types/agent-chat'
 import { createCategoryLogger } from '../../common/logger'
 import { store } from '../../preload/store'
 import { StrandsAgentsConverter } from '../services/strandsAgentsConverter'
 import { createS3Client } from '../api/bedrock/client'
+import { parseYaml, stringifyYaml } from '../../common/security/yaml'
+import { sanitizeFilename, ensurePathWithinAllowedDirectories } from '../../common/security/pathGuards'
+import { readAgentFileSafely } from '../../common/security/agentGuards'
+import { randomUUID } from 'node:crypto'
 
 const agentsLogger = createCategoryLogger('agents:ipc')
 
@@ -29,13 +32,16 @@ async function loadSharedAgents(): Promise<{ agents: CustomAgent[]; error: strin
     // Check if the directory exists
     try {
       await fs.promises.access(agentsDir)
-    } catch (error) {
+    } catch {
       // If directory doesn't exist, just return empty array
       return { agents: [], error: null }
     }
 
     // Read JSON and YAML files in the agents directory
-    const files = (await fs.promises.readdir(agentsDir)).filter(
+    const files = (await fs.promises.readdir(agentsDir, { withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .filter(
       (file) => file.endsWith('.json') || file.endsWith('.yml') || file.endsWith('.yaml')
     )
     const agents: CustomAgent[] = []
@@ -44,14 +50,14 @@ async function loadSharedAgents(): Promise<{ agents: CustomAgent[]; error: strin
     const agentPromises = files.map(async (file) => {
       try {
         const filePath = resolve(agentsDir, file)
-        const content = await fs.promises.readFile(filePath, 'utf-8')
+        const content = await readAgentFileSafely(filePath, agentsDir)
 
         // Parse the file content based on its extension
         let agent: CustomAgent
         if (file.endsWith('.json')) {
           agent = JSON.parse(content) as CustomAgent
         } else if (file.endsWith('.yml') || file.endsWith('.yaml')) {
-          agent = yaml.load(content) as CustomAgent
+          agent = parseYaml<CustomAgent>(content)
         } else {
           throw new Error(`Unsupported file format: ${file}`)
         }
@@ -59,9 +65,8 @@ async function loadSharedAgents(): Promise<{ agents: CustomAgent[]; error: strin
         // Make sure each loaded agent has a unique ID to prevent React key conflicts
         // If the ID doesn't already start with 'shared-', prefix it
         if (!agent.id || !agent.id.startsWith('shared-')) {
-          // Remove any file extension (.json, .yml, .yaml) for the safeName
           const safeName = file.replace(/\.(json|ya?ml)$/, '').toLowerCase()
-          agent.id = `shared-${safeName}-${Math.random().toString(36).substring(2, 9)}`
+          agent.id = `shared-${safeName}-${randomUUID()}`
         }
 
         // Add a flag to indicate this is a shared agent
@@ -89,7 +94,9 @@ async function loadSharedAgents(): Promise<{ agents: CustomAgent[]; error: strin
 
     return { agents, error: null }
   } catch (error) {
-    console.error('Error reading shared agents:', error)
+    agentsLogger.error('Error reading shared agents', {
+      error: error instanceof Error ? error.message : String(error)
+    })
     return { agents: [], error: error instanceof Error ? error.message : String(error) }
   }
 }
@@ -117,38 +124,20 @@ export const agentHandlers = {
       // Ensure directories exist
       const bedrockEngineerDir = resolve(projectPath, '.bedrock-engineer')
       const agentsDir = resolve(bedrockEngineerDir, 'agents')
+      const allowedDirectories = [agentsDir]
 
       // Create directories if they don't exist (recursive will create both parent and child dirs)
-      await fs.promises.mkdir(agentsDir, { recursive: true })
+      await fs.promises.mkdir(agentsDir, { recursive: true, mode: 0o700 })
 
-      // Generate a safe filename from the agent name
-      const safeFileName =
-        agent.name
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/(^-|-$)/g, '') || 'custom-agent'
-
-      // Check if the file already exists and add a suffix if needed
-      let fileName = `${safeFileName}${fileExtension}`
-      let count = 1
-
-      // Helper function to check if file exists, using async fs
-      const fileExists = async (path: string): Promise<boolean> => {
-        try {
-          await fs.promises.access(path)
-          return true
-        } catch {
-          return false
-        }
-      }
-
-      while (await fileExists(resolve(agentsDir, fileName))) {
-        fileName = `${safeFileName}-${count}${fileExtension}`
-        count++
-      }
+      const normalizedBase = sanitizeFilename(agent.name ?? '', { fallback: 'custom-agent' })
+      const { name: parsedBase } = parse(normalizedBase)
+      let suffix = 0
+      let fileName: string | null = null
+      let filePath: string | null = null
 
       // Generate new ID for shared agent to avoid key conflicts
-      const newId = `shared-${agent.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36)}`
+      const normalizedName = agent.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'custom-agent'
+      const newId = `shared-${normalizedName}-${randomUUID()}`
 
       // Make sure agent has isShared set to true and a unique ID
       const sharedAgent = {
@@ -161,26 +150,63 @@ export const agentHandlers = {
       delete sharedAgent.mcpTools
 
       // Write the agent to file based on the format
-      const filePath = resolve(agentsDir, fileName)
       let fileContent: string
 
       if (format === 'json') {
         fileContent = JSON.stringify(sharedAgent, null, 2)
       } else {
         // For YAML format
-        fileContent = yaml.dump(sharedAgent, {
-          indent: 2,
-          lineWidth: 120,
-          noRefs: true, // Don't output YAML references
-          sortKeys: false // Preserve key order
-        })
+        fileContent = stringifyYaml(sharedAgent)
       }
 
-      await fs.promises.writeFile(filePath, fileContent, 'utf-8')
+      while (true) {
+        const candidateBase = suffix === 0 ? parsedBase : `${parsedBase}-${suffix}`
+        const candidateName = sanitizeFilename(`${candidateBase}${fileExtension}`, {
+          fallback: 'custom-agent',
+          allowedExtensions: [fileExtension]
+        })
+
+        const resolvedCandidate = join(agentsDir, candidateName)
+
+        let safePath: string
+        try {
+          safePath = ensurePathWithinAllowedDirectories(resolvedCandidate, allowedDirectories)
+        } catch (error) {
+          agentsLogger.debug('Rejected shared agent file candidate outside allowlist', {
+            candidate: resolvedCandidate,
+            reason: error instanceof Error ? error.message : String(error)
+          })
+          suffix += 1
+          continue
+        }
+
+        try {
+          await fs.promises.writeFile(safePath, fileContent, {
+            encoding: 'utf-8',
+            mode: 0o600,
+            flag: 'wx'
+          })
+          fileName = candidateName
+          filePath = safePath
+          break
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+            suffix += 1
+            continue
+          }
+          throw error
+        }
+      }
+
+      if (!fileName || !filePath) {
+        throw new Error('Failed to generate a safe filename for shared agent')
+      }
 
       return { success: true, filePath, format }
     } catch (error) {
-      console.error('Error saving shared agent:', error)
+      agentsLogger.error('Error saving shared agent', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error)
@@ -247,7 +273,7 @@ export const agentHandlers = {
           if (file.Key.endsWith('.json')) {
             agent = JSON.parse(content) as CustomAgent
           } else {
-            agent = yaml.load(content) as CustomAgent
+            agent = parseYaml<CustomAgent>(content)
           }
 
           // 組織エージェントとしてマーク
@@ -334,12 +360,7 @@ export const agentHandlers = {
       if (format === 'json') {
         fileContent = JSON.stringify(sharedAgent, null, 2)
       } else {
-        fileContent = yaml.dump(sharedAgent, {
-          indent: 2,
-          lineWidth: 120,
-          noRefs: true,
-          sortKeys: false
-        })
+        fileContent = stringifyYaml(sharedAgent)
       }
 
       // AWS認証情報を取得し、組織設定のリージョンを適用

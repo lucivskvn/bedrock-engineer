@@ -4,13 +4,17 @@ import { CodeGenerator } from './codeGenerator'
 import { TOOL_MAPPING } from './toolMapper'
 import { promises as fs } from 'fs'
 import * as path from 'path'
+import os from 'os'
+import { createCategoryLogger } from '../../../common/logger'
+import {
+  buildAllowedOutputDirectories,
+  ensureDirectoryWithinAllowed,
+  sanitizeFilename
+} from '../../../common/security/pathGuards'
+import { store } from '../../../preload/store'
+import type { ConfigStore } from '../../../preload/store'
 
-// Simple logger
-const logger = {
-  info: (message: string) => console.log(`[INFO] ${message}`),
-  warn: (message: string) => console.warn(`[WARN] ${message}`),
-  error: (message: string, error?: any) => console.error(`[ERROR] ${message}`, error || '')
-}
+const logger = createCategoryLogger('strands-converter')
 
 /**
  * Service to convert Bedrock Engineer's CustomAgent to Strands Agents code
@@ -18,8 +22,57 @@ const logger = {
 export class StrandsAgentsConverter {
   private codeGenerator: CodeGenerator
 
-  constructor() {
+  constructor(private readonly configStore: ConfigStore = store) {
     this.codeGenerator = new CodeGenerator()
+  }
+
+  private getFilesystemContext(): { projectPath?: string; userDataPath?: string } {
+    const projectPathValue = this.configStore.get('projectPath') as string | undefined
+    const userDataPathValue = this.configStore.get('userDataPath') as string | undefined
+
+    const projectPath =
+      typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+        ? projectPathValue
+        : undefined
+    const userDataPath =
+      typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+        ? userDataPathValue
+        : undefined
+
+    return { projectPath, userDataPath }
+  }
+
+  private getAllowedOutputDirectories(): string[] {
+    const { projectPath, userDataPath } = this.getFilesystemContext()
+
+    return buildAllowedOutputDirectories({
+      projectPath,
+      userDataPath,
+      additional: [os.tmpdir()]
+    })
+  }
+
+  private resolveOutputDirectory(requestedDirectory: string): string {
+    const trimmed = requestedDirectory?.trim()
+    if (!trimmed) {
+      throw new Error('Output directory is required')
+    }
+
+    const { projectPath } = this.getFilesystemContext()
+    const candidate = path.isAbsolute(trimmed)
+      ? trimmed
+      : projectPath
+      ? path.resolve(projectPath, trimmed)
+      : path.resolve(trimmed)
+
+    return ensureDirectoryWithinAllowed(candidate, this.getAllowedOutputDirectories())
+  }
+
+  private resolveAgentFilename(fileName?: string): string {
+    return sanitizeFilename(fileName, {
+      fallback: 'agent',
+      allowedExtensions: ['.py']
+    })
   }
 
   /**
@@ -50,10 +103,10 @@ export class StrandsAgentsConverter {
       }
 
       return output
-    } catch (error) {
-      logger.error(`Failed to convert agent: ${agent.name}`, error)
-      throw error
-    }
+      } catch (error) {
+        logger.error(`Failed to convert agent: ${agent.name}`, { error })
+        throw error
+      }
   }
 
   /**
@@ -214,12 +267,12 @@ export class StrandsAgentsConverter {
 
       // Save file
       return await this.saveAgentToDirectory(output, options)
-    } catch (error) {
-      logger.error(`Failed to convert and save agent: ${agent.name}`, error)
-      return {
-        success: false,
-        outputDirectory: options.outputDirectory,
-        savedFiles: [],
+      } catch (error) {
+        logger.error(`Failed to convert and save agent: ${agent.name}`, { error })
+        return {
+          success: false,
+          outputDirectory: options.outputDirectory,
+          savedFiles: [],
         errors: [
           {
             file: 'conversion',
@@ -251,15 +304,23 @@ export class StrandsAgentsConverter {
       // Validate save options
       this.validateSaveOptions(options)
 
-      logger.info(`Saving agent files to: ${options.outputDirectory}`)
+      const targetDirectory = this.resolveOutputDirectory(options.outputDirectory)
+      const agentFileName = this.resolveAgentFilename(options.agentFileName)
+
+      result.outputDirectory = targetDirectory
+
+      logger.info('Saving agent files', {
+        requestedDirectory: options.outputDirectory,
+        resolvedDirectory: targetDirectory
+      })
 
       // Create directory
-      await fs.mkdir(options.outputDirectory, { recursive: true })
+      await fs.mkdir(targetDirectory, { recursive: true, mode: 0o750 })
 
       // List of files to save
       const filesToSave = [
         {
-          name: options.agentFileName || 'agent.py',
+          name: agentFileName,
           content: output.pythonCode,
           description: 'Python agent code'
         },
@@ -287,7 +348,7 @@ export class StrandsAgentsConverter {
       // Save each file
       for (const file of filesToSave) {
         try {
-          const filePath = path.join(options.outputDirectory, file.name)
+          const filePath = path.join(targetDirectory, file.name)
 
           // Overwrite confirmation
           if (!options.overwrite) {
@@ -324,13 +385,16 @@ export class StrandsAgentsConverter {
       result.success = result.savedFiles.length > 0 && (result.errors?.length || 0) === 0
 
       if (result.success) {
-        logger.info(
-          `Successfully saved ${result.savedFiles.length} files to ${options.outputDirectory}`
-        )
+        logger.info('Successfully saved Strands agent files', {
+          fileCount: result.savedFiles.length,
+          outputDirectory: targetDirectory
+        })
       } else {
-        logger.warn(
-          `Partial success: saved ${result.savedFiles.length} files with ${result.errors?.length || 0} errors`
-        )
+        logger.warn('Partial success saving Strands agent files', {
+          saved: result.savedFiles.length,
+          errors: result.errors?.length || 0,
+          outputDirectory: targetDirectory
+        })
       }
 
       return result
@@ -356,7 +420,10 @@ export class StrandsAgentsConverter {
       throw new Error('Output directory is required')
     }
 
-    if (options.agentFileName && !options.agentFileName.endsWith('.py')) {
+    if (
+      options.agentFileName &&
+      !options.agentFileName.toLowerCase().endsWith('.py')
+    ) {
       throw new Error('Agent file name must end with .py')
     }
   }

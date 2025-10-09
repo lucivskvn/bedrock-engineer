@@ -1,6 +1,7 @@
 import { testProxyConnection } from '../lib/proxy-utils'
 import { updateProxySettings } from '../index'
 import { log } from '../../common/logger'
+import { registerIpcHandlers } from '../lib/ipc-handler'
 import type { ProxyConfiguration } from '../api/bedrock/types'
 
 /**
@@ -34,4 +35,8 @@ export const proxyHandlers = {
       return { success: false, error: error instanceof Error ? error.message : String(error) }
     }
   }
+}
+
+export const registerProxyHandlers = () => {
+  registerIpcHandlers(proxyHandlers, { loggerCategory: 'proxy:ipc' })
 }

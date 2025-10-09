@@ -121,7 +121,7 @@ const TEST_AGENT_ALIAS_ID = process.env.TEST_AGENT_ALIAS_ID || 'ZHSSM0WPXS'
     }, 30000)
   })
 
-  describe.only('Agent Tests (save image)', () => {
+  describe('Agent Tests (save image)', () => {
     test('should save png file', async () => {
       const inputText = `以下の購買データをもとに、購買日ごとの購入金額の合計値をグラフとして可視化してください。
 このCSV形式のデータには、以下のような情報が含まれています。

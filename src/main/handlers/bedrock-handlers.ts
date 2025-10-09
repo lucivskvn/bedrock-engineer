@@ -1,10 +1,61 @@
-import { IpcMainInvokeEvent } from 'electron'
+import { IpcMainInvokeEvent, app } from 'electron'
 import { promises as fs } from 'fs'
-import { bedrock } from '../api'
-import { getModelMaxTokens } from '../../common/models/models'
+import path from 'path'
+import os from 'os'
+import { getBedrockService } from '../api/bedrock-service-registry'
+import { getModelMaxTokens } from '../api/bedrock/models'
 import { createCategoryLogger } from '../../common/logger'
+import { store } from '../../preload/store'
+import { buildAllowedOutputDirectories, resolveSafeOutputPath } from '../security/path-utils'
 
 const bedrockLogger = createCategoryLogger('bedrock:ipc')
+
+function getAllowedMediaDirectories(): string[] {
+  const projectPathValue = store.get('projectPath')
+  const projectPath =
+    typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+      ? projectPathValue
+      : undefined
+  const userDataPathValue = store.get('userDataPath')
+  const userDataPath =
+    typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+      ? userDataPathValue
+      : undefined
+
+  return buildAllowedOutputDirectories({
+    projectPath,
+    userDataPath,
+    additional: [
+      path.join(app.getPath('videos'), 'bedrock-engineer'),
+      path.join(app.getPath('downloads'), 'bedrock-engineer'),
+      app.getPath('videos'),
+      app.getPath('downloads'),
+      app.getPath('documents'),
+      os.tmpdir()
+    ]
+  })
+}
+
+function sanitizeMediaOutputPath(
+  requestedPath: string | undefined,
+  defaultBaseName: string
+): string | undefined {
+  if (!requestedPath) {
+    return undefined
+  }
+
+  const allowedDirectories = getAllowedMediaDirectories()
+  const defaultDirectory = path.join(app.getPath('videos'), 'bedrock-engineer')
+  const { fullPath } = resolveSafeOutputPath({
+    requestedPath,
+    defaultDirectory,
+    defaultFileName: defaultBaseName,
+    allowedDirectories,
+    extension: '.mp4'
+  })
+
+  return fullPath
+}
 
 export const bedrockHandlers = {
   'bedrock:generateImage': async (_event: IpcMainInvokeEvent, params: any) => {
@@ -12,6 +63,7 @@ export const bedrockHandlers = {
       modelId: params.modelId,
       promptLength: params.prompt?.length
     })
+    const bedrock = await getBedrockService()
     const result = await bedrock.generateImage(params)
     bedrockLogger.info('Image generated successfully')
     return result
@@ -25,6 +77,7 @@ export const bedrockHandlers = {
     })
 
     // ImageRecognitionServiceは単一のimagePathを期待するため、配列から最初の要素を取り出す
+    const bedrock = await getBedrockService()
     const result = await bedrock.recognizeImage({
       imagePath: params.imagePaths[0], // 配列から単一の文字列を取り出す
       prompt: params.prompt,
@@ -52,6 +105,7 @@ export const bedrockHandlers = {
       })
     }
 
+    const bedrock = await getBedrockService()
     const result = await bedrock.retrieve(retrieveCommand)
     bedrockLogger.info('Retrieved successfully from knowledge base')
     return result
@@ -63,6 +117,7 @@ export const bedrockHandlers = {
       agentAliasId: params.agentAliasId,
       hasSessionId: !!params.sessionId
     })
+    const bedrock = await getBedrockService()
     const result = await bedrock.invokeAgent(params)
     bedrockLogger.info('Agent invoked successfully')
     return result
@@ -83,6 +138,7 @@ export const bedrockHandlers = {
       enableTrace: params.enableTrace
     }
 
+    const bedrock = await getBedrockService()
     const result = await bedrock.invokeFlow(invokeFlowParams)
     bedrockLogger.info('Flow invoked successfully')
     return result
@@ -96,6 +152,7 @@ export const bedrockHandlers = {
       hasCacheKey: !!params.cacheKey
     })
 
+    const bedrock = await getBedrockService()
     const result = await bedrock.translateText({
       text: params.text,
       sourceLanguage: params.sourceLanguage,
@@ -117,6 +174,7 @@ export const bedrockHandlers = {
       count: params.texts?.length || 0
     })
 
+    const bedrock = await getBedrockService()
     const result = await bedrock.translateBatch(params.texts)
     bedrockLogger.info('Batch translation completed', {
       successCount: result.length
@@ -131,6 +189,7 @@ export const bedrockHandlers = {
       textLength: params.text?.length || 0
     })
 
+    const bedrock = await getBedrockService()
     const result = await bedrock.getCachedTranslation(
       params.text,
       params.sourceLanguage,
@@ -145,13 +204,15 @@ export const bedrockHandlers = {
 
   'bedrock:clearTranslationCache': async (_event: IpcMainInvokeEvent) => {
     bedrockLogger.debug('Clearing translation cache')
+    const bedrock = await getBedrockService()
     await bedrock.clearTranslationCache()
     bedrockLogger.info('Translation cache cleared')
     return { success: true }
   },
 
   'bedrock:getTranslationCacheStats': async (_event: IpcMainInvokeEvent) => {
-    const stats = await bedrock.getTranslationCacheStats()
+    const bedrock = await getBedrockService()
+    const stats = bedrock.getTranslationCacheStats()
     bedrockLogger.debug('Translation cache stats', stats)
     return stats
   },
@@ -164,10 +225,13 @@ export const bedrockHandlers = {
       hasSeed: !!params.seed
     })
 
+    const sanitizedOutputPath = sanitizeMediaOutputPath(params.outputPath, 'nova_reel')
+
+    const bedrock = await getBedrockService()
     const result = await bedrock.generateVideo({
       prompt: params.prompt,
       durationSeconds: params.durationSeconds,
-      outputPath: params.outputPath,
+      outputPath: sanitizedOutputPath,
       seed: params.seed,
       s3Uri: params.s3Uri
     })
@@ -192,10 +256,13 @@ export const bedrockHandlers = {
       promptCount: params.prompts?.length || 0
     })
 
+    const sanitizedOutputPath = sanitizeMediaOutputPath(params.outputPath, 'nova_reel')
+
+    const bedrock = await getBedrockService()
     const result = await bedrock.startVideoGeneration({
       prompt: params.prompt,
       durationSeconds: params.durationSeconds,
-      outputPath: params.outputPath,
+      outputPath: sanitizedOutputPath,
       seed: params.seed,
       s3Uri: params.s3Uri,
       inputImages: params.inputImages,
@@ -214,6 +281,7 @@ export const bedrockHandlers = {
       invocationArn: params.invocationArn
     })
 
+    const bedrock = await getBedrockService()
     const result = await bedrock.getVideoJobStatus(params.invocationArn)
 
     bedrockLogger.debug('Video status checked', {
@@ -229,7 +297,13 @@ export const bedrockHandlers = {
       localPath: params.localPath
     })
 
-    const downloadedPath = await bedrock.downloadVideoFromS3(params.s3Uri, params.localPath)
+    const sanitizedLocalPath = sanitizeMediaOutputPath(params.localPath, 'nova_reel')
+    if (!sanitizedLocalPath) {
+      throw new Error('A localPath is required to download the video')
+    }
+
+    const bedrock = await getBedrockService()
+    const downloadedPath = await bedrock.downloadVideoFromS3(params.s3Uri, sanitizedLocalPath)
 
     // Get file size for response
     const stats = await fs.stat(downloadedPath)

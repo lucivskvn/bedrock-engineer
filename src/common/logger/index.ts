@@ -67,39 +67,39 @@ export const updateLoggerConfig = (newConfig: Partial<LoggerConfig>): void => {
  * Logger API for direct logging
  */
 export const log = {
-  error: (message: string, meta: Record<string, any> = {}) => {
+  error: (message: string, ...meta: any[]) => {
     if (logger) {
-      logger.error(message, meta)
+      logger.error(message, ...meta)
     } else {
-      console.error(message, meta) // Fallback to console if logger is not initialized
+      console.error(message, ...meta)
     }
   },
-  warn: (message: string, meta: Record<string, any> = {}) => {
+  warn: (message: string, ...meta: any[]) => {
     if (logger) {
-      logger.warn(message, meta)
+      logger.warn(message, ...meta)
     } else {
-      console.warn(message, meta)
+      console.warn(message, ...meta)
     }
   },
-  info: (message: string, meta: Record<string, any> = {}) => {
+  info: (message: string, ...meta: any[]) => {
     if (logger) {
-      logger.info(message, meta)
+      logger.info(message, ...meta)
     } else {
-      console.info(message, meta)
+      console.info(message, ...meta)
     }
   },
-  debug: (message: string, meta: Record<string, any> = {}) => {
+  debug: (message: string, ...meta: any[]) => {
     if (logger) {
-      logger.debug(message, meta)
+      logger.debug(message, ...meta)
     } else {
-      console.debug(message, meta)
+      console.debug(message, ...meta)
     }
   },
-  verbose: (message: string, meta: Record<string, any> = {}) => {
+  verbose: (message: string, ...meta: any[]) => {
     if (logger) {
-      logger.verbose(message, meta)
+      logger.verbose(message, ...meta)
     } else {
-      console.log(message, meta)
+      console.log(message, ...meta)
     }
   }
 }
@@ -109,39 +109,39 @@ export const log = {
  */
 export const createCategoryLogger = (category: string) => {
   return {
-    error: (message: string, meta: Record<string, any> = {}) => {
+    error: (message: string, ...meta: any[]) => {
       if (logger) {
-        logger.error(message, { ...meta, category })
+        logger.error(message, { ...Object.assign({}, ...meta), category })
       } else {
-        console.error(`[${category}] ${message}`, meta)
+        console.error(`[${category}] ${message}`, ...meta)
       }
     },
-    warn: (message: string, meta: Record<string, any> = {}) => {
+    warn: (message: string, ...meta: any[]) => {
       if (logger) {
-        logger.warn(message, { ...meta, category })
+        logger.warn(message, { ...Object.assign({}, ...meta), category })
       } else {
-        console.warn(`[${category}] ${message}`, meta)
+        console.warn(`[${category}] ${message}`, ...meta)
       }
     },
-    info: (message: string, meta: Record<string, any> = {}) => {
+    info: (message: string, ...meta: any[]) => {
       if (logger) {
-        logger.info(message, { ...meta, category })
+        logger.info(message, { ...Object.assign({}, ...meta), category })
       } else {
-        console.info(`[${category}] ${message}`, meta)
+        console.info(`[${category}] ${message}`, ...meta)
       }
     },
-    debug: (message: string, meta: Record<string, any> = {}) => {
+    debug: (message: string, ...meta: any[]) => {
       if (logger) {
-        logger.debug(message, { ...meta, category })
+        logger.debug(message, { ...Object.assign({}, ...meta), category })
       } else {
-        console.debug(`[${category}] ${message}`, meta)
+        console.debug(`[${category}] ${message}`, ...meta)
       }
     },
-    verbose: (message: string, meta: Record<string, any> = {}) => {
+    verbose: (message: string, ...meta: any[]) => {
       if (logger) {
-        logger.verbose(message, { ...meta, category })
+        logger.verbose(message, { ...Object.assign({}, ...meta), category })
       } else {
-        console.log(`[${category}] ${message}`, meta)
+        console.log(`[${category}] ${message}`, ...meta)
       }
     }
   }

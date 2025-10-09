@@ -1,5 +1,6 @@
 import { isNovaSonicSupportedRegion, getNovaSonicSupportedRegions } from './constants'
 import { store } from '../../../preload/store'
+import { log } from '../../../common/logger'
 
 export interface RegionCheckResult {
   isSupported: boolean
@@ -61,7 +62,7 @@ export async function testBedrockConnectivity(region?: string): Promise<{
     // For now, we just validate that credentials exist and region is specified
     // A more comprehensive test would require making an actual API call, but that might be expensive
     // and could fail due to network issues rather than configuration problems
-    console.log(`Testing connectivity for region: ${currentRegion}`)
+    log.debug('Testing connectivity for region', { currentRegion })
     return {
       success: true
     }

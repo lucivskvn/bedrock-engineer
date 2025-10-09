@@ -1,4 +1,9 @@
 import Store from 'electron-store'
+import keytar from 'keytar'
+import { randomBytes } from 'crypto'
+import { promises as fs, constants as fsConstants } from 'fs'
+import path from 'path'
+import os from 'os'
 import { LLM, InferenceParameters, ThinkingMode, ThinkingModeBudget } from '../types/llm'
 import {
   AgentChatConfig,
@@ -9,8 +14,325 @@ import {
 } from '../types/agent-chat'
 import { CustomAgent } from '../types/agent-chat'
 import { BedrockAgent } from '../types/agent'
-import { AWSCredentials } from '../main/api/bedrock/types'
+import { AWSCredentials, ProxyConfiguration } from '../main/api/bedrock/types'
 import { CodeInterpreterContainerConfig } from './tools/handlers/interpreter/types'
+import { log } from './logger'
+import { normalizeApiToken } from '../common/security'
+import { isSystemRootDirectory } from '../common/security/pathGuards'
+import { normalizeNetworkEndpoint } from '../common/security/urlGuards'
+
+type ElectronStoreOptions<T extends Record<string, any>> = ConstructorParameters<typeof Store<T>>[0]
+
+const KEYCHAIN_SERVICE = 'bedrock-engineer'
+const KEYCHAIN_ACCESS_ID = 'awsAccessKeyId'
+const KEYCHAIN_SECRET = 'awsSecretAccessKey'
+const KEYCHAIN_SESSION = 'awsSessionToken'
+const KEYCHAIN_ENCRYPTION_KEY = 'storeEncryptionKey'
+const FALLBACK_ENCRYPTION_FILENAME = 'secure-store.key'
+const FALLBACK_AWS_CREDENTIALS_KEY = '__secureAwsCredentials'
+
+let keytarAvailable = true
+
+const TAVILY_API_KEY_PATTERN = /^tvly-[A-Za-z0-9]{20,}$/
+
+const AWS_ACCESS_KEY_PATTERN = /^[A-Z0-9]{16,128}$/
+const AWS_SECRET_KEY_PATTERN = /^[A-Za-z0-9+/=]{40,128}$/
+
+const sanitizeAwsCredential = (value: unknown, label: string, pattern: RegExp): string => {
+  if (value === undefined || value === null) {
+    return ''
+  }
+
+  if (typeof value !== 'string') {
+    throw new Error(`${label} must be a string`)
+  }
+
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    return ''
+  }
+
+  if (!pattern.test(trimmed)) {
+    throw new Error(`${label} contains invalid characters`)
+  }
+
+  return trimmed
+}
+
+const sanitizeAwsSessionToken = (value: unknown): string | undefined => {
+  if (value === undefined || value === null) {
+    return undefined
+  }
+  if (typeof value !== 'string') {
+    throw new Error('AWS session token must be a string')
+  }
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    return undefined
+  }
+  if (/[^A-Za-z0-9+/=]/.test(trimmed)) {
+    throw new Error('AWS session token contains invalid characters')
+  }
+  return trimmed
+}
+
+const sanitizeTavilyApiKey = (value: unknown): string | undefined => {
+  if (value === undefined || value === null) {
+    return undefined
+  }
+  if (typeof value !== 'string') {
+    throw new Error('Tavily API key must be a string')
+  }
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    return undefined
+  }
+  if (!TAVILY_API_KEY_PATTERN.test(trimmed)) {
+    throw new Error('Tavily API key has an unexpected format')
+  }
+  return trimmed
+}
+
+export const coerceAwsCredentials = (value: {
+  accessKeyId?: unknown
+  secretAccessKey?: unknown
+  sessionToken?: unknown
+}) => {
+  return {
+    accessKeyId: sanitizeAwsCredential(value.accessKeyId, 'AWS access key ID', AWS_ACCESS_KEY_PATTERN),
+    secretAccessKey: sanitizeAwsCredential(
+      value.secretAccessKey,
+      'AWS secret access key',
+      AWS_SECRET_KEY_PATTERN
+    ),
+    sessionToken: sanitizeAwsSessionToken(value.sessionToken)
+  }
+}
+
+export const sanitizeProxyConfiguration = (value: unknown): ProxyConfiguration | undefined => {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+
+  const input = value as Record<string, unknown>
+  const enabled = input.enabled === true
+  const protocol = input.protocol === 'https' ? 'https' : input.protocol === 'http' ? 'http' : undefined
+  const host = typeof input.host === 'string' ? input.host.trim() : undefined
+
+  let port: number | undefined
+  if (typeof input.port === 'number' && Number.isInteger(input.port)) {
+    if (input.port > 0 && input.port <= 65535) {
+      port = input.port
+    } else {
+      throw new Error('Proxy port is out of range')
+    }
+  }
+
+  const username = typeof input.username === 'string' ? input.username.trim() : undefined
+  const password = typeof input.password === 'string' ? input.password.trim() : undefined
+
+  if (!enabled) {
+    return {
+      enabled: false,
+      host: host || undefined,
+      port,
+      username,
+      password,
+      protocol
+    }
+  }
+
+  if (!host || !protocol || !port) {
+    throw new Error('Proxy configuration is missing required fields')
+  }
+
+  return {
+    enabled: true,
+    host,
+    port,
+    username,
+    password,
+    protocol
+  }
+}
+
+export const sanitizeAwsMetadata = (value: Partial<AWSCredentials>) => {
+  const region = typeof value.region === 'string' && value.region.trim().length > 0 ? value.region.trim() : 'us-west-2'
+  const useProfile = typeof value.useProfile === 'boolean' ? value.useProfile : undefined
+  const profile =
+    typeof value.profile === 'string' && value.profile.trim().length > 0 ? value.profile.trim() : undefined
+
+  let proxyConfig: ProxyConfiguration | undefined
+  try {
+    proxyConfig = sanitizeProxyConfiguration(value.proxyConfig)
+  } catch (error) {
+    log.warn('Ignoring invalid proxy configuration in AWS settings', {
+      error: error instanceof Error ? error.message : String(error)
+    })
+  }
+
+  return {
+    region,
+    useProfile,
+    profile,
+    proxyConfig
+  }
+}
+
+export const sanitizeProjectPathValue = (value: unknown): string => {
+  if (value === undefined || value === null) {
+    throw new Error('projectPath must not be null or undefined')
+  }
+  if (typeof value !== 'string') {
+    throw new Error('projectPath must be a string')
+  }
+
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    throw new Error('projectPath must not be empty')
+  }
+
+  const resolved = path.resolve(trimmed)
+  if (isSystemRootDirectory(resolved)) {
+    throw new Error('projectPath cannot point to the filesystem root')
+  }
+
+  return resolved
+}
+
+const resolveStoreOptions = (): ElectronStoreOptions<StoreScheme> => {
+  const options: ElectronStoreOptions<StoreScheme> = {
+    name: 'settings'
+  }
+
+  if (typeof process.type === 'undefined') {
+    options.cwd = path.join(os.tmpdir(), 'bedrock-engineer')
+  }
+
+  return options
+}
+
+let cachedCredentials: {
+  accessKeyId: string
+  secretAccessKey: string
+  sessionToken?: string
+} = {
+  accessKeyId: '',
+  secretAccessKey: ''
+}
+
+const getDefaultStorageDir = (storePath?: string) => {
+  if (storePath) {
+    return path.dirname(storePath)
+  }
+
+  const homeDir = os.homedir() || process.cwd()
+  return path.join(homeDir, '.bedrock-engineer')
+}
+
+export const ensureFallbackKey = async (directory: string) => {
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+  try {
+    await fs.chmod(directory, 0o700)
+  } catch (error) {
+    log.warn('Unable to enforce restrictive permissions on fallback directory', {
+      directory,
+      error: error instanceof Error ? error.message : String(error)
+    })
+  }
+  return path.join(directory, FALLBACK_ENCRYPTION_FILENAME)
+}
+
+export const readFallbackKey = async (filePath: string): Promise<string | null> => {
+  try {
+    const stats = await fs.lstat(filePath)
+    if (!stats.isFile() || stats.isSymbolicLink()) {
+      await fs.rm(filePath, { force: true })
+      log.warn('Ignoring fallback encryption key with unsafe file type', {
+        filePath
+      })
+      return null
+    }
+
+    const permissions = stats.mode & 0o777
+    if (permissions !== 0o600) {
+      await fs.rm(filePath, { force: true })
+      log.warn('Ignoring fallback encryption key with insecure permissions', {
+        filePath,
+        permissions: permissions.toString(8)
+      })
+      return null
+    }
+
+    const key = await fs.readFile(filePath, 'utf8')
+    if (key.trim().length === 64) {
+      return key.trim()
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.warn('Unable to read fallback encryption key', {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+  return null
+}
+
+export const writeFallbackKey = async (filePath: string, key: string) => {
+  await fs.rm(filePath, { force: true })
+  const handle = await fs.open(filePath, fsConstants.O_CREAT | fsConstants.O_WRONLY | fsConstants.O_EXCL, 0o600)
+  try {
+    await handle.writeFile(key, { encoding: 'utf8' })
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+  await fs.chmod(filePath, 0o600)
+}
+
+const persistAwsCredentials = async (
+  accessKeyId: string,
+  secretAccessKey: string,
+  sessionToken?: string
+) => {
+  const {
+    accessKeyId: normalizedAccessKeyId,
+    secretAccessKey: normalizedSecretAccessKey,
+    sessionToken: normalizedSessionToken
+  } = coerceAwsCredentials({ accessKeyId, secretAccessKey, sessionToken })
+
+  if (!electronStore) {
+    log.warn('Attempted to persist AWS credentials before store initialization')
+    return
+  }
+  if (keytarAvailable) {
+    try {
+      await Promise.all([
+        normalizedAccessKeyId
+          ? keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCESS_ID, normalizedAccessKeyId)
+          : keytar.deletePassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCESS_ID),
+        normalizedSecretAccessKey
+          ? keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_SECRET, normalizedSecretAccessKey)
+          : keytar.deletePassword(KEYCHAIN_SERVICE, KEYCHAIN_SECRET),
+        normalizedSessionToken
+          ? keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_SESSION, normalizedSessionToken)
+          : keytar.deletePassword(KEYCHAIN_SERVICE, KEYCHAIN_SESSION)
+      ])
+      return electronStore.delete(FALLBACK_AWS_CREDENTIALS_KEY)
+    } catch (error) {
+      keytarAvailable = false
+      log.warn('Falling back to encrypted store for AWS credentials', {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+
+  electronStore.set(FALLBACK_AWS_CREDENTIALS_KEY, {
+    accessKeyId: normalizedAccessKeyId,
+    secretAccessKey: normalizedSecretAccessKey,
+    sessionToken: normalizedSessionToken
+  })
+}
 
 const DEFAULT_SHELL =
   process.platform === 'win32'
@@ -21,7 +343,7 @@ const DEFAULT_INFERENCE_PARAMS: InferenceParameters = {
   temperature: 0.5,
   topP: 0.9
 }
-const DEFAULT_THINKING_MODE = {
+const DEFAULT_THINKING_MODE: ThinkingMode = {
   type: 'enabled',
   budget_tokens: ThinkingModeBudget.NORMAL
 }
@@ -32,7 +354,7 @@ const DEFAULT_BEDROCK_SETTINGS = {
   enableInferenceProfiles: false
 }
 
-const DEFAULT_GUARDRAIL_SETTINGS = {
+const DEFAULT_GUARDRAIL_SETTINGS: NonNullable<StoreScheme['guardrailSettings']> = {
   enabled: false,
   guardrailIdentifier: '',
   guardrailVersion: 'DRAFT',
@@ -88,6 +410,9 @@ type StoreScheme = {
   /** アプリケーションの表示言語設定（日本語または英語） */
   language: 'ja' | 'en'
 
+  /** スケジューラで使用するタイムゾーン */
+  timezone?: string
+
   /** エージェントチャットの設定（無視するファイル一覧、コンテキスト長など） */
   agentChatConfig: AgentChatConfig
 
@@ -113,6 +438,9 @@ type StoreScheme = {
   /** Backend の APIエンドポイントのURL */
   apiEndpoint: string
 
+  /** Backend API とソケット通信で利用する共有認証トークン */
+  apiAuthToken?: string
+
   /** 高度な設定オプション */
   advancedSetting: {
     /** キーボードショートカット設定 */
@@ -136,6 +464,18 @@ type StoreScheme = {
 
   /** コマンド実行の設定（シェル設定） */
   shell: string
+
+  /** 追加のPATH設定 */
+  commandSearchPaths?: string[]
+
+  /** コマンド実行時の最大同時実行数 */
+  commandMaxConcurrentProcesses?: number
+
+  /** コマンドに送信可能なstdinの最大バイト数 */
+  commandMaxStdinBytes?: number
+
+  /** サブプロセスへ伝播させる環境変数の許可リスト */
+  commandPassthroughEnvKeys?: string[]
 
   /** 通知機能の有効/無効設定 */
   notification?: boolean
@@ -178,125 +518,372 @@ type StoreScheme = {
   organizations?: OrganizationConfig[]
 }
 
-const electronStore = new Store<StoreScheme>()
-console.log('store path', electronStore.path)
+type ElectronStoreInstance = Store<StoreScheme> & {
+  path: string
+  store: StoreScheme
+  delete: (key: keyof StoreScheme | string) => void
+  clear: () => void
+  get: (key: any, defaultValue?: any) => any
+  set: (key: any, value?: any) => void
+}
 
-const init = () => {
+const isJsonSyntaxError = (error: unknown): error is Error => {
+  return (
+    error instanceof SyntaxError ||
+    (error instanceof Error && /Unexpected token/.test(error.message))
+  )
+}
+
+const readLegacyStoreData = async (
+  options: ElectronStoreOptions<StoreScheme>,
+  storeFilePath: string | null
+): Promise<StoreScheme | undefined> => {
+  if (!storeFilePath) {
+    return undefined
+  }
+
+  try {
+    const legacyStore = new Store<StoreScheme>(options) as ElectronStoreInstance
+    const legacyData = legacyStore.store
+    await fs.rm(storeFilePath, { force: true })
+    return legacyData
+  } catch (error) {
+    if (isJsonSyntaxError(error)) {
+      await fs.rm(storeFilePath, { force: true })
+      return undefined
+    }
+
+    throw error
+  }
+}
+
+const persistEncryptionKey = async (fallbackPath: string, key: string) => {
+  if (keytarAvailable) {
+    try {
+      await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ENCRYPTION_KEY, key)
+      await fs.rm(fallbackPath, { force: true })
+      return
+    } catch (error) {
+      keytarAvailable = false
+      log.warn('Failed to persist encryption key with keytar, using fallback file', {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+
+  await writeFallbackKey(fallbackPath, key)
+}
+
+const createElectronStore = async (): Promise<ElectronStoreInstance> => {
+  const storeOptions = resolveStoreOptions()
+  const storeFilePath =
+    storeOptions.cwd && storeOptions.name
+      ? path.join(storeOptions.cwd, `${storeOptions.name}.json`)
+      : null
+  const storageDir = getDefaultStorageDir(storeFilePath ?? undefined)
+  const fallbackKeyPath = await ensureFallbackKey(storageDir)
+
+  let encryptionKey: string | null = null
+  let keySource: 'keytar' | 'fallback' | 'generated' = 'generated'
+
+  if (keytarAvailable) {
+    try {
+      const existingKey = await keytar.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ENCRYPTION_KEY)
+      if (existingKey) {
+        encryptionKey = existingKey
+        keySource = 'keytar'
+      }
+    } catch (error) {
+      keytarAvailable = false
+      log.warn('Failed to retrieve encryption key from keytar, falling back to file storage', {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+
+  if (!encryptionKey) {
+    const fallbackKey = await readFallbackKey(fallbackKeyPath)
+    if (fallbackKey) {
+      encryptionKey = fallbackKey
+      keySource = 'fallback'
+    }
+  }
+
+  if (!encryptionKey) {
+    encryptionKey = randomBytes(32).toString('hex')
+    keySource = 'generated'
+  }
+
+  if (keySource === 'keytar') {
+    await fs.rm(fallbackKeyPath, { force: true })
+  } else {
+    await persistEncryptionKey(fallbackKeyPath, encryptionKey)
+  }
+
+  let legacyData: StoreScheme | undefined
+  if (keySource === 'generated') {
+    legacyData = await readLegacyStoreData(storeOptions, storeFilePath)
+  }
+
+  const encryptedOptions: ElectronStoreOptions<StoreScheme> = {
+    ...storeOptions,
+    encryptionKey
+  }
+
+  let encryptedStore: ElectronStoreInstance
+  try {
+    encryptedStore = new Store<StoreScheme>(encryptedOptions) as ElectronStoreInstance
+  } catch (error) {
+    if (isJsonSyntaxError(error)) {
+      if (storeFilePath) {
+        await fs.rm(storeFilePath, { force: true })
+      }
+      encryptedStore = new Store<StoreScheme>(encryptedOptions) as ElectronStoreInstance
+    } else {
+      throw error
+    }
+  }
+
+  if (legacyData) {
+    encryptedStore.store = legacyData
+  }
+
+  return encryptedStore
+}
+
+let electronStore: ElectronStoreInstance | null = null
+
+const init = async () => {
+  const storeInstance = await createElectronStore()
+  electronStore = storeInstance
+  log.debug(`store path ${storeInstance.path}`)
   // Initialize userDataPath if not present
-  const userDataPath = electronStore.get('userDataPath')
+  const userDataPath = storeInstance.get('userDataPath')
   if (!userDataPath) {
     // This will be set from main process
-    electronStore.set('userDataPath', '')
+    storeInstance.set('userDataPath', '')
   }
 
-  const pjPath = electronStore.get('projectPath')
+  const pjPath = storeInstance.get('projectPath')
   if (!pjPath) {
     const defaultProjectPath = process.env[process.platform == 'win32' ? 'USERPROFILE' : 'HOME']
-    electronStore.set('projectPath', defaultProjectPath)
+    storeInstance.set('projectPath', defaultProjectPath)
   }
 
-  const keybinding = electronStore.get('advancedSetting')?.keybinding
+  const keybinding = storeInstance.get('advancedSetting')?.keybinding
   if (!keybinding) {
-    electronStore.set('advancedSetting', {
+    storeInstance.set('advancedSetting', {
       keybinding: {
         sendMsgKey: 'Enter'
       }
     })
   }
 
-  const language = electronStore.get('language')
+  const language = storeInstance.get('language')
   if (language === undefined) {
-    electronStore.set('language', 'en')
+    storeInstance.set('language', 'en')
+  }
+
+  const timezone = storeInstance.get('timezone')
+  if (!timezone) {
+    storeInstance.set('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone)
   }
 
   // Initialize AWS settings if not present
-  const awsConfig = electronStore.get('aws')
+  const awsConfig = storeInstance.get('aws') as Partial<AWSCredentials> | undefined
   if (!awsConfig) {
-    electronStore.set('aws', {
-      region: 'us-west-2',
-      accessKeyId: '',
-      secretAccessKey: ''
-    })
+    storeInstance.set('aws', sanitizeAwsMetadata({ region: 'us-west-2' }) as any)
+  }
+
+  let storedAccessKeyId: string | null = null
+  let storedSecretAccessKey: string | null = null
+  let storedSessionToken: string | undefined
+
+  if (keytarAvailable) {
+    try {
+      const [id, secret, session] = await Promise.all([
+        keytar.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCESS_ID),
+        keytar.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_SECRET),
+        keytar.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_SESSION)
+      ])
+      storedAccessKeyId = id
+      storedSecretAccessKey = secret
+      storedSessionToken = session || undefined
+    } catch (error) {
+      keytarAvailable = false
+      log.warn('Failed to load AWS credentials from keytar, falling back to encrypted store', {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+
+  const fallbackAwsCredentials = storeInstance.get(FALLBACK_AWS_CREDENTIALS_KEY) as
+    | typeof cachedCredentials
+    | undefined
+
+  // Migrate old credentials from electron-store if present
+  if (awsConfig?.accessKeyId || awsConfig?.secretAccessKey || awsConfig?.sessionToken) {
+    let normalized = { accessKeyId: '', secretAccessKey: '', sessionToken: undefined as string | undefined }
+    try {
+      normalized = coerceAwsCredentials({
+        accessKeyId: awsConfig.accessKeyId || storedAccessKeyId || fallbackAwsCredentials?.accessKeyId,
+        secretAccessKey:
+          awsConfig.secretAccessKey || storedSecretAccessKey || fallbackAwsCredentials?.secretAccessKey,
+        sessionToken: awsConfig.sessionToken || storedSessionToken || fallbackAwsCredentials?.sessionToken
+      })
+    } catch (error) {
+      log.warn('Ignoring invalid stored AWS credentials and clearing them', {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+
+    await persistAwsCredentials(
+      normalized.accessKeyId,
+      normalized.secretAccessKey,
+      normalized.sessionToken
+    )
+
+    cachedCredentials = normalized
+    storeInstance.set(
+      'aws',
+      sanitizeAwsMetadata({
+        region: awsConfig.region || 'us-west-2',
+        useProfile: awsConfig.useProfile,
+        profile: awsConfig.profile,
+        proxyConfig: awsConfig.proxyConfig
+      }) as any
+    )
+  } else {
+    let normalized = { accessKeyId: '', secretAccessKey: '', sessionToken: undefined as string | undefined }
+    try {
+      normalized = coerceAwsCredentials({
+        accessKeyId: storedAccessKeyId || fallbackAwsCredentials?.accessKeyId,
+        secretAccessKey: storedSecretAccessKey || fallbackAwsCredentials?.secretAccessKey,
+        sessionToken: storedSessionToken || fallbackAwsCredentials?.sessionToken
+      })
+    } catch (error) {
+      log.warn('Clearing cached AWS credentials due to invalid persisted values', {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+
+    cachedCredentials = normalized
+
+    if (!keytarAvailable && fallbackAwsCredentials) {
+      let fallbackNormalized = { accessKeyId: '', secretAccessKey: '', sessionToken: undefined as string | undefined }
+      try {
+        fallbackNormalized = coerceAwsCredentials(fallbackAwsCredentials)
+      } catch (error) {
+        log.warn('Fallback AWS credentials are invalid; skipping migration', {
+          error: error instanceof Error ? error.message : String(error)
+        })
+        fallbackNormalized = normalized
+      }
+      await persistAwsCredentials(
+        fallbackNormalized.accessKeyId,
+        fallbackNormalized.secretAccessKey,
+        fallbackNormalized.sessionToken
+      )
+    }
   }
 
   // Initialize inference parameters if not present
-  const inferenceParams = electronStore.get('inferenceParams')
+  const inferenceParams = storeInstance.get('inferenceParams')
   if (!inferenceParams) {
-    electronStore.set('inferenceParams', DEFAULT_INFERENCE_PARAMS)
+    storeInstance.set('inferenceParams', DEFAULT_INFERENCE_PARAMS)
   }
 
   // thinkingMode の初期化
-  const thinkingMode = electronStore.get('thinkingMode')
+  const thinkingMode = storeInstance.get('thinkingMode')
   if (!thinkingMode) {
-    electronStore.set('thinkingMode', DEFAULT_THINKING_MODE)
+    storeInstance.set('thinkingMode', DEFAULT_THINKING_MODE)
   }
 
   // Initialize interleaveThinking if not present
-  const interleaveThinking = electronStore.get('interleaveThinking')
+  const interleaveThinking = storeInstance.get('interleaveThinking')
   if (interleaveThinking === undefined) {
-    electronStore.set('interleaveThinking', false)
+    storeInstance.set('interleaveThinking', false)
   }
 
   // Initialize custom agents if not present
-  const customAgents = electronStore.get('customAgents')
+  const customAgents = storeInstance.get('customAgents')
   if (!customAgents) {
-    electronStore.set('customAgents', [])
+    storeInstance.set('customAgents', [])
   }
 
   // Initialize selected agent id if not present
-  const selectedAgentId = electronStore.get('selectedAgentId')
+  const selectedAgentId = storeInstance.get('selectedAgentId')
   if (!selectedAgentId) {
-    electronStore.set('selectedAgentId', 'softwareAgent')
+    storeInstance.set('selectedAgentId', 'softwareAgent')
   }
 
   // Initialize knowledge bases
-  const knowledgeBases = electronStore.get('knowledgeBases')
+  const knowledgeBases = storeInstance.get('knowledgeBases')
   if (!knowledgeBases) {
-    electronStore.set('knowledgeBases', [])
+    storeInstance.set('knowledgeBases', [])
   }
 
   // Initialize command settings if not present
-  const shell = electronStore.get('shell')
+  const shell = storeInstance.get('shell')
   if (!shell) {
-    electronStore.set('shell', DEFAULT_SHELL)
+    storeInstance.set('shell', DEFAULT_SHELL)
+  }
+  const commandSearchPaths = storeInstance.get('commandSearchPaths')
+  if (!commandSearchPaths) {
+    storeInstance.set('commandSearchPaths', [])
+  }
+
+  const commandMaxConcurrentProcesses = storeInstance.get('commandMaxConcurrentProcesses')
+  if (typeof commandMaxConcurrentProcesses !== 'number' || !Number.isFinite(commandMaxConcurrentProcesses)) {
+    storeInstance.set('commandMaxConcurrentProcesses', 2)
+  }
+
+  const commandMaxStdinBytes = storeInstance.get('commandMaxStdinBytes')
+  if (typeof commandMaxStdinBytes !== 'number' || !Number.isFinite(commandMaxStdinBytes)) {
+    storeInstance.set('commandMaxStdinBytes', 64 * 1024)
+  }
+
+  const commandPassthroughEnvKeys = storeInstance.get('commandPassthroughEnvKeys')
+  if (!Array.isArray(commandPassthroughEnvKeys)) {
+    storeInstance.set('commandPassthroughEnvKeys', [])
   }
 
   // Initialize bedrockSettings
-  const bedrockSettings = electronStore.get('bedrockSettings')
+  const bedrockSettings = storeInstance.get('bedrockSettings')
   if (!bedrockSettings) {
-    electronStore.set('bedrockSettings', DEFAULT_BEDROCK_SETTINGS)
+    storeInstance.set('bedrockSettings', DEFAULT_BEDROCK_SETTINGS)
   }
 
   // Initialize guardrailSettings
-  const guardrailSettings = electronStore.get('guardrailSettings')
+  const guardrailSettings = storeInstance.get('guardrailSettings')
   if (!guardrailSettings) {
-    electronStore.set('guardrailSettings', DEFAULT_GUARDRAIL_SETTINGS)
+    storeInstance.set('guardrailSettings', DEFAULT_GUARDRAIL_SETTINGS)
   }
 
   // Initialize lightProcessingModel if not present
-  const lightProcessingModel = electronStore.get('lightProcessingModel')
+  const lightProcessingModel = storeInstance.get('lightProcessingModel')
   if (lightProcessingModel === undefined) {
     // デフォルトでは設定なし（null）で、この場合はメインモデルかフォールバックが使用される
-    electronStore.set('lightProcessingModel', null)
+    storeInstance.set('lightProcessingModel', null)
   }
 
   // Initialize planMode if not present
-  const planMode = electronStore.get('planMode')
+  const planMode = storeInstance.get('planMode')
   if (planMode === undefined) {
-    electronStore.set('planMode', false)
+    storeInstance.set('planMode', false)
   }
 
   // Initialize codeInterpreterTool if not present
-  const codeInterpreterTool = electronStore.get('codeInterpreterTool')
+  const codeInterpreterTool = storeInstance.get('codeInterpreterTool')
   if (!codeInterpreterTool) {
-    electronStore.set('codeInterpreterTool', {
+    storeInstance.set('codeInterpreterTool', {
       memoryLimit: '256m',
       cpuLimit: 0.5,
       timeout: 30
     })
   } else if ('enabled' in codeInterpreterTool && typeof codeInterpreterTool.enabled === 'boolean') {
     // Migrate from old format
-    electronStore.set('codeInterpreterTool', {
+    storeInstance.set('codeInterpreterTool', {
       memoryLimit: '256m',
       cpuLimit: 0.5,
       timeout: 30
@@ -304,22 +891,90 @@ const init = () => {
   }
 
   // Initialize selectedVoiceId if not present
-  const selectedVoiceId = electronStore.get('selectedVoiceId')
+  const selectedVoiceId = storeInstance.get('selectedVoiceId')
   if (!selectedVoiceId) {
-    electronStore.set('selectedVoiceId', 'amy') // デフォルトはAmy
+    storeInstance.set('selectedVoiceId', 'amy') // デフォルトはAmy
   }
 }
 
-init()
+export const storeReady = init()
 
 type Key = keyof StoreScheme
 export const store = {
-  get<T extends Key>(key: T) {
-    return electronStore.get(key)
+  get<T extends Key>(key: T): StoreScheme[T] {
+    if (!electronStore) {
+      throw new Error('Configuration store is not initialized')
+    }
+    if (key === 'aws') {
+      const aws = electronStore.get('aws') as Partial<AWSCredentials> | undefined
+      return {
+        region: aws?.region || 'us-west-2',
+        useProfile: aws?.useProfile,
+        profile: aws?.profile,
+        proxyConfig: aws?.proxyConfig,
+        accessKeyId: cachedCredentials.accessKeyId,
+        secretAccessKey: cachedCredentials.secretAccessKey,
+        sessionToken: cachedCredentials.sessionToken
+      } as StoreScheme[T]
+    }
+    return electronStore.get(key) as StoreScheme[T]
   },
-  set<T extends Key>(key: T, value: StoreScheme[T]) {
+  set<T extends Key>(key: T, value: StoreScheme[T]): void {
+    if (!electronStore) {
+      throw new Error('Configuration store is not initialized')
+    }
+    if (key === 'aws') {
+      const awsValue = value as AWSCredentials
+      const { accessKeyId, secretAccessKey, sessionToken, ...rest } = awsValue
+      const normalized = coerceAwsCredentials({ accessKeyId, secretAccessKey, sessionToken })
+      void persistAwsCredentials(
+        normalized.accessKeyId,
+        normalized.secretAccessKey,
+        normalized.sessionToken
+      )
+      cachedCredentials = normalized
+      return electronStore.set('aws', sanitizeAwsMetadata(rest) as any)
+    }
+    if (key === 'projectPath') {
+      if (value === null || value === undefined || value === '') {
+        electronStore.delete('projectPath')
+        return
+      }
+      const sanitized = sanitizeProjectPathValue(value)
+      return electronStore.set('projectPath', sanitized as StoreScheme[typeof key])
+    }
+    if (key === 'apiEndpoint') {
+      if (value === null || value === undefined || value === '') {
+        electronStore.delete('apiEndpoint')
+        return
+      }
+      const sanitized = normalizeNetworkEndpoint(value, { allowLoopbackHttp: true })
+      return electronStore.set('apiEndpoint', sanitized as StoreScheme[typeof key])
+    }
+    if (key === 'tavilySearch') {
+      if (value === null || value === undefined) {
+        electronStore.delete('tavilySearch')
+        return
+      }
+      const input = value as { apikey?: unknown }
+      const apiKey = sanitizeTavilyApiKey(input.apikey)
+      if (!apiKey) {
+        electronStore.delete('tavilySearch')
+        return
+      }
+      return electronStore.set('tavilySearch', { apikey: apiKey } as StoreScheme[typeof key])
+    }
+    if (key === 'apiAuthToken') {
+      const normalized = normalizeApiToken(value)
+      if (!normalized) {
+        throw new Error('apiAuthToken must satisfy minimum strength requirements')
+      }
+      return electronStore.set('apiAuthToken', normalized)
+    }
     return electronStore.set(key, value)
   }
 }
+
+export const __test__ = { sanitizeTavilyApiKey }
 
 export type ConfigStore = typeof store

@@ -1,5 +1,8 @@
+import { rendererLogger } from '@renderer/lib/logger';
+const log: any = rendererLogger;
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
+import { resolveTrustedApiEndpoint } from '@renderer/lib/security/apiEndpoint'
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -35,14 +38,30 @@ export function useSocketConnection(
   const lastErrorTimeRef = useRef<number>(0)
   const ERROR_THROTTLE_MS = 5000 // 5秒間は同じエラーを出力しない
 
+  const resolveServerUrl = useCallback(() => {
+    const store = (window as any).store
+    const candidate = serverUrl ?? (store?.get('apiEndpoint') as string | undefined)
+    if (!candidate) {
+      return undefined
+    }
+    try {
+      return resolveTrustedApiEndpoint(candidate)
+    } catch (error) {
+      log.error('Rejected unsafe server URL', { error })
+      return undefined
+    }
+  }, [serverUrl])
+
   // Connect to server
   const connect = useCallback(() => {
     if (socketRef.current?.connected) {
       return
     }
 
-    if (!serverUrl) {
-      console.error('Cannot connect: serverUrl is required')
+    const resolvedServerUrl = resolveServerUrl()
+
+    if (!resolvedServerUrl) {
+      log.error('Cannot connect: serverUrl is required')
       setStatus('error')
       events?.error?.(new Error('Server URL is required'))
       return
@@ -51,64 +70,68 @@ export function useSocketConnection(
     setStatus('connecting')
 
     try {
-      const socket = io(serverUrl)
+      const token = ((window as any).store?.get('apiAuthToken') as string | undefined)
+      const socket = io(resolvedServerUrl, {
+        auth: token ? { token } : undefined,
+        withCredentials: true
+      })
       socketRef.current = socket
 
       // Connection event handlers
       socket.on('connect', () => {
-        console.log('Connected to server:', socket.id)
+        log.debug('Connected to server:', socket.id)
         setStatus('connected')
       })
 
       socket.on('disconnect', (reason) => {
-        console.log('Disconnected from server:', reason)
+        log.debug('Disconnected from server:', reason)
         setStatus('disconnected')
       })
 
       socket.on('connect_error', (error) => {
-        console.error('Connection error:', error)
+        log.error('Connection error:', error)
         setStatus('error')
         events?.error?.(error)
       })
 
       // Application event handlers
       socket.on('contentStart', (data) => {
-        console.log('contentStart received:', data)
+        log.debug('contentStart received:', data)
         events?.contentStart?.(data)
       })
 
       socket.on('textOutput', (data) => {
-        console.log('textOutput received:', data)
+        log.debug('textOutput received:', data)
         events?.textOutput?.(data)
       })
 
       socket.on('audioOutput', (data) => {
-        console.debug('audioOutput received')
+        log.debug('audioOutput received')
         events?.audioOutput?.(data)
       })
 
       socket.on('toolUse', (data) => {
-        console.log('toolUse received:', data)
+        log.debug('toolUse received:', data)
         events?.toolUse?.(data)
       })
 
       socket.on('toolResult', (data) => {
-        console.log('toolResult received:', data)
+        log.debug('toolResult received:', data)
         events?.toolResult?.(data)
       })
 
       socket.on('contentEnd', (data) => {
-        console.log('contentEnd received:', data)
+        log.debug('contentEnd received:', data)
         events?.contentEnd?.(data)
       })
 
       socket.on('streamComplete', () => {
-        console.log('streamComplete received')
+        log.debug('streamComplete received')
         events?.streamComplete?.()
       })
 
       socket.on('error', (error) => {
-        console.error('Socket error:', error)
+        log.error('Socket error:', error)
         setStatus('error')
         events?.error?.(error)
       })
@@ -119,7 +142,7 @@ export function useSocketConnection(
         const requestId = toolRequest.requestId || 'unknown'
 
         try {
-          console.log('Received tool execution request:', {
+          log.debug('Received tool execution request:', {
             requestId,
             toolRequest: toolRequest
           })
@@ -134,11 +157,11 @@ export function useSocketConnection(
           }
 
           // Execute the tool using the preload API
-          console.log(`Executing tool ${toolRequest.type} via preload API...`)
+          log.debug(`Executing tool ${toolRequest.type} via preload API...`)
           const result = await window.api.bedrock.executeTool(toolRequest)
 
           const duration = Date.now() - startTime
-          console.log('Tool execution completed successfully:', {
+          log.debug('Tool execution completed successfully:', {
             requestId,
             toolType: toolRequest.type,
             duration: `${duration}ms`,
@@ -159,7 +182,7 @@ export function useSocketConnection(
           const duration = Date.now() - startTime
           const errorMessage = error instanceof Error ? error.message : String(error)
 
-          console.error('Tool execution failed:', {
+          log.error('Tool execution failed:', {
             requestId,
             toolType: toolRequest.type,
             duration: `${duration}ms`,
@@ -195,11 +218,11 @@ export function useSocketConnection(
         }
       })
     } catch (error) {
-      console.error('Failed to create socket connection:', error)
+      log.error('Failed to create socket connection:', error)
       setStatus('error')
       events?.error?.(error)
     }
-  }, [serverUrl, events])
+  }, [events, resolveServerUrl])
 
   // Disconnect from server
   const disconnect = useCallback(() => {
@@ -217,49 +240,49 @@ export function useSocketConnection(
     } else {
       const now = Date.now()
       if (now - lastErrorTimeRef.current > ERROR_THROTTLE_MS) {
-        console.warn('Cannot send audio input: socket not connected')
+        log.warn('Cannot send audio input: socket not connected')
         lastErrorTimeRef.current = now
       }
     }
   }, [])
 
   // Send prompt start
-  const sendPromptStart = useCallback((tools?: any[], voiceId?: string) => {
-    if (socketRef.current?.connected) {
-      console.log('Sending promptStart with tools:', tools?.length || 0, 'voiceId:', voiceId)
-      socketRef.current.emit('promptStart', { tools, voiceId })
-    } else {
-      console.warn('Cannot send prompt start: socket not connected')
-    }
-  }, [])
+    const sendPromptStart = useCallback((tools?: any[], voiceId?: string) => {
+      if (socketRef.current?.connected) {
+        log.debug('Sending promptStart', { toolsCount: tools?.length || 0, voiceId })
+        socketRef.current.emit('promptStart', { tools, voiceId })
+      } else {
+        log.warn('Cannot send prompt start: socket not connected')
+      }
+    }, [])
 
   // Send system prompt
   const sendSystemPrompt = useCallback((prompt: string) => {
     if (socketRef.current?.connected) {
-      console.log('Sending systemPrompt:', prompt)
+      log.debug('Sending systemPrompt:', prompt)
       socketRef.current.emit('systemPrompt', prompt)
     } else {
-      console.warn('Cannot send system prompt: socket not connected')
+      log.warn('Cannot send system prompt: socket not connected')
     }
   }, [])
 
   // Send audio start
   const sendAudioStart = useCallback(() => {
     if (socketRef.current?.connected) {
-      console.log('Sending audioStart')
+      log.debug('Sending audioStart')
       socketRef.current.emit('audioStart')
     } else {
-      console.warn('Cannot send audio start: socket not connected')
+      log.warn('Cannot send audio start: socket not connected')
     }
   }, [])
 
   // Send stop audio
   const sendStopAudio = useCallback(() => {
     if (socketRef.current?.connected) {
-      console.log('Sending stopAudio')
+      log.debug('Sending stopAudio')
       socketRef.current.emit('stopAudio')
     } else {
-      console.warn('Cannot send stop audio: socket not connected')
+      log.warn('Cannot send stop audio: socket not connected')
     }
   }, [])
 

@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react'
+import styles from './AIIcon.module.css'
 
 export interface AIIconProps {
   isRecording?: boolean
@@ -31,91 +32,13 @@ export const AIIcon: React.FC<AIIconProps> = ({
   }, [size])
 
   const animationClass = isRecording
-    ? 'animate-recording'
+    ? styles.animateRecording
     : isProcessing
-      ? 'animate-processing'
-      : 'animate-idle'
+      ? styles.animateProcessing
+      : styles.animateIdle
 
   return (
     <div className={`relative flex items-center justify-center ${className}`}>
-      {/* Custom CSS for animations */}
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        @keyframes pulse-glow {
-          0%, 100% { opacity: 0.3; transform: scale(0.95); }
-          50% { opacity: 0.8; transform: scale(1.05); }
-        }
-
-        @keyframes rotate-slow {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-
-        @keyframes rotate-reverse {
-          from { transform: rotate(360deg); }
-          to { transform: rotate(0deg); }
-        }
-
-        @keyframes wave-scale {
-          0%, 100% { transform: scale(1); opacity: 0.8; }
-          50% { transform: scale(1.1); opacity: 0.4; }
-        }
-
-        @keyframes core-pulse {
-          0%, 100% { opacity: 0.9; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.15); }
-        }
-
-        @keyframes recording-pulse {
-          0%, 100% {
-            fill: rgba(239, 68, 68, 0.8);
-            filter: drop-shadow(0 0 20px rgba(239, 68, 68, 0.6));
-          }
-          50% {
-            fill: rgba(239, 68, 68, 1);
-            filter: drop-shadow(0 0 30px rgba(239, 68, 68, 0.9));
-          }
-        }
-
-        .animate-idle #outer-ring { animation: rotate-slow 20s linear infinite; }
-        .animate-idle #middle-ring { animation: rotate-reverse 15s linear infinite; }
-        .animate-idle #inner-ring { animation: rotate-slow 10s linear infinite; }
-        .animate-idle #core-circle { animation: core-pulse 4s ease-in-out infinite; }
-
-        .animate-processing #outer-ring { animation: rotate-slow 3s linear infinite; }
-        .animate-processing #middle-ring { animation: rotate-reverse 2s linear infinite; }
-        .animate-processing #inner-ring { animation: rotate-slow 1s linear infinite; }
-        .animate-processing #wave-1 { animation: wave-scale 2s ease-in-out infinite; }
-        .animate-processing #wave-2 { animation: wave-scale 2s ease-in-out 0.5s infinite; }
-        .animate-processing #wave-3 { animation: wave-scale 2s ease-in-out 1s infinite; }
-        .animate-processing #core-circle { animation: core-pulse 1s ease-in-out infinite; }
-
-        .animate-recording #outer-ring { animation: rotate-slow 2s linear infinite; }
-        .animate-recording #middle-ring { animation: rotate-reverse 1.5s linear infinite; }
-        .animate-recording #inner-ring { animation: rotate-slow 1s linear infinite; }
-        .animate-recording #core-circle { animation: recording-pulse 1s ease-in-out infinite; }
-        .animate-recording #glow { animation: pulse-glow 1s ease-in-out infinite; }
-
-        @media (prefers-reduced-motion: reduce) {
-          .animate-idle #outer-ring,
-          .animate-idle #middle-ring,
-          .animate-idle #inner-ring,
-          .animate-processing #outer-ring,
-          .animate-processing #middle-ring,
-          .animate-processing #inner-ring,
-          .animate-recording #outer-ring,
-          .animate-recording #middle-ring,
-          .animate-recording #inner-ring { animation: none; }
-
-          .animate-idle #core-circle,
-          .animate-processing #core-circle,
-          .animate-recording #core-circle { animation: core-pulse 4s ease-in-out infinite; }
-        }
-      `
-        }}
-      />
-
       <svg
         width={dimensions.width}
         height={dimensions.height}

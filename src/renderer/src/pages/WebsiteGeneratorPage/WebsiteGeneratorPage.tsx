@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import { useCallback, useEffect, useState, useMemo } from 'react'
 import { ToggleSwitch, Tooltip } from 'flowbite-react'
 import { GrClearOption } from 'react-icons/gr'
@@ -267,14 +268,14 @@ function WebsiteGeneratorPageContents(props: WebsiteGeneratorPageContentsProps) 
 
       // コードが抽出できない場合のチェック
       if (!prompt) {
-        console.error('Failed to generate prompt: No code content extracted')
+        log.error('Failed to generate prompt: No code content extracted')
         return
       }
 
       // Agent Chatページに遷移し、プロンプトをクエリパラメータで渡す
       navigate(`/chat?prompt=${encodeURIComponent(prompt)}&agent=softwareAgent`)
     } catch (error) {
-      console.error('Error generating prompt or navigating:', error)
+      log.error('Error generating prompt or navigating:', { error })
     }
   }, [sandpack.files, template, styleType, userInput, navigate])
 

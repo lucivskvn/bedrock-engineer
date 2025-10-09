@@ -3,6 +3,7 @@
  */
 
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
+import path from 'path'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
 import { ExecutionError, PermissionDeniedError } from '../../base/errors'
@@ -16,6 +17,17 @@ import {
   CommandPatternConfig
 } from '../../../../main/api/command/types'
 import { findAgentById } from '../../../helpers/agent-helpers'
+import {
+  buildAllowedOutputDirectories,
+  ensureDirectoryWithinAllowed
+} from '../../../../common/security/pathGuards'
+
+const ENV_KEY_PATTERN = /^[A-Z0-9_]+$/
+const DEFAULT_MAX_CONCURRENT = 2
+const MAX_CONCURRENT_CAP = 4
+const DEFAULT_MAX_STDIN_BYTES = 64 * 1024
+const MIN_MAX_STDIN_BYTES = 1024
+const MAX_STDIN_CAP = 256 * 1024
 
 /**
  * Input type for ExecuteCommandTool
@@ -107,6 +119,47 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
     return commandServiceState.service
   }
 
+  private getWorkingDirectoryContext(): { projectPath?: string; userDataPath?: string } {
+    const projectPathValue = this.store.get('projectPath')
+    const projectPath =
+      typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+        ? (projectPathValue as string)
+        : undefined
+    const userDataPathValue = this.store.get('userDataPath')
+    const userDataPath =
+      typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+        ? (userDataPathValue as string)
+        : undefined
+
+    return { projectPath, userDataPath }
+  }
+
+  private getAllowedWorkingDirectories(): string[] {
+    const { projectPath, userDataPath } = this.getWorkingDirectoryContext()
+    return buildAllowedOutputDirectories({ projectPath, userDataPath }).sort()
+  }
+
+  private resolveWorkingDirectory(cwd: string): string {
+    const allowedDirectories = this.getAllowedWorkingDirectories()
+    if (allowedDirectories.length === 0) {
+      throw new Error('No allowed working directories configured')
+    }
+
+    const trimmed = cwd?.trim()
+    if (!trimmed) {
+      throw new Error('Working directory must be provided')
+    }
+
+    const { projectPath } = this.getWorkingDirectoryContext()
+    const candidate = path.isAbsolute(trimmed)
+      ? trimmed
+      : projectPath
+      ? path.resolve(projectPath, trimmed)
+      : path.resolve(trimmed)
+
+    return ensureDirectoryWithinAllowed(candidate, allowedDirectories)
+  }
+
   /**
    * Validate input
    */
@@ -186,7 +239,22 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
           cwd: input.cwd
         })
 
-        result = await commandService.executeCommand(input)
+        let resolvedCwd: string
+        try {
+          resolvedCwd = this.resolveWorkingDirectory(input.cwd)
+        } catch (error) {
+          throw new ExecutionError(
+            error instanceof Error ? error.message : String(error),
+            this.name,
+            error instanceof Error ? error : undefined,
+            { input }
+          )
+        }
+
+        result = await commandService.executeCommand({
+          command: input.command,
+          cwd: resolvedCwd
+        })
 
         this.logger.debug('Command execution result', {
           pid: result.processInfo?.pid,
@@ -282,9 +350,57 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
       })
     }
 
+    const { projectPath } = this.getWorkingDirectoryContext()
+    const allowedWorkingDirectories = this.getAllowedWorkingDirectories()
+
+    const rawMaxConcurrent = this.store.get('commandMaxConcurrentProcesses')
+    const maxConcurrentProcesses =
+      typeof rawMaxConcurrent === 'number' && Number.isFinite(rawMaxConcurrent)
+        ? rawMaxConcurrent <= 0
+          ? undefined
+          : Math.min(Math.max(Math.floor(rawMaxConcurrent), 1), MAX_CONCURRENT_CAP)
+        : DEFAULT_MAX_CONCURRENT
+
+    const rawMaxStdinBytes = this.store.get('commandMaxStdinBytes')
+    const maxStdinBytes =
+      typeof rawMaxStdinBytes === 'number' && Number.isFinite(rawMaxStdinBytes)
+        ? Math.min(
+            Math.max(Math.floor(rawMaxStdinBytes), MIN_MAX_STDIN_BYTES),
+            MAX_STDIN_CAP
+          )
+        : DEFAULT_MAX_STDIN_BYTES
+
+    const rawPassthroughEnvKeys = this.store.get('commandPassthroughEnvKeys')
+    const passthroughEnvKeys = Array.isArray(rawPassthroughEnvKeys)
+      ? Array.from(
+          new Set(
+            rawPassthroughEnvKeys
+              .map((key) => (typeof key === 'string' ? key.trim().toUpperCase() : ''))
+              .filter((key) => key.length > 0 && ENV_KEY_PATTERN.test(key))
+          )
+        )
+      : []
+
+    const rawCommandSearchPaths = this.store.get('commandSearchPaths')
+    const additionalPathEntries = Array.isArray(rawCommandSearchPaths)
+      ? Array.from(
+          new Set(
+            rawCommandSearchPaths
+              .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+              .filter((entry) => entry.length > 0)
+          )
+        )
+      : []
+
     return {
       allowedCommands,
-      shell
+      shell,
+      allowedWorkingDirectories,
+      projectPath,
+      maxConcurrentProcesses,
+      maxStdinBytes,
+      passthroughEnvKeys,
+      additionalPathEntries
     }
   }
 

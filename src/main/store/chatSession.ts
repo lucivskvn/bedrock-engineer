@@ -3,6 +3,8 @@ import fs from 'fs'
 import Store from 'electron-store'
 import { ChatSession, ChatMessage, SessionMetadata } from '../../types/chat/history'
 import { store } from '../../preload/store'
+import { log } from '../../common/logger'
+import { ensureValidStorageKey } from '../../common/security/pathGuards'
 
 export class ChatSessionManager {
   private readonly sessionsDir: string
@@ -43,22 +45,38 @@ export class ChatSessionManager {
         const sessionFiles = files.filter((file) => file.endsWith('.json'))
 
         for (const file of sessionFiles) {
-          const sessionId = file.replace('.json', '')
-          const session = this.readSessionFile(sessionId)
-          if (session) {
-            this.updateMetadata(sessionId, session)
+          try {
+            const sessionId = this.normalizeSessionId(file.replace('.json', ''))
+            const session = this.readSessionFile(sessionId)
+            if (session) {
+              this.updateMetadata(sessionId, session)
+            }
+          } catch (error) {
+            log.warn('Skipping chat session metadata initialization for malformed id', {
+              file,
+              error: error instanceof Error ? error.message : String(error)
+            })
           }
         }
 
-        console.log('Metadata initialized successfully')
-      } catch (error) {
-        console.error('Error initializing metadata:', error)
-      }
+        log.debug('Metadata initialized successfully')
+        } catch (error) {
+          log.error('Error initializing metadata:', { error })
+        }
     }
   }
 
+  private normalizeSessionId(sessionId: string): string {
+    return ensureValidStorageKey(sessionId, {
+      label: 'Chat session ID',
+      prefix: 'session_',
+      maxLength: 160
+    })
+  }
+
   private getSessionFilePath(sessionId: string): string {
-    return path.join(this.sessionsDir, `${sessionId}.json`)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    return path.join(this.sessionsDir, `${safeSessionId}.json`)
   }
 
   private readSessionFile(sessionId: string): ChatSession | null {
@@ -66,19 +84,19 @@ export class ChatSessionManager {
     try {
       const data = fs.readFileSync(filePath, 'utf-8')
       return JSON.parse(data) as ChatSession
-    } catch (error) {
-      console.error(`Error reading session file ${sessionId}:`, error)
-      return null
-    }
+      } catch (error) {
+        log.error(`Error reading session file ${sessionId}:`, { error })
+        return null
+      }
   }
 
   private async writeSessionFile(sessionId: string, session: ChatSession): Promise<void> {
     const filePath = this.getSessionFilePath(sessionId)
     try {
       await fs.promises.writeFile(filePath, JSON.stringify(session, null, 2))
-    } catch (error) {
-      console.error(`Error writing session file ${sessionId}:`, error)
-    }
+      } catch (error) {
+        log.error(`Error writing session file ${sessionId}:`, { error })
+      }
   }
 
   private updateMetadata(sessionId: string, session: ChatSession): void {
@@ -101,7 +119,8 @@ export class ChatSessionManager {
   }
 
   async createSession(agentId: string, modelId: string, systemPrompt?: string): Promise<string> {
-    const id = `session_${Date.now()}`
+    const rawId = `session_${Date.now()}`
+    const id = this.normalizeSessionId(rawId)
     const session: ChatSession = {
       id,
       title: `Chat ${new Date().toLocaleString()}`,
@@ -120,49 +139,67 @@ export class ChatSessionManager {
   }
 
   async addMessage(sessionId: string, message: ChatMessage): Promise<void> {
-    const session = this.readSessionFile(sessionId)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    const session = this.readSessionFile(safeSessionId)
     if (!session) return
 
     session.messages.push(message)
     session.updatedAt = Date.now()
 
-    await this.writeSessionFile(sessionId, session)
-    this.updateMetadata(sessionId, session)
-    this.updateRecentSessions(sessionId)
+    await this.writeSessionFile(safeSessionId, session)
+    this.updateMetadata(safeSessionId, session)
+    this.updateRecentSessions(safeSessionId)
   }
 
   getSession(sessionId: string): ChatSession | null {
-    return this.readSessionFile(sessionId)
+    try {
+      return this.readSessionFile(this.normalizeSessionId(sessionId))
+    } catch (error) {
+      log.warn('Rejected chat session access for invalid id', {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return null
+    }
   }
 
   async updateSessionTitle(sessionId: string, title: string): Promise<void> {
-    const session = this.readSessionFile(sessionId)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    const session = this.readSessionFile(safeSessionId)
     if (!session) return
 
     session.title = title
 
-    await this.writeSessionFile(sessionId, session)
-    this.updateMetadata(sessionId, session)
+    await this.writeSessionFile(safeSessionId, session)
+    this.updateMetadata(safeSessionId, session)
   }
 
   deleteSession(sessionId: string): void {
-    const filePath = this.getSessionFilePath(sessionId)
+    try {
+      const safeSessionId = this.normalizeSessionId(sessionId)
+      const filePath = this.getSessionFilePath(safeSessionId)
     try {
       fs.unlinkSync(filePath)
 
       // メタデータからも削除
       const metadata = this.metadataStore.get('metadata')
-      delete metadata[sessionId]
+        delete metadata[safeSessionId]
       this.metadataStore.set('metadata', metadata)
-    } catch (error) {
-      console.error(`Error deleting session file ${sessionId}:`, error)
-    }
+      } catch (error) {
+        log.error(`Error deleting session file ${sessionId}:`, { error })
+      }
 
     const recentSessions = this.metadataStore.get('recentSessions')
     this.metadataStore.set(
       'recentSessions',
-      recentSessions.filter((id) => id !== sessionId)
+      recentSessions.filter((id) => id !== safeSessionId)
     )
+    } catch (error) {
+      log.warn('Failed to delete chat session due to invalid id', {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
   }
 
   deleteAllSessions(): void {
@@ -181,15 +218,16 @@ export class ChatSessionManager {
       this.metadataStore.set('recentSessions', [])
       this.metadataStore.delete('activeSessionId')
 
-      console.log('All sessions have been deleted successfully')
-    } catch (error) {
-      console.error('Error deleting all sessions:', error)
-    }
+      log.debug('All sessions have been deleted successfully')
+      } catch (error) {
+        log.error('Error deleting all sessions:', { error })
+      }
   }
 
   private updateRecentSessions(sessionId: string): void {
+    const safeSessionId = this.normalizeSessionId(sessionId)
     const recentSessions = this.metadataStore.get('recentSessions')
-    const updated = [sessionId, ...recentSessions.filter((id) => id !== sessionId)].slice(0, 10)
+    const updated = [safeSessionId, ...recentSessions.filter((id) => id !== safeSessionId)].slice(0, 10)
     this.metadataStore.set('recentSessions', updated)
   }
 
@@ -220,11 +258,26 @@ export class ChatSessionManager {
   }
 
   setActiveSession(sessionId: string | undefined): void {
-    this.metadataStore.set('activeSessionId', sessionId)
+    const value = sessionId ? this.normalizeSessionId(sessionId) : undefined
+    this.metadataStore.set('activeSessionId', value)
   }
 
   getActiveSessionId(): string | undefined {
-    return this.metadataStore.get('activeSessionId')
+    const stored = this.metadataStore.get('activeSessionId')
+    if (!stored) {
+      return undefined
+    }
+
+    try {
+      return this.normalizeSessionId(stored)
+    } catch (error) {
+      log.warn('Removing invalid active chat session id', {
+        sessionId: stored,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      this.metadataStore.delete('activeSessionId')
+      return undefined
+    }
   }
 
   async updateMessageContent(
@@ -232,12 +285,13 @@ export class ChatSessionManager {
     messageIndex: number,
     updatedMessage: ChatMessage
   ): Promise<void> {
-    const session = this.readSessionFile(sessionId)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    const session = this.readSessionFile(safeSessionId)
     if (!session) return
 
     // 指定されたインデックスが有効な範囲内かチェック
     if (messageIndex < 0 || messageIndex >= session.messages.length) {
-      console.error(`Invalid message index: ${messageIndex}`)
+      log.error(`Invalid message index: ${messageIndex}`)
       return
     }
 
@@ -246,17 +300,18 @@ export class ChatSessionManager {
     session.updatedAt = Date.now()
 
     // ファイルとメタデータを更新
-    await this.writeSessionFile(sessionId, session)
-    this.updateMetadata(sessionId, session)
+    await this.writeSessionFile(safeSessionId, session)
+    this.updateMetadata(safeSessionId, session)
   }
 
   async deleteMessage(sessionId: string, messageIndex: number): Promise<void> {
-    const session = this.readSessionFile(sessionId)
+    const safeSessionId = this.normalizeSessionId(sessionId)
+    const session = this.readSessionFile(safeSessionId)
     if (!session) return
 
     // 指定されたインデックスが有効な範囲内かチェック
     if (messageIndex < 0 || messageIndex >= session.messages.length) {
-      console.error(`Invalid message index: ${messageIndex}`)
+      log.error(`Invalid message index: ${messageIndex}`)
       return
     }
 
@@ -265,7 +320,7 @@ export class ChatSessionManager {
     session.updatedAt = Date.now()
 
     // ファイルとメタデータを更新
-    await this.writeSessionFile(sessionId, session)
-    this.updateMetadata(sessionId, session)
+    await this.writeSessionFile(safeSessionId, session)
+    this.updateMetadata(safeSessionId, session)
   }
 }

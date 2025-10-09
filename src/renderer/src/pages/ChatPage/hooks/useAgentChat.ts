@@ -1,3 +1,4 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
 import {
   ConversationRole,
   ContentBlock,
@@ -16,7 +17,6 @@ import toast from 'react-hot-toast'
 import { useTranslation } from 'react-i18next'
 import { useLightProcessingModel } from '@renderer/lib/modelSelection'
 import { useAgentTools } from './useAgentTools'
-import { getThinkingSupportedModelIds } from '@common/models/models'
 
 import { AttachedImage } from '../components/InputForm/TextArea'
 import { ChatMessage } from '@/types/chat/history'
@@ -24,8 +24,13 @@ import { ToolName, isMcpTool } from '@/types/tools'
 import { notificationService } from '@renderer/services/NotificationService'
 import { limitContextLength } from '@renderer/lib/contextLength'
 import { IdentifiableMessage } from '@/types/chat/message'
-import { PromptCacheManager } from '@common/models/promptCache'
-import { PricingCalculator } from '@common/models/pricing'
+import {
+  addCachePointsToMessages,
+  addCachePointToSystem,
+  addCachePointToTools,
+  logCacheUsage
+} from '@common/utils/promptCacheUtils'
+import { calculateCost } from '@renderer/lib/pricing/modelPricing'
 
 // メッセージの送信時に、Trace を全て載せると InputToken が逼迫するので取り除く
 function removeTraces(messages) {
@@ -61,19 +66,6 @@ function removeTraces(messages) {
           }
           return item
         })
-      }
-    }
-    return message
-  })
-}
-
-// reasoningContentを含むブロックを除外する関数
-function removeReasoningContent(messages: Message[]): Message[] {
-  return messages.map((message) => {
-    if (message.content && Array.isArray(message.content)) {
-      return {
-        ...message,
-        content: message.content.filter((block) => !('reasoningContent' in block))
       }
     }
     return message
@@ -147,7 +139,7 @@ export const useAgentChat = (
         if (isMcpTool(toolName)) {
           // MCPサーバーが設定されていない場合は除外
           if (!hasMcpServers) {
-            console.warn(
+            log.warn(
               `MCP tool "${toolName}" is enabled but no MCP servers are configured. Tool will be disabled.`
             )
             return false
@@ -346,43 +338,28 @@ export const useAgentChat = (
     // 新しい AbortController を作成
     abortController.current = new AbortController()
 
-    // モデルがthinkingをサポートしているか確認
-    const thinkingSupportedModelIds = getThinkingSupportedModelIds()
-    const supportsThinking = thinkingSupportedModelIds.some((id) => modelId.includes(id))
-
     // Context長に基づいてメッセージを制限
-    let limitedMessages = removeTraces(limitContextLength(currentMessages, contextLength))
+    const limitedMessages = removeTraces(limitContextLength(currentMessages, contextLength))
 
-    // モデルがthinkingをサポートしていない場合、reasoningContentを除外
-    if (!supportsThinking) {
-      limitedMessages = removeReasoningContent(limitedMessages)
+    // キャッシュポイントを追加（前回のキャッシュポイントを引き継ぐ）
+    props.messages = enablePromptCache
+      ? addCachePointsToMessages(limitedMessages, modelId, lastCachePoint.current)
+      : limitedMessages
+
+    // キャッシュポイントが更新された場合、次回の会話ためにキャッシュポイントのインデックスを更新
+    if (props.messages[props.messages.length - 1].content?.some((b) => b.cachePoint?.type)) {
+      // 次回の会話のために現在のキャッシュポイントを更新
+      // 現在のメッセージ配列の最後のインデックスを次回の最初のキャッシュポイントとして設定
+      lastCachePoint.current = props.messages.length - 1
     }
 
-    // Prompt Cache適用（enablePromptCacheが有効な場合）
-    if (enablePromptCache) {
-      const cacheManager = new PromptCacheManager(modelId)
-      props.messages = cacheManager.addCachePointsToMessages(
-        limitedMessages,
-        lastCachePoint.current
-      )
+    // システムプロンプトとツール設定にもキャッシュポイントを追加
+    if (props.system && enablePromptCache) {
+      props.system = addCachePointToSystem(props.system, modelId)
+    }
 
-      // キャッシュポイントが更新された場合、次回の会話ためにキャッシュポイントのインデックスを更新
-      if (props.messages[props.messages.length - 1].content?.some((b) => b.cachePoint?.type)) {
-        // 次回の会話のために現在のキャッシュポイントを更新
-        // 現在のメッセージ配列の最後のインデックスを次回の最初のキャッシュポイントとして設定
-        lastCachePoint.current = props.messages.length - 1
-      }
-
-      // システムプロンプトとツール設定にもキャッシュポイントを追加
-      if (props.system) {
-        props.system = cacheManager.addCachePointToSystem(props.system)
-      }
-
-      if (props.toolConfig) {
-        props.toolConfig = cacheManager.addCachePointToTools(props.toolConfig) as any
-      }
-    } else {
-      props.messages = limitedMessages
+    if (props.toolConfig && enablePromptCache) {
+      props.toolConfig = addCachePointToTools(props.toolConfig, modelId)
     }
 
     const generator = streamChatCompletion(props, abortController.current.signal)
@@ -405,8 +382,8 @@ export const useAgentChat = (
           messageStart = true
         } else if (json.messageStop) {
           if (!messageStart) {
-            console.warn('messageStop without messageStart')
-            console.log(messages)
+            log.warn('messageStop without messageStart')
+            log.debug('messages before retry', messages)
             await streamChat(props, currentMessages)
             return
           }
@@ -520,7 +497,7 @@ export const useAgentChat = (
           }
 
           const reasoningContent = json.contentBlockDelta.delta?.reasoningContent
-          if (reasoningContent && supportsThinking) {
+          if (reasoningContent) {
             setReasoning(true)
             if (reasoningContent?.text || reasoningContent?.signature) {
               reasoningContentText = reasoningContentText + (reasoningContent?.text || '')
@@ -633,18 +610,21 @@ export const useAgentChat = (
             metadata.converseMetadata.usage.outputTokens
           ) {
             try {
-              const pricingCalculator = new PricingCalculator(modelId)
-              sessionCost = pricingCalculator.calculateTotalCost(
+              sessionCost = calculateCost(
+                modelId,
                 metadata.converseMetadata.usage.inputTokens,
                 metadata.converseMetadata.usage.outputTokens,
-                metadata.converseMetadata.usage.cacheReadInputTokens || 0,
-                metadata.converseMetadata.usage.cacheWriteInputTokens || 0
+                metadata.converseMetadata.usage.cacheReadInputTokens,
+                metadata.converseMetadata.usage.cacheWriteInputTokens
               )
               metadata.sessionCost = sessionCost
             } catch (error) {
-              console.error('Error calculating cost:', error)
+              log.error('Error calculating cost:', error)
             }
           }
+
+          // Prompt Cacheの使用状況をログ出力
+          logCacheUsage(metadata.converseMetadata, modelId)
 
           // 直近のアシスタントメッセージにメタデータを関連付ける
           if (lastAssistantMessageId.current) {
@@ -692,19 +672,18 @@ export const useAgentChat = (
             }
           }
         } else {
-          console.error('unexpected json:', json)
+          log.error('unexpected json:', json)
         }
       }
 
       return stopReason
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        console.log('Chat stream aborted')
+        log.debug('Chat stream aborted')
         return
       }
-      console.error({ streamChatRequestError: error })
-      // エラーメッセージをそのままトーストに表示
-      toast.error(error.message || t('request error'))
+      log.error('streamChatRequestError', { streamChatRequestError: error })
+      toast.error(t('request error'))
       const messageId = generateMessageId()
       const errorMessage: IdentifiableMessage = {
         role: 'assistant' as const,
@@ -791,12 +770,12 @@ export const useAgentChat = (
               guardrailSettings.guardrailVersion
             ) {
               try {
-                console.log('Applying guardrail to tool result')
+                log.debug('Applying guardrail to tool result')
                 // ツール結果をガードレールで検証
                 const toolResultText =
                   typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
 
-                console.log({ toolResultText })
+                log.debug('tool result text', { toolResultText })
                 // ツール結果をGuardrailで評価
                 const guardrailResult = await window.api.bedrock.applyGuardrail({
                   guardrailIdentifier: guardrailSettings.guardrailIdentifier,
@@ -810,11 +789,11 @@ export const useAgentChat = (
                     }
                   ]
                 })
-                console.log({ guardrailResult })
+                log.debug('guardrail result', { guardrailResult })
 
                 // ガードレールが介入した場合は代わりにエラーメッセージを使用
                 if (guardrailResult.action === 'GUARDRAIL_INTERVENED') {
-                  console.warn('Guardrail intervened for tool result', guardrailResult)
+                  log.warn('Guardrail intervened for tool result', guardrailResult)
                   let errorMessage = t('guardrail.toolResult.blocked')
 
                   // もしガードレールが出力を提供していれば、それを使用
@@ -844,7 +823,7 @@ export const useAgentChat = (
                   })
                 }
               } catch (guardrailError) {
-                console.error('Error applying guardrail to tool result:', guardrailError)
+                log.error('Error applying guardrail to tool result:', guardrailError)
                 // ガードレールエラー時は元のツール結果を使用し続ける
               }
             }
@@ -852,7 +831,7 @@ export const useAgentChat = (
             // 最終的なツール結果をコレクションに追加
             toolResults.push(resultContentBlock)
           } catch (e: any) {
-            console.error(e)
+            log.error('tool result processing error', { error: e })
             toolResults.push({
               toolResult: {
                 toolUseId: toolUse.toolUseId,
@@ -985,7 +964,7 @@ export const useAgentChat = (
       const lastMessage = currentMessages[currentMessages.length - 1]
       if (lastMessage.content?.find((v) => v.toolUse)) {
         if (!lastMessage.content) {
-          console.warn(lastMessage)
+          log.warn('last message', lastMessage)
           result = null
         } else {
           result = await recursivelyExecTool(lastMessage.content, currentMessages)
@@ -1030,7 +1009,7 @@ export const useAgentChat = (
         })
       }
     } catch (error: any) {
-      console.error('Error in handleSubmit:', error)
+      log.error('Error in handleSubmit:', error)
       toast.error(error.message || 'An error occurred')
     } finally {
       setLoading(false)
@@ -1083,7 +1062,7 @@ export const useAgentChat = (
         await updateSessionTitle(currentSessionId, newTitle)
       }
     } catch (error) {
-      console.error('Error generating title for current session:', error)
+      log.error('Error generating title for current session:', error)
     }
   }, [currentSessionId, modelId, t, enableHistory, getSession, updateSessionTitle])
 

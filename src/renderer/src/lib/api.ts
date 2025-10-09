@@ -1,3 +1,5 @@
+import { rendererLogger as log } from '@renderer/lib/logger';
+import { getTrustedApiEndpoint } from '@renderer/lib/security/apiEndpoint';
 import { LLM } from '@/types/llm'
 import { RetrieveAndGenerateCommandInput } from '@aws-sdk/client-bedrock-agent-runtime'
 import {
@@ -6,7 +8,6 @@ import {
   Message,
   ToolConfiguration
 } from '@aws-sdk/client-bedrock-runtime'
-import { supportsStreamingWithToolUse } from '@common/models/models'
 
 export type StreamChatCompletionProps = {
   modelId: string
@@ -15,74 +16,30 @@ export type StreamChatCompletionProps = {
   toolConfig?: ToolConfiguration
 }
 
-const API_ENDPOINT = window.store.get('apiEndpoint')
+const getApiEndpoint = () => getTrustedApiEndpoint()
+
+const withAuthHeaders = (headers: Record<string, string>) => {
+  const apiAuthToken = window.store.get('apiAuthToken') as string | undefined
+  if (apiAuthToken && apiAuthToken.length > 0) {
+    return {
+      ...headers,
+      'X-API-Key': apiAuthToken
+    }
+  }
+  return headers
+}
 
 export async function* streamChatCompletion(
   props: StreamChatCompletionProps,
   abortSignal?: AbortSignal
 ): AsyncGenerator<ConverseStreamOutput, void, unknown> {
-  const hasToolUse = props.toolConfig && props.toolConfig.tools && props.toolConfig.tools.length > 0
-
-  // モデルがストリーミング + Tool Use をサポートしていない場合
-  if (hasToolUse && !supportsStreamingWithToolUse(props.modelId)) {
-    // 非ストリーミングAPIを使用し、結果をストリーミング形式に変換
-    const result = await converse(props, abortSignal)
-
-    // 非ストリーミング結果をストリーミング形式に変換
-    yield { messageStart: { role: result.output.message.role } }
-
-    for (const content of result.output.message.content || []) {
-      if (content.text) {
-        // テキストコンテンツを一度に出力
-        yield {
-          contentBlockStart: {
-            start: undefined,
-            contentBlockIndex: 0
-          }
-        }
-        yield {
-          contentBlockDelta: {
-            delta: { text: content.text },
-            contentBlockIndex: 0
-          }
-        }
-        yield {
-          contentBlockStop: {
-            contentBlockIndex: 0
-          }
-        }
-      } else if (content.toolUse) {
-        // Tool Useコンテンツを出力
-        yield {
-          contentBlockStart: {
-            start: { toolUse: content.toolUse },
-            contentBlockIndex: 0
-          }
-        }
-        yield {
-          contentBlockStop: {
-            contentBlockIndex: 0
-          }
-        }
-      }
-    }
-
-    yield { messageStop: { stopReason: result.stopReason } }
-
-    if (result.usage) {
-      yield { metadata: { usage: result.usage, metrics: { latencyMs: 0 } } }
-    }
-
-    return
-  }
-
-  // 通常のストリーミング処理
-  const res = await fetch(`${API_ENDPOINT}/converse/stream`, {
+  const endpoint = getApiEndpoint()
+  const res = await fetch(`${endpoint}/converse/stream`, {
     method: 'POST',
     body: JSON.stringify(props),
-    headers: {
+    headers: withAuthHeaders({
       'Content-Type': 'application/json'
-    },
+    }),
     signal: abortSignal
   })
   const reader = res.body?.getReader()
@@ -120,7 +77,7 @@ export async function* streamChatCompletion(
               try {
                 yield JSON.parse(chunk)
               } catch (e) {
-                console.error(`Error parsing JSON:`, e)
+                log.error(`Error parsing JSON:`, e)
               }
             }
           }
@@ -147,12 +104,13 @@ type ConverseProps = {
 }
 
 export async function converse(props: ConverseProps, abortSignal?: AbortSignal) {
-  const res = await fetch(`${API_ENDPOINT}/converse`, {
+  const endpoint = getApiEndpoint()
+  const res = await fetch(`${endpoint}/converse`, {
     method: 'POST',
     body: JSON.stringify(props),
-    headers: {
+    headers: withAuthHeaders({
       'Content-Type': 'application/json'
-    },
+    }),
     signal: abortSignal
   })
   return res.json()
@@ -162,89 +120,36 @@ export async function retrieveAndGenerate(
   props: RetrieveAndGenerateCommandInput,
   abortSignal?: AbortSignal
 ) {
-  const res = await fetch(`${API_ENDPOINT}/retrieveAndGenerate`, {
+  const endpoint = getApiEndpoint()
+  const res = await fetch(`${endpoint}/retrieveAndGenerate`, {
     method: 'POST',
     body: JSON.stringify(props),
-    headers: {
+    headers: withAuthHeaders({
       'Content-Type': 'application/json'
-    },
+    }),
     signal: abortSignal
   })
   return res
 }
 
 export async function listModels(): Promise<LLM[]> {
-  const res = await fetch(`${API_ENDPOINT}/listModels`, {
+  const endpoint = getApiEndpoint()
+  const res = await fetch(`${endpoint}/listModels`, {
     method: 'GET',
-    headers: {
+    headers: withAuthHeaders({
       'Content-Type': 'application/json'
-    }
+    })
   })
   return res.json()
 }
 
 export async function listAgentTags(): Promise<string[]> {
-  const res = await fetch(`${API_ENDPOINT}/listAgentTags`, {
+  const endpoint = getApiEndpoint()
+  const res = await fetch(`${endpoint}/listAgentTags`, {
     method: 'GET',
-    headers: {
+    headers: withAuthHeaders({
       'Content-Type': 'application/json'
-    }
+    })
   })
-  return res.json()
-}
-
-/**
- * Get structured output from LLM using JSON schema
- * @param params - Request parameters including model, prompts, and output schema
- * @returns Structured output conforming to the provided schema
- */
-export async function getStructuredOutput<T>(params: {
-  modelId: string
-  systemPrompt: string
-  userMessage: string
-  outputSchema: any
-  toolOptions?: {
-    name?: string
-    description?: string
-  }
-  inferenceConfig?: InferenceConfiguration
-}): Promise<T> {
-  const res = await fetch(`${API_ENDPOINT}/structured-output`, {
-    method: 'POST',
-    body: JSON.stringify(params),
-    headers: {
-      'Content-Type': 'application/json'
-    }
-  })
-
-  if (!res.ok) {
-    throw new Error(`Structured output request failed: ${res.statusText}`)
-  }
-
-  return res.json()
-}
-
-/**
- * Get website improvement recommendations
- * @param params - Website code, language, and model ID
- * @returns Recommendations for website improvements
- */
-export async function getWebsiteRecommendations(params: {
-  websiteCode: string
-  language: string
-  modelId: string
-}): Promise<{ recommendations: Array<{ title: string; value: string }> }> {
-  const res = await fetch(`${API_ENDPOINT}/website-recommendations`, {
-    method: 'POST',
-    body: JSON.stringify(params),
-    headers: {
-      'Content-Type': 'application/json'
-    }
-  })
-
-  if (!res.ok) {
-    throw new Error(`Website recommendations request failed: ${res.statusText}`)
-  }
-
   return res.json()
 }

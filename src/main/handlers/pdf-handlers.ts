@@ -2,11 +2,17 @@
  * PDF handlers for main process
  */
 
-import { IpcMainInvokeEvent } from 'electron'
+import { IpcMainInvokeEvent, app } from 'electron'
 import * as fs from 'fs/promises'
 import * as path from 'path'
+import os from 'os'
 import pdfParse from 'pdf-parse'
 import { log } from '../../common/logger'
+import { store } from '../../preload/store'
+import {
+  buildAllowedOutputDirectories,
+  ensurePathWithinAllowedDirectories
+} from '../security/path-utils'
 
 export interface LineRange {
   from?: number
@@ -66,10 +72,64 @@ function isPdfFile(filePath: string): boolean {
 /**
  * Validate PDF file path
  */
-function validatePdfFile(filePath: string): void {
-  if (!isPdfFile(filePath)) {
+const MAX_PDF_BYTES = 25 * 1024 * 1024
+
+function getDocumentPathContext(): { projectPath?: string; userDataPath?: string } {
+  const projectPathValue = store.get('projectPath')
+  const projectPath =
+    typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+      ? projectPathValue
+      : undefined
+  const userDataPathValue = store.get('userDataPath')
+  const userDataPath =
+    typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+      ? userDataPathValue
+      : undefined
+
+  return { projectPath, userDataPath }
+}
+
+function getAllowedDocumentDirectories(): string[] {
+  const { projectPath, userDataPath } = getDocumentPathContext()
+
+  return buildAllowedOutputDirectories({
+    projectPath,
+    userDataPath,
+    additional: [
+      app.getPath('documents'),
+      path.join(app.getPath('documents'), 'bedrock-engineer'),
+      app.getPath('downloads'),
+      path.join(app.getPath('downloads'), 'bedrock-engineer'),
+      os.tmpdir()
+    ]
+  })
+}
+
+function resolvePdfPath(filePath: string): string {
+  const { projectPath } = getDocumentPathContext()
+  const allowedDirectories = getAllowedDocumentDirectories()
+  const candidatePath = path.isAbsolute(filePath)
+    ? filePath
+    : projectPath
+    ? path.resolve(projectPath, filePath)
+    : path.resolve(filePath)
+
+  return ensurePathWithinAllowedDirectories(candidatePath, allowedDirectories)
+}
+
+async function assertPdfFileSafe(filePath: string): Promise<string> {
+  const safePath = resolvePdfPath(filePath)
+
+  if (!isPdfFile(safePath)) {
     throw new Error(`File ${filePath} is not a PDF file`)
   }
+
+  const stats = await fs.stat(safePath)
+  if (stats.size > MAX_PDF_BYTES) {
+    throw new Error('PDF file is too large to process safely')
+  }
+
+  return safePath
 }
 
 export const pdfHandlers = {
@@ -83,9 +143,9 @@ export const pdfHandlers = {
     log.info('Extracting text from PDF', { filePath, hasLineRange: !!lineRange })
 
     try {
-      validatePdfFile(filePath)
+      const safePath = await assertPdfFileSafe(filePath)
 
-      const dataBuffer = await fs.readFile(filePath)
+      const dataBuffer = await fs.readFile(safePath)
       const pdfData = await pdfParse(dataBuffer)
       const cleanedText = cleanupText(pdfData.text)
 
@@ -93,7 +153,7 @@ export const pdfHandlers = {
       const result = filterByLineRange(cleanedText, lineRange)
 
       log.info('PDF text extraction successful', {
-        filePath,
+        filePath: safePath,
         pages: pdfData.numpages,
         originalLength: cleanedText.length,
         filteredLength: result.length
@@ -120,9 +180,9 @@ export const pdfHandlers = {
     log.info('Extracting PDF metadata', { filePath })
 
     try {
-      validatePdfFile(filePath)
+      const safePath = await assertPdfFileSafe(filePath)
 
-      const dataBuffer = await fs.readFile(filePath)
+      const dataBuffer = await fs.readFile(safePath)
       const pdfData = await pdfParse(dataBuffer)
       const cleanedText = cleanupText(pdfData.text)
       const lines = cleanedText.split('\n')
@@ -143,7 +203,7 @@ export const pdfHandlers = {
       }
 
       log.info('PDF metadata extraction successful', {
-        filePath,
+        filePath: safePath,
         pages: result.metadata.pages,
         totalLines: result.totalLines,
         title: result.metadata.title
@@ -170,9 +230,9 @@ export const pdfHandlers = {
     log.info('Getting PDF info', { filePath })
 
     try {
-      validatePdfFile(filePath)
+      const safePath = await assertPdfFileSafe(filePath)
 
-      const dataBuffer = await fs.readFile(filePath)
+      const dataBuffer = await fs.readFile(safePath)
       const pdfData = await pdfParse(dataBuffer, {
         max: 1 // Only parse first page for metadata
       })
@@ -184,7 +244,7 @@ export const pdfHandlers = {
       }
 
       log.info('PDF info extraction successful', {
-        filePath,
+        filePath: safePath,
         pages: result.pages,
         title: result.title
       })

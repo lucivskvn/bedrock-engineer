@@ -182,7 +182,7 @@ export class InvokeFlowTool extends BaseTool<InvokeFlowInput, InvokeFlowResult> 
     let parsedInput: any
     try {
       parsedInput = this.parseInput(input.input)
-    } catch (error) {
+    } catch {
       errors.push("Failed to parse input. Ensure it's a valid object or JSON string.")
       return {
         isValid: false,
@@ -320,7 +320,7 @@ export class InvokeFlowTool extends BaseTool<InvokeFlowInput, InvokeFlowResult> 
         nodeOutputName: parsedInput?.nodeOutputName || 'document',
         content: this.sanitizeFlowContent(parsedInput?.content)
       }
-    } catch (error) {
+    } catch {
       sanitizedInput = {
         inputType: typeof input.input,
         inputPreview:
