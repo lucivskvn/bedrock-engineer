@@ -20,6 +20,7 @@ import { SampleTextCarousel } from './components/SampleTextCarousel'
 import { usePermissionHelpModal } from './components/PermissionHelpModal'
 import { RegionWarningBanner } from './components/RegionWarningBanner'
 import { checkNovaSonicRegionSupport, type RegionCheckResult } from '@renderer/lib/api/novaSonic'
+import { getTrustedApiEndpoint } from '@renderer/lib/security/apiEndpoint'
 
 // ============================================================================
 // 共通コンポーネント定義

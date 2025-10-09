@@ -143,7 +143,10 @@ export class RecognizeImageTool extends BaseTool<RecognizeImageInput, RecognizeI
             try {
               await fs.access(imagePath)
             } catch (error) {
-              this.logger.error(`Image file not found: ${imagePath}`, { error })
+              this.logger.error('Image file not found', {
+                imagePath,
+                error: error instanceof Error ? error.message : String(error)
+              })
               throw new Error(`Image file not found: ${imagePath}`)
             }
 
@@ -154,8 +157,9 @@ export class RecognizeImageTool extends BaseTool<RecognizeImageInput, RecognizeI
               modelId
             })
 
-            this.logger.debug(`Successfully recognized image: ${this.sanitizePath(imagePath)}`, {
-              path: imagePath
+            this.logger.debug('Successfully recognized image', {
+              imagePath,
+              sanitizedPath: this.sanitizePath(imagePath)
             })
 
             return {
@@ -164,7 +168,8 @@ export class RecognizeImageTool extends BaseTool<RecognizeImageInput, RecognizeI
               success: true
             }
           } catch (error) {
-            this.logger.error(`Failed to recognize image: ${imagePath}`, {
+            this.logger.error('Failed to recognize image', {
+              imagePath,
               error: error instanceof Error ? error.message : String(error)
             })
 

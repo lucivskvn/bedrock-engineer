@@ -119,6 +119,13 @@ npm run test:integration
 ```
 
 
+#### October 2025 maintenance notes
+
+- ESLint now consumes the flat-config-powered `typescript-eslint` bundle. Run `npm ci` (or `npm install`) after pulling to ensure the new dependency tree is present before invoking `npm run lint`.
+- When adding new `logger.error` or `logger.warn` calls, keep the primary message static and attach dynamic details (IDs, paths, URLs, etc.) via the structured metadata object so logs remain stable across releases.
+- Prompt cache handling and session cost reporting now rely on the shared `PromptCacheManager` and `PricingCalculator` utilities. Reuse these helpers instead of duplicating ad-hoc implementations when touching chat-related code.
+
+
 ### URL Allowlist
 
 Bedrock Engineer restricts external navigation to a configurable set of hosts.

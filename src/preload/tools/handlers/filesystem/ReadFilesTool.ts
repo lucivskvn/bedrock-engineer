@@ -190,7 +190,7 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
   protected async executeInternal(input: ReadFilesInput): Promise<string> {
     const { paths, options } = input
 
-    this.logger.debug(`Reading files`, {
+    this.logger.debug('Reading files', {
       fileCount: paths.length,
       hasLineRange: !!options?.lines
     })
@@ -208,7 +208,7 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
    * Read a single file with optional line range filtering
    */
   private async readSingleFile(filePath: string, options?: ReadFileOptions): Promise<string> {
-    this.logger.debug(`Reading single file: ${filePath}`)
+    this.logger.debug('Reading single file', { requestedPath: filePath })
 
     try {
       const safePath = this.resolveInputPath(filePath)
@@ -228,14 +228,16 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
         (options?.encoding as BufferEncoding) || 'utf-8'
       )
 
-      this.logger.debug(`File read successfully: ${filePath}`, {
+      this.logger.debug('File read successfully', {
+        requestedPath: filePath,
         contentLength: content.length,
         safePath: sanitizedPath
       })
 
       return this.formatFileContent(sanitizedPath, content, options)
     } catch (error) {
-      this.logger.error(`Error reading file: ${filePath}`, {
+      this.logger.error('Error reading file', {
+        requestedPath: filePath,
         error: error instanceof Error ? error.message : String(error)
       })
 
@@ -252,7 +254,8 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
    */
   private async readPdfFile(filePath: string, options?: ReadFileOptions): Promise<string> {
     const safePath = this.resolveInputPath(filePath)
-    this.logger.debug(`Reading PDF file: ${safePath}`, {
+    this.logger.debug('Reading PDF file', {
+      filePath: safePath,
       hasLineRange: !!options?.lines
     })
 
@@ -261,7 +264,7 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
 
       if (!options?.lines) {
         const pdfContent = await PdfReader.extractTextWithMetadata(safePath)
-        this.logger.info(`PDF processed successfully`, {
+        this.logger.info('PDF processed successfully', {
           filePath: safePath,
           totalLines: pdfContent.totalLines,
           pages: pdfContent.metadata.pages,
@@ -282,7 +285,8 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
 
       return this.formatFileContent(safePath, content, options)
     } catch (error) {
-      this.logger.error(`Error reading PDF file: ${filePath}`, {
+      this.logger.error('Error reading PDF file', {
+        requestedPath: filePath,
         error: error instanceof Error ? error.message : String(error)
       })
 
@@ -299,7 +303,8 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
    */
   private async readDocxFile(filePath: string, options?: ReadFileOptions): Promise<string> {
     const safePath = this.resolveInputPath(filePath)
-    this.logger.debug(`Reading DOCX file: ${safePath}`, {
+    this.logger.debug('Reading DOCX file', {
+      filePath: safePath,
       hasLineRange: !!options?.lines
     })
 
@@ -308,7 +313,7 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
 
       if (!options?.lines) {
         const docxContent = await DocxReader.extractTextWithMetadata(safePath)
-        this.logger.info(`DOCX processed successfully`, {
+        this.logger.info('DOCX processed successfully', {
           filePath: safePath,
           totalLines: docxContent.totalLines,
           wordCount: docxContent.metadata.wordCount,
@@ -329,7 +334,8 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
 
       return this.formatFileContent(safePath, content, options)
     } catch (error) {
-      this.logger.error(`Error reading DOCX file: ${filePath}`, {
+      this.logger.error('Error reading DOCX file', {
+        requestedPath: filePath,
         error: error instanceof Error ? error.message : String(error)
       })
 
@@ -345,14 +351,14 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
    * Read multiple files
    */
   private async readMultipleFiles(paths: string[], options?: ReadFileOptions): Promise<string> {
-    this.logger.debug(`Reading multiple files: ${paths.length} files`)
+    this.logger.debug('Reading multiple files', { fileCount: paths.length })
 
     const fileContents: string[] = []
 
     // Read each file
     for (const filePath of paths) {
       try {
-        this.logger.verbose(`Reading file: ${filePath}`)
+        this.logger.verbose('Reading file during batch read', { requestedPath: filePath })
 
         let formattedContent: string
         const safePath = this.resolveInputPath(filePath)
@@ -375,11 +381,13 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
 
         fileContents.push(formattedContent)
 
-        this.logger.verbose(`File read successfully: ${filePath}`, {
+        this.logger.verbose('File read successfully during batch read', {
+          requestedPath: filePath,
           contentLength: formattedContent.length
         })
       } catch (error) {
-        this.logger.error(`Error reading file: ${filePath}`, {
+        this.logger.error('Error reading file during batch read', {
+          requestedPath: filePath,
           error: error instanceof Error ? error.message : String(error)
         })
         fileContents.push(
@@ -392,7 +400,7 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
 
     // Combine content
     const combinedContent = fileContents.join('\n\n')
-    this.logger.info(`Read ${paths.length} files successfully`)
+    this.logger.info('Completed multi-file read', { fileCount: paths.length })
 
     return combinedContent
   }

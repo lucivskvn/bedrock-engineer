@@ -87,7 +87,7 @@ export class MoveFileTool extends BaseTool<MoveFileInput, string> {
   protected async executeInternal(input: MoveFileInput): Promise<string> {
     const { source, destination } = input
 
-    this.logger.debug(`Moving file from ${source} to ${destination}`)
+    this.logger.debug('Moving file', { source, destination })
 
     try {
       // Ensure the destination directory exists

@@ -249,6 +249,8 @@ const SpeakPage = {
 
 const WebsiteGeneratorPage = {
   addRecommend: 'おすすめの追加機能を考え中',
+  recommendPrompt:
+    'あなたは熟練したフロントエンドエンジニアです。提供されたWebサイトのソースコードを分析し、改善提案をJSON配列で出力してください。各要素には変更内容を説明する"title"と"value"フィールドを含めてください。',
   ecSiteTitle: '観葉植物のECサイト',
   ecSiteValue: `次の条件で、鉢植えの植物に特化した EC ウェブサイトの基本構造とレイアウトを作成してください。
 <Conditions>

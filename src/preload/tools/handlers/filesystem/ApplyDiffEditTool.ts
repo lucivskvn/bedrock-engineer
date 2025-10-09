@@ -124,7 +124,8 @@ Example:
   protected async executeInternal(input: ApplyDiffEditInput): Promise<ApplyDiffEditResult> {
     const { path, originalText, updatedText } = input
 
-    this.logger.debug(`Applying diff edit to file: ${path}`, {
+    this.logger.debug('Applying diff edit to file', {
+      path,
       originalTextLength: originalText.length,
       updatedTextLength: updatedText.length
     })
@@ -135,7 +136,7 @@ Example:
 
       // Check if the original text exists in the file
       if (!fileContent.includes(originalText)) {
-        this.logger.warn(`Original text not found in file: ${path}`)
+        this.logger.warn('Original text not found in file', { path })
 
         return {
           name: 'applyDiffEdit',
@@ -151,7 +152,8 @@ Example:
       // Write the updated content back to the file
       await fs.writeFile(path, newContent, 'utf-8')
 
-      this.logger.info(`Successfully applied diff edit to file: ${path}`, {
+      this.logger.info('Successfully applied diff edit to file', {
+        path,
         originalTextLength: originalText.length,
         updatedTextLength: updatedText.length
       })
@@ -167,7 +169,8 @@ Example:
         }
       }
     } catch (error) {
-      this.logger.error(`Error applying diff edit to file: ${path}`, {
+      this.logger.error('Error applying diff edit to file', {
+        path,
         error: error instanceof Error ? error.message : String(error)
       })
 

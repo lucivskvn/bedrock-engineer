@@ -87,7 +87,8 @@ export class WriteToFileTool extends BaseTool<WriteToFileInput, string> {
   protected async executeInternal(input: WriteToFileInput): Promise<string> {
     const { path: filePath, content } = input
 
-    this.logger.debug(`Writing to file: ${filePath}`, {
+    this.logger.debug('Writing to file', {
+      path: filePath,
       contentLength: content.length
     })
 
@@ -99,14 +100,16 @@ export class WriteToFileTool extends BaseTool<WriteToFileInput, string> {
       // Write the file
       await fs.writeFile(filePath, content, 'utf-8')
 
-      this.logger.info(`Content written to file: ${filePath}`, {
+      this.logger.info('Content written to file', {
+        path: filePath,
         contentLength: content.length
       })
 
       // Return the content as well for compatibility with the old implementation
       return `Content written to file: ${filePath}\n\n${content}`
     } catch (error) {
-      this.logger.error(`Failed to write to file: ${filePath}`, {
+      this.logger.error('Failed to write to file', {
+        path: filePath,
         error: error instanceof Error ? error.message : String(error)
       })
 

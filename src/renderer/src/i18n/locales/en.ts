@@ -244,6 +244,8 @@ const SpeakPage = {
 
 const WebsiteGeneratorPage = {
   addRecommend: 'Considering additional recommended features',
+  recommendPrompt:
+    'You are a senior frontend engineer. Analyze the provided website source code and respond with a JSON array of recommended improvements. Each item must contain "title" and "value" fields that explain the change.',
   ecSiteTitle: 'EC site for plants',
   ecSiteValue: `Create the basic structure and layout of an e-commerce website that specializes in potted plants, with the following conditions:
 <Conditions>

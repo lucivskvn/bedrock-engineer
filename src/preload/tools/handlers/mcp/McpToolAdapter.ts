@@ -185,7 +185,7 @@ export class McpToolAdapter extends BaseTool<McpToolInput, McpToolResult> {
         throw error
       }
 
-      this.logger.error(`Error executing MCP tool: ${toolName}`, {
+      this.logger.error('Error executing MCP tool', {
         error: error instanceof Error ? error.message : String(error),
         toolName,
         args: JSON.stringify(args)

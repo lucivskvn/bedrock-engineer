@@ -4,7 +4,8 @@ import {
   ContentBlock,
   Message,
   ToolUseBlockStart,
-  ImageFormat
+  ImageFormat,
+  ToolConfiguration
 } from '@aws-sdk/client-bedrock-runtime'
 import { ToolState } from '@/types/agent-chat'
 import { generateMessageId } from '@/types/chat/metadata'
@@ -24,13 +25,43 @@ import { ToolName, isMcpTool } from '@/types/tools'
 import { notificationService } from '@renderer/services/NotificationService'
 import { limitContextLength } from '@renderer/lib/contextLength'
 import { IdentifiableMessage } from '@/types/chat/message'
-import {
-  addCachePointsToMessages,
-  addCachePointToSystem,
-  addCachePointToTools,
-  logCacheUsage
-} from '@common/utils/promptCacheUtils'
-import { calculateCost } from '@renderer/lib/pricing/modelPricing'
+import { PromptCacheManager } from '@common/models/promptCache'
+import { PricingCalculator } from '@common/models/pricing'
+
+const createPromptCacheManager = (modelId: string) => new PromptCacheManager(modelId)
+
+const addCachePointsToMessages = (
+  messages: Message[],
+  modelId: string,
+  firstCachePoint?: number
+) => {
+  return createPromptCacheManager(modelId).addCachePointsToMessages(messages, firstCachePoint)
+}
+
+const addCachePointToSystem = <T extends ContentBlock[] | { text: string }[]>(
+  system: T,
+  modelId: string
+): T => {
+  return createPromptCacheManager(modelId).addCachePointToSystem(system)
+}
+
+const addCachePointToTools = (
+  toolConfig: ToolConfiguration | undefined,
+  modelId: string
+): ToolConfiguration | undefined => {
+  return createPromptCacheManager(modelId).addCachePointToTools(toolConfig)
+}
+
+const logCacheUsage = (metadata: unknown, modelId: string) => {
+  if (!metadata || typeof metadata !== 'object') {
+    return
+  }
+
+  log.debug('Prompt cache metadata received', {
+    modelId,
+    metadata
+  })
+}
 
 // メッセージの送信時に、Trace を全て載せると InputToken が逼迫するので取り除く
 function removeTraces(messages) {
@@ -99,6 +130,7 @@ export const useAgentChat = (
   // メッセージ数が閾値を超えたときにタイトル生成を実行
   const MESSAGE_THRESHOLD = 4 // タイトル生成のためのメッセージ数閾値
   const { t } = useTranslation()
+  const pricingCalculator = useMemo(() => new PricingCalculator(modelId), [modelId])
   const {
     notification,
     contextLength,
@@ -610,8 +642,7 @@ export const useAgentChat = (
             metadata.converseMetadata.usage.outputTokens
           ) {
             try {
-              sessionCost = calculateCost(
-                modelId,
+              sessionCost = pricingCalculator.calculateTotalCost(
                 metadata.converseMetadata.usage.inputTokens,
                 metadata.converseMetadata.usage.outputTokens,
                 metadata.converseMetadata.usage.cacheReadInputTokens,

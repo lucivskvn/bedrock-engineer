@@ -275,7 +275,7 @@ export class FetchWebsiteTool extends BaseTool<FetchWebsiteInput, string> {
         header += `\nSave Results:\n${saveResults.join('\n')}\n\n`
       }
 
-      this.logger.info(`Website content retrieved successfully`, {
+      this.logger.info('Website content retrieved successfully', {
         url,
         totalLines,
         hasLineRange: !!lines,
@@ -285,7 +285,8 @@ export class FetchWebsiteTool extends BaseTool<FetchWebsiteInput, string> {
 
       return header + filteredContent
     } catch (error) {
-      this.logger.error(`Error fetching website: ${url}`, {
+      this.logger.error('Error fetching website', {
+        url,
         error: error instanceof Error ? error.message : String(error),
         options: JSON.stringify(options)
       })
