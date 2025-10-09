@@ -199,11 +199,13 @@ export class BackgroundChatSessionManager {
         return // 成功時は即座に終了
       } catch (error: any) {
         lastError = error
-        logger.warn(`Error writing background session file (attempt ${attempt}/${maxRetries})`, {
+        logger.warn('Error writing background session file during retry', {
           sessionId,
           error: error.message,
           filePath,
-          tempFilePath
+          tempFilePath,
+          attempt,
+          maxRetries
         })
 
         // 一時ファイルのクリーンアップ

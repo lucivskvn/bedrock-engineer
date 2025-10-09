@@ -58,7 +58,7 @@ export abstract class BaseTool<TInput extends ToolInput = ToolInput, TResult = T
   async execute(input: TInput, context?: any): Promise<TResult> {
     const startTime = Date.now()
 
-    this.logger.info(`Executing tool: ${this.name}`, {
+    this.logger.info('Executing tool', {
       toolName: this.name,
       input: this.sanitizeInputForLogging(input)
     })
@@ -82,7 +82,7 @@ export abstract class BaseTool<TInput extends ToolInput = ToolInput, TResult = T
 
       // Log success
       const duration = Date.now() - startTime
-      this.logger.info(`Tool execution successful: ${this.name}`, {
+      this.logger.info('Tool execution successful', {
         toolName: this.name,
         duration,
         resultType: typeof processedResult,
@@ -93,7 +93,7 @@ export abstract class BaseTool<TInput extends ToolInput = ToolInput, TResult = T
     } catch (error) {
       // Log error
       const duration = Date.now() - startTime
-      this.logger.error(`Tool execution failed: ${this.name}`, {
+      this.logger.error('Tool execution failed', {
         toolName: this.name,
         duration,
         error: error instanceof Error ? error.message : String(error)
@@ -224,7 +224,10 @@ export abstract class BaseTool<TInput extends ToolInput = ToolInput, TResult = T
     } catch (error) {
       // If JSON.stringify fails, convert to string representation
       serialized = String(result)
-      this.logger.warn(`Failed to serialize result for chunking: ${error}`)
+      this.logger.warn('Failed to serialize result for chunking', {
+        toolName: this.name,
+        error: error instanceof Error ? error.message : String(error)
+      })
     }
 
     const contentChunker = new ContentChunker(this.store)
@@ -235,7 +238,7 @@ export abstract class BaseTool<TInput extends ToolInput = ToolInput, TResult = T
     const inferenceParams = this.store.get('inferenceParams')
     const maxTokens = inferenceParams?.maxTokens || 4096
 
-    this.logger.info(`Result too large for configured maxTokens (${maxTokens}), chunking content`, {
+    this.logger.info('Result too large for configured maxTokens, chunking content', {
       toolName: this.name,
       originalLength: serialized.length,
       estimatedTokens: ContentChunker.estimateToken(serialized),

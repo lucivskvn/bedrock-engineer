@@ -87,7 +87,7 @@ export class CopyFileTool extends BaseTool<CopyFileInput, string> {
   protected async executeInternal(input: CopyFileInput): Promise<string> {
     const { source, destination } = input
 
-    this.logger.debug(`Copying file from ${source} to ${destination}`)
+    this.logger.debug('Copying file', { source, destination })
 
     try {
       // Ensure the destination directory exists

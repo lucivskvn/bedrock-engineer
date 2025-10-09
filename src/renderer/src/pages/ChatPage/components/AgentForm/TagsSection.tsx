@@ -33,12 +33,16 @@ export const TagsSection: React.FC<TagsSectionProps> = ({ tags, availableTags = 
     })
   }, [query, availableTags, tags])
 
-  const handleAddTag = (newTag: string) => {
-    const normalizedNewTag = normalizeTag(newTag)
-    if (normalizedNewTag && !tags.map(normalizeTag).includes(normalizedNewTag)) {
-      onChange([...tags, normalizedNewTag])
-      setQuery('')
+  const handleAddTag = (rawTag: string | null) => {
+    const normalizedNewTag = rawTag ? normalizeTag(rawTag) : ''
+    if (!normalizedNewTag) {
+      return
     }
+
+    if (!tags.map(normalizeTag).includes(normalizedNewTag)) {
+      onChange([...tags, normalizedNewTag])
+    }
+    setQuery('')
   }
 
   const handleRemoveTag = (tagToRemove: string) => {

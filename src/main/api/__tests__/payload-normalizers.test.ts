@@ -48,16 +48,17 @@ describe('payload normalizers', () => {
     expect(normalized.messages).toHaveLength(1)
     const [message] = normalized.messages
     expect(message.role).toBe('user')
-    expect(message.content).toHaveLength(3)
-    expect(message.content[0]).toEqual({ text: 'hello' })
-    expect(message.content[1]).toEqual({
+    const messageContent = message.content ?? []
+    expect(messageContent).toHaveLength(3)
+    expect(messageContent[0]).toEqual({ text: 'hello' })
+    expect(messageContent[1]).toEqual({
       toolUse: {
         toolUseId: 'tool-1',
         name: 'web-search',
         input: { query: 'bedrock' }
       }
     })
-    expect(message.content[2]).toEqual({
+    expect(messageContent[2]).toEqual({
       toolResult: {
         toolUseId: 'tool-1',
         status: 'success',
@@ -125,7 +126,9 @@ describe('payload normalizers', () => {
     }
 
     const normalized = toCallConverseApiProps(payload)
-    const resultBlock = normalized.messages[0].content[0]
+    const resultMessage = normalized.messages[0]
+    const resultContent = resultMessage.content ?? []
+    const resultBlock = resultContent[0]
     expect(resultBlock).toEqual({
       toolResult: { toolUseId: 'tool-2', status: 'error', content: undefined }
     })

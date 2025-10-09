@@ -2,15 +2,11 @@ import { rendererLogger as log } from '@renderer/lib/logger';
 import useSetting from '@renderer/hooks/useSetting'
 import { converse } from '@renderer/lib/api'
 import { getLightProcessingModelId } from '@renderer/lib/modelSelection'
-import prompts from '@renderer/prompts/prompts'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 export const useRecommendChanges = () => {
-  const {
-    t,
-    i18n: { language }
-  } = useTranslation()
+  const { t } = useTranslation()
   const examplePrompts = [
     {
       title: t('ecSiteTitle'),
@@ -49,7 +45,7 @@ export const useRecommendChanges = () => {
     setRecommendLoading(true)
     const result = await converse({
       modelId: getLightProcessingModelId(llm, lightProcessingModel),
-      system: [{ text: t(prompts.WebsiteGenerator.recommend.system, { language }) }],
+      system: [{ text: t('recommendPrompt') }],
       messages: [{ role: 'user', content: [{ text: websiteCode }] }],
       inferenceConfig: {
         maxTokens: 4096,

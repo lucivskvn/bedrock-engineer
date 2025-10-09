@@ -6,6 +6,8 @@ import type {
   ToolResultContentBlock,
   ToolUseBlock
 } from '@aws-sdk/client-bedrock-runtime'
+import { ToolResultStatus } from '@aws-sdk/client-bedrock-runtime'
+import type { DocumentType } from '@smithy/types'
 import type { RetrieveAndGenerateCommandInput, RetrieveAndGenerateConfiguration } from '@aws-sdk/client-bedrock-agent-runtime'
 import type { CallConverseAPIProps } from './bedrock'
 import type {
@@ -24,6 +26,38 @@ function sanitizeTextBlock(text?: unknown): ContentBlock | undefined {
   return { text: trimmed }
 }
 
+const TOOL_RESULT_STATUS_VALUES = new Set<string>(Object.values(ToolResultStatus))
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isDocumentType(value: unknown): value is DocumentType {
+  if (value === null) {
+    return true
+  }
+
+  switch (typeof value) {
+    case 'string':
+    case 'number':
+    case 'boolean':
+      return true
+    case 'object':
+      if (value instanceof Uint8Array) {
+        return true
+      }
+      if (Array.isArray(value)) {
+        return value.every(isDocumentType)
+      }
+      if (isPlainObject(value)) {
+        return Object.values(value).every(isDocumentType)
+      }
+      return false
+    default:
+      return false
+  }
+}
+
 function sanitizeToolUseBlock(block: {
   toolUse?: { toolUseId?: unknown; name?: unknown; input?: unknown }
 }): ContentBlock | undefined {
@@ -39,7 +73,7 @@ function sanitizeToolUseBlock(block: {
   const sanitized: ToolUseBlock = {
     toolUseId,
     name,
-    input
+    input: isDocumentType(input) ? input : undefined
   }
 
   return { toolUse: sanitized }
@@ -78,9 +112,13 @@ function sanitizeToolResultBlock(block: {
   }
 
   const sanitizedContent = sanitizeToolResultContent(content)
+  const sanitizedStatus =
+    typeof status === 'string' && TOOL_RESULT_STATUS_VALUES.has(status)
+      ? (status as ToolResultStatus)
+      : undefined
   const sanitized: ToolResultBlock = {
     toolUseId,
-    status: typeof status === 'string' ? status : undefined,
+    status: sanitizedStatus,
     content: sanitizedContent.length > 0 ? sanitizedContent : undefined
   }
 

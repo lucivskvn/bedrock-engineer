@@ -1,6 +1,8 @@
+import type { ConfigStore } from '../preload/store'
+
 declare global {
   interface Window {
-    store: any
+    store: ConfigStore
   }
 }
 

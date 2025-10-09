@@ -146,12 +146,11 @@ export class ListFilesTool extends BaseTool<ListFilesInput, string> {
 
     const { ignoreFiles = defaultIgnoreFiles, maxDepth = -1 } = options || {}
 
-    this.logger.debug(`Listing files in directory: ${dirPath}`, {
-      options: JSON.stringify({
-        maxDepth,
-        ignoreFilesCount: ignoreFiles?.length || 0,
-        hasLineRange: !!options?.lines
-      })
+    this.logger.debug('Listing files in directory', {
+      dirPath,
+      maxDepth,
+      ignoreFilesCount: ignoreFiles?.length || 0,
+      hasLineRange: !!options?.lines
     })
 
     try {
@@ -165,7 +164,7 @@ export class ListFilesTool extends BaseTool<ListFilesInput, string> {
       const lines = fileTree.split('\n')
       const lineInfo = getLineRangeInfo(lines.length, options?.lines)
 
-      this.logger.info(`Directory structure listed successfully`, {
+      this.logger.info('Directory structure listed successfully', {
         dirPath,
         totalLines: lines.length,
         hasLineRange: !!options?.lines
@@ -173,7 +172,8 @@ export class ListFilesTool extends BaseTool<ListFilesInput, string> {
 
       return `Directory Structure${lineInfo}:\n\n${filteredContent}`
     } catch (error) {
-      this.logger.error(`Error listing directory structure: ${dirPath}`, {
+      this.logger.error('Error listing directory structure', {
+        dirPath,
         error: error instanceof Error ? error.message : String(error)
       })
 
@@ -195,7 +195,8 @@ export class ListFilesTool extends BaseTool<ListFilesInput, string> {
     depth: number = 0,
     maxDepth: number = -1
   ): Promise<string> {
-    this.logger.debug(`Building file tree for directory: ${dirPath}`, {
+    this.logger.debug('Building file tree for directory', {
+      dirPath,
       depth,
       maxDepth,
       ignorePatterns: ignoreFiles?.length || 0
@@ -203,7 +204,10 @@ export class ListFilesTool extends BaseTool<ListFilesInput, string> {
 
     try {
       if (maxDepth !== -1 && depth > maxDepth) {
-        this.logger.verbose(`Reached max depth (${maxDepth}) for directory: ${dirPath}`)
+        this.logger.verbose('Reached max depth for directory traversal', {
+          dirPath,
+          maxDepth
+        })
         return `${prefix}...\n`
       }
 
@@ -211,7 +215,10 @@ export class ListFilesTool extends BaseTool<ListFilesInput, string> {
       const matcher = new GitignoreLikeMatcher(ignoreFiles ?? [])
       let result = ''
 
-      this.logger.verbose(`Processing ${files.length} files/directories in ${dirPath}`)
+      this.logger.verbose('Processing directory entries', {
+        dirPath,
+        entryCount: files.length
+      })
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
@@ -222,7 +229,9 @@ export class ListFilesTool extends BaseTool<ListFilesInput, string> {
         const relativeFilePath = path.relative(process.cwd(), filePath)
 
         if (ignoreFiles && ignoreFiles.length && matcher.isIgnored(relativeFilePath)) {
-          this.logger.verbose(`Ignoring file/directory: ${relativeFilePath}`)
+          this.logger.verbose('Ignoring file or directory based on matcher', {
+            path: relativeFilePath
+          })
           continue
         }
 
@@ -241,14 +250,16 @@ export class ListFilesTool extends BaseTool<ListFilesInput, string> {
         }
       }
 
-      this.logger.debug(`Completed file tree for directory: ${dirPath}`, {
+      this.logger.debug('Completed file tree for directory', {
+        dirPath,
         depth,
         processedItems: files.length
       })
 
       return result
     } catch (error) {
-      this.logger.error(`Error building file tree for: ${dirPath}`, {
+      this.logger.error('Error building file tree', {
+        dirPath,
         error: error instanceof Error ? error.message : String(error),
         depth,
         maxDepth

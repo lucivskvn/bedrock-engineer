@@ -654,13 +654,18 @@ async function createWindow(): Promise<void> {
     })
   }
 
-  let storedToken = store.get('apiAuthToken')
-  if (!isApiTokenStrong(storedToken)) {
-    if (typeof storedToken === 'string' && storedToken.trim().length > 0) {
-      apiLogger.warn('Stored API token failed strength validation; regenerating a new token')
-    }
-    storedToken = undefined
+  const storedTokenValue = store.get('apiAuthToken')
+  const normalizedStoredToken = normalizeApiToken(storedTokenValue)
+
+  if (
+    typeof storedTokenValue === 'string' &&
+    normalizedStoredToken === null &&
+    storedTokenValue.trim().length > 0
+  ) {
+    apiLogger.warn('Stored API token failed strength validation; regenerating a new token')
   }
+
+  const storedToken = normalizedStoredToken ?? undefined
 
   let apiAuthToken = envToken ?? storedToken ?? randomBytes(32).toString('hex')
 

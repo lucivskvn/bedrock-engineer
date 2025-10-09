@@ -73,16 +73,17 @@ export class CreateFolderTool extends BaseTool<CreateFolderInput, string> {
   protected async executeInternal(input: CreateFolderInput): Promise<string> {
     const { path } = input
 
-    this.logger.debug(`Creating folder: ${path}`)
+    this.logger.debug('Creating folder', { path })
 
     try {
       // Create the folder with recursive option to create parent directories if needed
       await fs.mkdir(path, { recursive: true })
 
-      this.logger.info(`Folder created successfully: ${path}`)
+      this.logger.info('Folder created successfully', { path })
       return `Folder created: ${path}`
     } catch (error) {
-      this.logger.error(`Failed to create folder: ${path}`, {
+      this.logger.error('Failed to create folder', {
+        path,
         error: error instanceof Error ? error.message : String(error)
       })
 

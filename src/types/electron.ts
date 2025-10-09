@@ -1,11 +1,7 @@
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { ElectronAPI } from '@electron-toolkit/preload'
 import { chatHistory } from '../preload/chat-history'
-// Minimal store interface to avoid importing preload store in type definitions
-interface ConfigStore {
-  get(key: string): any
-  set(key: string, value: any): void
-}
+import type { ConfigStore } from '../preload/store'
 import { file } from '../preload/file'
 import { API } from '../preload/api'
 import { RendererLogger, RendererCategoryLogger } from '../preload/logger'

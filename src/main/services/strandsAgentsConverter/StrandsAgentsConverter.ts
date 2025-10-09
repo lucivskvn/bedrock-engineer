@@ -82,7 +82,7 @@ export class StrandsAgentsConverter {
    */
   async convertAgent(agent: CustomAgent): Promise<StrandsAgentOutput> {
     try {
-      logger.info(`Converting agent: ${agent.name}`)
+      logger.info('Converting agent', { agentName: agent.name })
 
       // Input validation
       this.validateAgent(agent)
@@ -90,23 +90,39 @@ export class StrandsAgentsConverter {
       // Execute conversion
       const output = this.codeGenerator.generateStrandsAgent(agent)
 
-      logger.info(`Successfully converted agent: ${agent.name}`)
-      logger.info(`Supported tools: ${output.toolMapping.supportedTools.length}`)
-      logger.info(`Unsupported tools: ${output.toolMapping.unsupportedTools.length}`)
+      logger.info('Successfully converted agent', { agentName: agent.name })
+      logger.info('Strands conversion supported tools count', {
+        agentName: agent.name,
+        supportedToolCount: output.toolMapping.supportedTools.length
+      })
+      logger.info('Strands conversion unsupported tools count', {
+        agentName: agent.name,
+        unsupportedToolCount: output.toolMapping.unsupportedTools.length
+      })
 
       // MCP server conversion results
       if (output.mcpServerMapping) {
-        logger.info(`MCP servers: ${output.mcpServerMapping.servers.length}`)
+        logger.info('Strands conversion MCP server count', {
+          agentName: agent.name,
+          mcpServerCount: output.mcpServerMapping.servers.length
+        })
         output.mcpServerMapping.servers.forEach((server) => {
-          logger.info(`  - ${server.original.name}: ${server.original.command}`)
+          logger.info('Discovered MCP server command', {
+            agentName: agent.name,
+            serverName: server.original.name,
+            command: server.original.command
+          })
         })
       }
 
       return output
-      } catch (error) {
-        logger.error(`Failed to convert agent: ${agent.name}`, { error })
-        throw error
-      }
+    } catch (error) {
+      logger.error('Failed to convert agent', {
+        agentName: agent.name,
+        error
+      })
+      throw error
+    }
   }
 
   /**
@@ -196,7 +212,10 @@ export class StrandsAgentsConverter {
           stats.unsupportedToolsOverall++
         })
       } catch (error) {
-        logger.warn(`Failed to analyze agent ${agent.name} for stats: ${error}`)
+        logger.warn('Failed to analyze agent for stats', {
+          agentName: agent.name,
+          error: error instanceof Error ? error.message : String(error)
+        })
       }
     }
 
@@ -217,14 +236,14 @@ export class StrandsAgentsConverter {
     }
 
     if (!agent.description) {
-      logger.warn(`Agent ${agent.name} has no description`)
+      logger.warn('Agent is missing description', { agentName: agent.name })
     }
 
     // Tool validity check
     if (agent.tools && agent.tools.length > 0) {
       const uniqueTools = new Set(agent.tools)
       if (uniqueTools.size !== agent.tools.length) {
-        logger.warn(`Agent ${agent.name} has duplicate tools`)
+        logger.warn('Agent has duplicate tools', { agentName: agent.name })
       }
     }
   }
@@ -260,19 +279,20 @@ export class StrandsAgentsConverter {
    */
   async convertAndSaveAgent(agent: CustomAgent, options: SaveOptions): Promise<SaveResult> {
     try {
-      logger.info(`Converting and saving agent: ${agent.name}`)
+      logger.info('Converting and saving agent', { agentName: agent.name })
 
-      // Execute conversion
       const output = await this.convertAgent(agent)
 
-      // Save file
       return await this.saveAgentToDirectory(output, options)
-      } catch (error) {
-        logger.error(`Failed to convert and save agent: ${agent.name}`, { error })
-        return {
-          success: false,
-          outputDirectory: options.outputDirectory,
-          savedFiles: [],
+    } catch (error) {
+      logger.error('Failed to convert and save agent', {
+        agentName: agent.name,
+        error
+      })
+      return {
+        success: false,
+        outputDirectory: options.outputDirectory,
+        savedFiles: [],
         errors: [
           {
             file: 'conversion',
@@ -299,6 +319,7 @@ export class StrandsAgentsConverter {
       savedFiles: [],
       errors: []
     }
+    const overwriteRequested = options.overwrite === true
 
     try {
       // Validate save options
@@ -351,12 +372,16 @@ export class StrandsAgentsConverter {
           const filePath = path.join(targetDirectory, file.name)
 
           // Overwrite confirmation
-          if (!options.overwrite) {
+          if (!overwriteRequested) {
             try {
               await fs.access(filePath)
               // When file exists
               const error = `File already exists: ${file.name} (use overwrite: true to replace)`
-              logger.warn(error)
+              logger.warn('Strands agent file already exists', {
+                fileName: file.name,
+                overwriteRequested,
+                targetDirectory
+              })
               result.errors?.push({
                 file: file.name,
                 error
@@ -370,10 +395,16 @@ export class StrandsAgentsConverter {
           // File writing
           await fs.writeFile(filePath, file.content, 'utf-8')
           result.savedFiles.push(filePath)
-          logger.info(`Saved ${file.description}: ${file.name}`)
+          logger.info('Saved Strands agent file', {
+            fileDescription: file.description,
+            fileName: file.name
+          })
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error)
-          logger.error(`Failed to save ${file.name}: ${errorMessage}`)
+          logger.error('Failed to save Strands agent file', {
+            fileName: file.name,
+            error: errorMessage
+          })
           result.errors?.push({
             file: file.name,
             error: errorMessage
@@ -400,7 +431,7 @@ export class StrandsAgentsConverter {
       return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      logger.error(`Failed to save agent files: ${errorMessage}`)
+      logger.error('Failed to save Strands agent files', { error: errorMessage })
 
       result.errors?.push({
         file: 'directory',
