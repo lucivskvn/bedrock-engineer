@@ -1,4 +1,5 @@
 import { format } from 'winston'
+import { sanitizeMetadataRecord } from './utils'
 
 /**
  * Custom log format that includes timestamp, log level, process, category and message
@@ -16,7 +17,10 @@ export const customFormat = format.printf(({ level, message, timestamp, ...metad
 
     if (Object.keys(metaObj).length > 0) {
       try {
-        extraInfo = `\n${JSON.stringify(metaObj, null, 2)}`
+        const sanitizedMetadata = sanitizeMetadataRecord(metaObj)
+        if (Object.keys(sanitizedMetadata).length > 0) {
+          extraInfo = `\n${JSON.stringify(sanitizedMetadata, null, 2)}`
+        }
       } catch {
         extraInfo = `\n[Metadata serialization error]`
       }

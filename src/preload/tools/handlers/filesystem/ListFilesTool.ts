@@ -7,7 +7,7 @@ import * as path from 'path'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult, ListDirectoryOptions } from '../../base/types'
-import { ExecutionError } from '../../base/errors'
+import { createFileExecutionError, summarizeError } from './errorUtils'
 import {
   filterByLineRange,
   getLineRangeInfo,
@@ -174,14 +174,15 @@ export class ListFilesTool extends BaseTool<ListFilesInput, string> {
     } catch (error) {
       this.logger.error('Error listing directory structure', {
         dirPath,
-        error: error instanceof Error ? error.message : String(error)
+        error: summarizeError(error)
       })
 
-      throw new ExecutionError(
-        `Error listing directory structure: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined
-      )
+      throw createFileExecutionError({
+        toolName: this.name,
+        reason: 'LIST_FILES_FAILED',
+        error,
+        metadata: { dirPath }
+      })
     }
   }
 

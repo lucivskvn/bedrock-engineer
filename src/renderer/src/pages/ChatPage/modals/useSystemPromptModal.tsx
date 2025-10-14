@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import MD from '@renderer/components/Markdown/MD'
-import { Modal } from 'flowbite-react'
+import { Modal, ModalBody, ModalHeader } from 'flowbite-react'
 
 interface SystemPromptModalProps {
   isOpen: boolean
@@ -32,14 +32,14 @@ const SystemPromptModal = React.memo(
     return (
       <Modal dismissible show={isOpen} onClose={onClose} size="7xl" className="dark:bg-gray-900">
         <div className="border-[0.5px] border-white dark:border-gray-100 rounded-lg shadow-xl dark:shadow-gray-900/80">
-          <Modal.Header className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
+          <ModalHeader className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
             SYSTEM PROMPT
-          </Modal.Header>
-          <Modal.Body className="p-0 bg-white dark:bg-gray-900 rounded-b-lg">
+          </ModalHeader>
+          <ModalBody className="p-0 bg-white dark:bg-gray-900 rounded-b-lg">
             <div className="p-6 dark:text-white">
               <MD>{systemPrompt}</MD>
             </div>
-          </Modal.Body>
+          </ModalBody>
         </div>
       </Modal>
     )

@@ -4,6 +4,7 @@ import { LogLevel, LoggerConfig, defaultLoggerConfig } from './config'
 import { createFileTransport, getLogFilePaths } from './transports/file'
 import { createConsoleTransport } from './transports/console'
 import { mainLogFormat } from './formatters'
+import { prepareLogMetadata, writeConsoleLog } from './utils'
 
 // Current logger configuration instance
 let loggerConfig = { ...defaultLoggerConfig }
@@ -63,44 +64,50 @@ export const updateLoggerConfig = (newConfig: Partial<LoggerConfig>): void => {
   }
 }
 
+const emitLog = (
+  level: LogLevel,
+  message: string,
+  meta: unknown[],
+  category?: string
+) => {
+  const sanitizedMeta = prepareLogMetadata(meta, {
+    excludeKeys: category ? ['category'] : undefined
+  })
+
+  if (logger) {
+    const payload: Record<string, unknown> = sanitizedMeta
+      ? { ...sanitizedMeta }
+      : {}
+
+    if (category) {
+      payload.category = category
+    }
+
+    logger.log({ level, message, ...payload })
+    return
+  }
+
+  writeConsoleLog(level, message, sanitizedMeta, category)
+}
+
 /**
  * Logger API for direct logging
  */
 export const log = {
-  error: (message: string, ...meta: any[]) => {
-    if (logger) {
-      logger.error(message, ...meta)
-    } else {
-      console.error(message, ...meta)
-    }
+  error: (message: string, ...meta: unknown[]) => {
+    emitLog('error', message, meta)
   },
-  warn: (message: string, ...meta: any[]) => {
-    if (logger) {
-      logger.warn(message, ...meta)
-    } else {
-      console.warn(message, ...meta)
-    }
+  warn: (message: string, ...meta: unknown[]) => {
+    emitLog('warn', message, meta)
   },
-  info: (message: string, ...meta: any[]) => {
-    if (logger) {
-      logger.info(message, ...meta)
-    } else {
-      console.info(message, ...meta)
-    }
+  info: (message: string, ...meta: unknown[]) => {
+    emitLog('info', message, meta)
   },
-  debug: (message: string, ...meta: any[]) => {
-    if (logger) {
-      logger.debug(message, ...meta)
-    } else {
-      console.debug(message, ...meta)
-    }
+  debug: (message: string, ...meta: unknown[]) => {
+    emitLog('debug', message, meta)
   },
-  verbose: (message: string, ...meta: any[]) => {
-    if (logger) {
-      logger.verbose(message, ...meta)
-    } else {
-      console.log(message, ...meta)
-    }
+  verbose: (message: string, ...meta: unknown[]) => {
+    emitLog('verbose', message, meta)
   }
 }
 
@@ -109,40 +116,20 @@ export const log = {
  */
 export const createCategoryLogger = (category: string) => {
   return {
-    error: (message: string, ...meta: any[]) => {
-      if (logger) {
-        logger.error(message, { ...Object.assign({}, ...meta), category })
-      } else {
-        console.error(`[${category}] ${message}`, ...meta)
-      }
+    error: (message: string, ...meta: unknown[]) => {
+      emitLog('error', message, meta, category)
     },
-    warn: (message: string, ...meta: any[]) => {
-      if (logger) {
-        logger.warn(message, { ...Object.assign({}, ...meta), category })
-      } else {
-        console.warn(`[${category}] ${message}`, ...meta)
-      }
+    warn: (message: string, ...meta: unknown[]) => {
+      emitLog('warn', message, meta, category)
     },
-    info: (message: string, ...meta: any[]) => {
-      if (logger) {
-        logger.info(message, { ...Object.assign({}, ...meta), category })
-      } else {
-        console.info(`[${category}] ${message}`, ...meta)
-      }
+    info: (message: string, ...meta: unknown[]) => {
+      emitLog('info', message, meta, category)
     },
-    debug: (message: string, ...meta: any[]) => {
-      if (logger) {
-        logger.debug(message, { ...Object.assign({}, ...meta), category })
-      } else {
-        console.debug(`[${category}] ${message}`, ...meta)
-      }
+    debug: (message: string, ...meta: unknown[]) => {
+      emitLog('debug', message, meta, category)
     },
-    verbose: (message: string, ...meta: any[]) => {
-      if (logger) {
-        logger.verbose(message, { ...Object.assign({}, ...meta), category })
-      } else {
-        console.log(`[${category}] ${message}`, ...meta)
-      }
+    verbose: (message: string, ...meta: unknown[]) => {
+      emitLog('verbose', message, meta, category)
     }
   }
 }

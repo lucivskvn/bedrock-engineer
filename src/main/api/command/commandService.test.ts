@@ -50,16 +50,16 @@ describe('CommandService', () => {
   test('rejects disallowed command', async () => {
     await expect(
       service.executeCommand({ command: 'ls', cwd })
-    ).rejects.toThrow('Command not allowed')
+    ).rejects.toMatchObject({ code: 'COMMAND_NOT_ALLOWED' })
   })
 
   test('rejects command with invalid characters', async () => {
     await expect(
       service.executeCommand({ command: 'echo hello; rm -rf /', cwd })
-    ).rejects.toThrow('Invalid characters')
+    ).rejects.toMatchObject({ code: 'COMMAND_ARGUMENT_INVALID_CHARACTERS' })
   })
 
-  test('stopProcess kills the process group on unix platforms', async () => {
+  test('stopProcess terminates via process group on unix platforms', async () => {
     const pid = 123
     const killSpy = jest.spyOn(process, 'kill').mockImplementation(() => true)
 
@@ -72,7 +72,7 @@ describe('CommandService', () => {
       isRunning: true,
       hasError: false,
       output: { stdout: '', stderr: '', code: null }
-      // no process object needed for this test
+      // no process handle present
     })
 
     await service.stopProcess(pid)
@@ -81,9 +81,46 @@ describe('CommandService', () => {
     killSpy.mockRestore()
   })
 
-  test('stopProcess kills the process group on windows platforms', async () => {
+  test('stopProcess uses child process handle on windows platforms', async () => {
     const pid = 456
     const killSpy = jest.spyOn(process, 'kill').mockImplementation(() => true)
+    const { child } = createMockChildProcess()
+    ;(child.kill as jest.Mock).mockImplementation(() => {
+      process.nextTick(() => (child as unknown as EventEmitter).emit('exit', 0))
+      return true
+    })
+
+    ;(service as any).runningProcesses.set(pid, {
+      pid,
+      command: 'test',
+      timestamp: Date.now()
+    })
+    ;(service as any).processStates.set(pid, {
+      isRunning: true,
+      hasError: false,
+      output: { stdout: '', stderr: '', code: null },
+      process: child
+    })
+
+    const original = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+
+    await service.stopProcess(pid)
+
+    expect(child.kill).toHaveBeenCalled()
+    expect(killSpy).not.toHaveBeenCalledWith(-pid)
+
+    Object.defineProperty(process, 'platform', { value: original })
+    killSpy.mockRestore()
+  })
+
+  test('stopProcess treats missing processes as already terminated', async () => {
+    const pid = 789
+    const killSpy = jest.spyOn(process, 'kill').mockImplementation(() => {
+      const error = new Error('not found') as NodeJS.ErrnoException
+      error.code = 'ESRCH'
+      throw error
+    })
 
     ;(service as any).runningProcesses.set(pid, {
       pid,
@@ -96,14 +133,9 @@ describe('CommandService', () => {
       output: { stdout: '', stderr: '', code: null }
     })
 
-    const original = process.platform
-    Object.defineProperty(process, 'platform', { value: 'win32' })
+    await expect(service.stopProcess(pid)).resolves.toBeUndefined()
 
-    await service.stopProcess(pid)
-
-    expect(killSpy).toHaveBeenCalledWith(-pid)
     killSpy.mockRestore()
-    Object.defineProperty(process, 'platform', { value: original })
   })
 
   test('enforces concurrency limit', async () => {
@@ -116,7 +148,23 @@ describe('CommandService', () => {
 
     await expect(
       limitedService.executeCommand({ command: 'echo hello', cwd })
-    ).rejects.toThrow('Maximum concurrent command limit')
+    ).rejects.toMatchObject({ code: 'COMMAND_MAX_CONCURRENCY_REACHED' })
+  })
+
+  test('redacts failing working directory metadata', async () => {
+    const restrictedService = new CommandService(config)
+
+    await expect(
+      restrictedService.executeCommand({ command: 'echo hello', cwd: path.join('..', 'secret') })
+    ).rejects.toMatchObject({
+      code: 'COMMAND_WORKDIR_RESOLUTION_FAILED',
+      metadata: {
+        receivedWorkingDirectory: {
+          length: expect.any(Number),
+          sha256: expect.any(String)
+        }
+      }
+    })
   })
 
   test('constructs sanitized spawn environment', () => {
@@ -156,6 +204,6 @@ describe('CommandService', () => {
     const oversized = 'A'.repeat(2 * 1024)
     await expect(
       limitedService.sendInput({ pid: 1, stdin: oversized })
-    ).rejects.toThrow('stdin payload exceeds')
+    ).rejects.toMatchObject({ code: 'COMMAND_STDIN_LIMIT_EXCEEDED' })
   })
 })

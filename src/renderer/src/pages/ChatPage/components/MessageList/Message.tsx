@@ -2,11 +2,11 @@ import { rendererLogger as log } from '@renderer/lib/logger';
 import { Message } from '@aws-sdk/client-bedrock-runtime'
 
 import { IdentifiableMessage } from '@/types/chat/message'
-import { Modal } from 'flowbite-react'
+import { Modal, ModalBody, ModalFooter, ModalHeader } from 'flowbite-react'
 import { MetadataViewer } from '../MetadataViewer'
 import { useState, useRef, useEffect, memo, useCallback } from 'react'
 import { Avatar } from './Avatar'
-import { Accordion } from 'flowbite-react'
+import { Accordion, AccordionContent, AccordionPanel, AccordionTitle } from 'flowbite-react'
 import { JSONCodeBlock } from '../CodeBlocks/JSONCodeBlock'
 import { TextCodeBlock } from '../CodeBlocks/TextCodeBlock'
 import { TaskListCard } from '../CodeInterpreter/TaskListCard'
@@ -55,7 +55,7 @@ function convertImageToDataUrl(imageData: any, format: string = 'png'): string {
     return convertImageToDataUrl(imageData.bytes, format)
   }
 
-  log.warn('Unsupported image data format:', imageData)
+  log.warn('Unsupported image data format', { error: imageData })
   return ''
 }
 
@@ -202,8 +202,8 @@ export const ChatMessage = memo(function ChatMessage({
             return (
               <div key={index} className="flex flex-col gap-2 text-xs w-full relative">
                 <Accordion className="w-full" collapseAll>
-                  <Accordion.Panel>
-                    <Accordion.Title>
+                  <AccordionPanel>
+                    <AccordionTitle>
                       <div className="flex gap-6 items-center">
                         <span>{toolIcons[c.toolUse?.name || 'unknown']}</span>
                         <div className="flex gap-2">
@@ -214,11 +214,11 @@ export const ChatMessage = memo(function ChatMessage({
                           <span>{c.toolUse?.toolUseId}</span>
                         </div>
                       </div>
-                    </Accordion.Title>
-                    <Accordion.Content>
+                    </AccordionTitle>
+                    <AccordionContent>
                       <JSONCodeBlock json={c.toolUse?.input} />
-                    </Accordion.Content>
-                  </Accordion.Panel>
+                    </AccordionContent>
+                  </AccordionPanel>
                 </Accordion>
               </div>
             )
@@ -226,8 +226,8 @@ export const ChatMessage = memo(function ChatMessage({
             return (
               <div key={index} className="flex flex-col gap-2 text-xs w-full relative">
                 <Accordion className="w-full" collapseAll>
-                  <Accordion.Panel>
-                    <Accordion.Title>
+                  <AccordionPanel>
+                    <AccordionTitle>
                       <div className="flex gap-6 items-center">
                         <span className={`rounded-md`}>
                           {c.toolResult?.status === 'success' ? (
@@ -246,8 +246,8 @@ export const ChatMessage = memo(function ChatMessage({
                         </div>
                         <span>{c.toolResult?.toolUseId}</span>
                       </div>
-                    </Accordion.Title>
-                    <Accordion.Content className="w-full">
+                    </AccordionTitle>
+                    <AccordionContent className="w-full">
                       {c.toolResult?.content?.map((content, index) => {
                         if ('text' in content) {
                           return <TextCodeBlock key={index} text={content.text ?? ''} />
@@ -269,8 +269,8 @@ export const ChatMessage = memo(function ChatMessage({
                           throw new Error('Invalid tool result content')
                         }
                       })}
-                    </Accordion.Content>
-                  </Accordion.Panel>
+                    </AccordionContent>
+                  </AccordionPanel>
                 </Accordion>
               </div>
             )
@@ -303,20 +303,20 @@ export const ChatMessage = memo(function ChatMessage({
         className="metadata-modal"
         dismissible
       >
-        <Modal.Header>
+        <ModalHeader>
           <div className="text-lg font-medium">{t('Metadata')}</div>
-        </Modal.Header>
-        <Modal.Body className="max-h-[80vh] overflow-auto">
+        </ModalHeader>
+        <ModalBody className="max-h-[80vh] overflow-auto">
           {message.metadata && <MetadataViewer metadata={message.metadata} />}
-        </Modal.Body>
-        <Modal.Footer>
+        </ModalBody>
+        <ModalFooter>
           <button
             onClick={() => setShowMetadataModal(false)}
             className="px-5 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-800 transition-all"
           >
             {t('Close')}
           </button>
-        </Modal.Footer>
+        </ModalFooter>
       </Modal>
     </div>
   )

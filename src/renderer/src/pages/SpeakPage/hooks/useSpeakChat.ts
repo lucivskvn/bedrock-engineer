@@ -142,7 +142,7 @@ export function useSpeakChat(
 
       return float32Array
     } catch (error) {
-      log.error('Error in base64ToFloat32Array:', error)
+      log.error('Error in base64ToFloat32Array', { error })
       throw error
     }
   }, [])
@@ -174,7 +174,7 @@ export function useSpeakChat(
               log.debug('[contentStart] isSpeculative:', isSpeculative)
             }
           } catch (e) {
-            log.error('Error parsing additionalModelFields:', e)
+            log.error('Error parsing additionalModelFields', { error: e })
             // On error, default to showing the text
             displayAssistantTextRef.current = true
           }
@@ -228,7 +228,7 @@ export function useSpeakChat(
           const audioData = base64ToFloat32Array(data.content)
           audioPlayer.playAudio(audioData)
         } catch (error) {
-          log.error('Error processing audio data:', error)
+          log.error('Error processing audio data', { error })
         }
       }
     },
@@ -295,7 +295,7 @@ export function useSpeakChat(
     },
 
     error: (error) => {
-      log.error('Socket error:', error)
+      log.error('Socket error', { error })
       setStatus('error')
 
       // Set detailed error state based on the error content
@@ -340,7 +340,7 @@ export function useSpeakChat(
       setStatus('ready')
       log.debug('Session initialized successfully')
     } catch (error) {
-      log.error('Failed to initialize session:', error)
+      log.error('Failed to initialize session', { error })
       setStatus('error')
     }
   }, [socket, systemPrompt, agentTools])
@@ -360,7 +360,7 @@ export function useSpeakChat(
       socket.connect()
       log.debug('Socket connection initiated')
     } catch (error) {
-      log.error('Failed to initialize audio player during connection:', error)
+      log.error('Failed to initialize audio player during connection', { error })
       setStatus('error')
       // Don't proceed with socket connection if audio player fails
     }
@@ -402,7 +402,7 @@ export function useSpeakChat(
 
       log.debug('Recording started')
     } catch (error) {
-      log.error('Error starting recording:', error)
+      log.error('Error starting recording', { error })
       setStatus('error')
     }
   }, [socket.status, audioRecorder, initializeSession])

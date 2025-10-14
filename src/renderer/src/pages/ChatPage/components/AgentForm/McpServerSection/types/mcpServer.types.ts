@@ -13,6 +13,8 @@ export interface ConnectionTestResult {
     error?: string
     errorDetails?: string
     startupTime?: number
+    serverName?: string
+    serviceMessage?: string
   }
 }
 

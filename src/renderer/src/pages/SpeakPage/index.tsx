@@ -529,7 +529,7 @@ export const SpeakPage: React.FC = () => {
           setShowRegionWarning(false)
         }
       } catch (error) {
-        log.error('Failed to check region support:', error)
+        log.error('Failed to check region support', { error })
         setRegionCheck({
           isSupported: false,
           currentRegion: 'unknown',
@@ -595,7 +595,7 @@ export const SpeakPage: React.FC = () => {
     try {
       await startRecording()
     } catch (error) {
-      log.error('Failed to start recording:', error)
+      log.error('Failed to start recording', { error })
     }
   }
 

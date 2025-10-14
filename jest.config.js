@@ -20,8 +20,13 @@ module.exports = {
     '^.+\\.[tj]sx?$': ['babel-jest', { configFile: './babel.config.js' }]
   },
   moduleNameMapper: {
+    '^@renderer/(.*)$': '<rootDir>/src/renderer/src/$1',
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^@types/(.*)$': '<rootDir>/src/types/$1',
+    '^@common/(.*)$': '<rootDir>/src/common/$1',
     '^keytar$': '<rootDir>/src/test/__mocks__/keytar.ts'
   },
+  setupFilesAfterEnv: ['<rootDir>/src/test/setup/logging.ts'],
   testMatch: ['**/*.test.ts', '**/*.test.tsx'],
   testPathIgnorePatterns: [
     '<rootDir>/node_modules/',

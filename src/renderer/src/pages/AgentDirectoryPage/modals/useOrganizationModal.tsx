@@ -1,11 +1,23 @@
 import React, { useState } from 'react'
-import { Modal, Button, Label, TextInput, Textarea, Select } from 'flowbite-react'
+import {
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+  Button,
+  Label,
+  TextInput,
+  Textarea,
+  Select,
+  HelperText
+} from 'flowbite-react'
 import { useTranslation } from 'react-i18next'
 import { OrganizationConfig } from '@/types/agent-chat'
 import { useSettings } from '@renderer/contexts/SettingsContext'
 import { AWS_REGIONS } from '@/types/aws-regions'
 import { HiExclamationTriangle } from 'react-icons/hi2'
 import { useToast } from '@renderer/hooks/useToast'
+import { rendererLogger as log } from '@renderer/lib/logger'
 
 interface OrganizationModalProps {
   organization?: OrganizationConfig
@@ -35,7 +47,9 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
       await onConfirmDelete()
       onClose()
     } catch (error) {
-      console.error('Delete error:', error)
+      log.error('Delete error', {
+        error: error instanceof Error ? error.message : String(error)
+      })
     } finally {
       setIsDeleting(false)
     }
@@ -44,10 +58,10 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   return (
     <Modal show={isOpen} onClose={onClose} size="md" className="dark:bg-gray-900">
       <div className="border-[0.5px] border-white dark:border-gray-100 rounded-lg shadow-xl dark:shadow-gray-900/80">
-        <Modal.Header className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
+        <ModalHeader className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
           {t('organization.deleteConfirmTitle')}
-        </Modal.Header>
-        <Modal.Body className="p-0 bg-white dark:bg-gray-900">
+        </ModalHeader>
+        <ModalBody className="p-0 bg-white dark:bg-gray-900">
           <div className="p-6">
             <div className="flex items-start space-x-4">
               <div className="flex-shrink-0">
@@ -63,15 +77,15 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               </div>
             </div>
           </div>
-        </Modal.Body>
-        <Modal.Footer className="border-t border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-b-lg">
+        </ModalBody>
+        <ModalFooter className="border-t border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-b-lg">
           <Button onClick={handleDelete} disabled={isDeleting} color="failure">
             {isDeleting ? t('organization.saving') : t('organization.delete')}
           </Button>
           <Button color="gray" onClick={onClose} disabled={isDeleting}>
             {t('organization.cancel')}
           </Button>
-        </Modal.Footer>
+        </ModalFooter>
       </div>
     </Modal>
   )
@@ -143,6 +157,7 @@ const OrganizationModal: React.FC<OrganizationModalProps> = ({ organization, isO
       })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : t('organization.unknownError')
+      log.error('Failed to save organization configuration', { error: errorMessage })
       setError(errorMessage)
       toast.error(t('organization.toast.organizationError', { error: errorMessage }))
     } finally {
@@ -170,10 +185,10 @@ const OrganizationModal: React.FC<OrganizationModalProps> = ({ organization, isO
   return (
     <Modal show={isOpen} onClose={handleClose} size="lg" className="dark:bg-gray-900">
       <div className="border-[0.5px] border-white dark:border-gray-100 rounded-lg shadow-xl dark:shadow-gray-900/80">
-        <Modal.Header className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
+        <ModalHeader className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
           {organization ? t('organization.editOrganization') : t('organization.addOrganization')}
-        </Modal.Header>
-        <Modal.Body className="p-0 bg-white dark:bg-gray-900">
+        </ModalHeader>
+        <ModalBody className="p-0 bg-white dark:bg-gray-900">
           <div className="space-y-4 p-6">
             {error && (
               <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-800 rounded-md">
@@ -288,13 +303,15 @@ const OrganizationModal: React.FC<OrganizationModalProps> = ({ organization, isO
                   }
                   placeholder="agents/"
                   disabled={isLoading}
-                  helperText={t('organization.pathPrefixHelper')}
                 />
+                <HelperText className="mt-1 text-gray-500 dark:text-gray-400">
+                  {t('organization.pathPrefixHelper')}
+                </HelperText>
               </div>
             </div>
           </div>
-        </Modal.Body>
-        <Modal.Footer className="border-t border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-b-lg">
+        </ModalBody>
+        <ModalFooter className="border-t border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-b-lg">
           <Button onClick={handleSave} disabled={isLoading} color="blue">
             {isLoading
               ? t('organization.saving')
@@ -305,7 +322,7 @@ const OrganizationModal: React.FC<OrganizationModalProps> = ({ organization, isO
           <Button color="gray" onClick={handleClose} disabled={isLoading}>
             {t('organization.cancel')}
           </Button>
-        </Modal.Footer>
+        </ModalFooter>
       </div>
     </Modal>
   )
@@ -355,8 +372,8 @@ export const useOrganizationModal = () => {
       toast.success(t('organization.toast.organizationDeleted', { name: organizationName }))
       // 削除成功後はAgentDirectoryContextで選択中組織の処理が必要
     } catch (error) {
-      console.error('Failed to delete organization:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      log.error('Failed to delete organization', { error: errorMessage })
       toast.error(t('organization.toast.organizationError', { error: errorMessage }))
       throw error
     }

@@ -73,7 +73,7 @@ export const TaskTableRow: React.FC<TaskTableRowProps> = ({
       setIsExecuting(true)
       await onExecute(task.id)
     } catch (error) {
-      log.error('Failed to execute task:', error)
+      log.error('Failed to execute task', { error })
     } finally {
       setIsExecuting(false)
     }
@@ -93,7 +93,7 @@ export const TaskTableRow: React.FC<TaskTableRowProps> = ({
     try {
       await window.api.window.openTaskHistory(task.id)
     } catch (error) {
-      log.error('Failed to open task history window:', error)
+      log.error('Failed to open task history window', { error })
     }
   }
 
@@ -108,7 +108,7 @@ export const TaskTableRow: React.FC<TaskTableRowProps> = ({
       }
       setShowEditModal(false)
     } catch (error) {
-      log.error('Failed to update task:', error)
+      log.error('Failed to update task', { error })
     }
   }
 

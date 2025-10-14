@@ -165,7 +165,7 @@ export const useBackgroundAgent = () => {
       const result = await window.api.backgroundAgent.listTasks()
       setTasks(result.tasks || [])
     } catch (err: any) {
-      log.error('Failed to fetch tasks:', err)
+      log.error('Failed to fetch tasks', { error: err })
       setError(err.message || 'Failed to fetch tasks')
       toast.error(t('backgroundAgent.errors.fetchTasks'))
     } finally {
@@ -188,7 +188,7 @@ export const useBackgroundAgent = () => {
           throw new Error('Failed to create task')
         }
       } catch (err: any) {
-        log.error('Failed to create task:', err)
+        log.error('Failed to create task', { error: err })
         toast.error(t('backgroundAgent.errors.createTask'))
         throw err
       } finally {
@@ -213,7 +213,7 @@ export const useBackgroundAgent = () => {
           throw new Error('Failed to update task')
         }
       } catch (err: any) {
-        log.error('Failed to update task:', err)
+        log.error('Failed to update task', { error: err })
         toast.error(t('backgroundAgent.errors.updateTask'))
         throw err
       } finally {
@@ -237,7 +237,7 @@ export const useBackgroundAgent = () => {
           throw new Error('Failed to cancel task')
         }
       } catch (err: any) {
-        log.error('Failed to cancel task:', err)
+        log.error('Failed to cancel task', { error: err })
         toast.error(t('backgroundAgent.errors.cancelTask'))
       } finally {
         setIsLoading(false)
@@ -264,7 +264,7 @@ export const useBackgroundAgent = () => {
           throw new Error('Failed to toggle task')
         }
       } catch (err: any) {
-        log.error('Failed to toggle task:', err)
+        log.error('Failed to toggle task', { error: err })
         toast.error(t('backgroundAgent.errors.toggleTask'))
       } finally {
         setIsLoading(false)
@@ -288,7 +288,7 @@ export const useBackgroundAgent = () => {
           throw new Error(result.result.error || 'Task execution failed')
         }
       } catch (err: any) {
-        log.error('Failed to execute task manually:', err)
+        log.error('Failed to execute task manually', { error: err })
         toast.error(t('backgroundAgent.errors.executeTask'))
         throw err
       } finally {
@@ -305,7 +305,7 @@ export const useBackgroundAgent = () => {
         const result = await window.api.backgroundAgent.getTaskExecutionHistory(taskId)
         return result.history || []
       } catch (err: any) {
-        log.error('Failed to get task execution history:', err)
+        log.error('Failed to get task execution history', { error: err })
         toast.error(t('backgroundAgent.errors.fetchHistory'))
         return []
       }
@@ -320,7 +320,7 @@ export const useBackgroundAgent = () => {
         const result = await window.api.backgroundAgent.getSessionHistory(sessionId)
         return result.history || []
       } catch (err: any) {
-        log.error('Failed to get session history:', err)
+        log.error('Failed to get session history', { error: err })
         toast.error(t('backgroundAgent.errors.fetchSessionHistory'))
         return []
       }
@@ -346,7 +346,7 @@ export const useBackgroundAgent = () => {
         toast.success(t('backgroundAgent.messages.sessionContinued'))
         return result
       } catch (err: any) {
-        log.error('Failed to continue session:', err)
+        log.error('Failed to continue session', { error: err })
         // エラーの詳細情報を含むオブジェクトを投げる
         const errorMessage = err.message || 'Unknown error occurred'
         const errorDetails = {
@@ -368,7 +368,7 @@ export const useBackgroundAgent = () => {
       const result = await window.api.backgroundAgent.getTask(taskId)
       return result.task || null
     } catch (err: any) {
-      log.error('Failed to get task:', err)
+      log.error('Failed to get task', { error: err })
       return null
     }
   }, [])
@@ -380,7 +380,7 @@ export const useBackgroundAgent = () => {
         const result = await window.api.backgroundAgent.getTaskSystemPrompt(taskId)
         return result.systemPrompt || ''
       } catch (err: any) {
-        log.error('Failed to get task system prompt:', err)
+        log.error('Failed to get task system prompt', { error: err })
         toast.error(t('backgroundAgent.errors.getSystemPrompt'))
         throw err
       }

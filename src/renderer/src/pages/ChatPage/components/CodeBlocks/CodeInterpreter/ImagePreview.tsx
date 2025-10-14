@@ -23,7 +23,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({ filename, imagePath 
       link.click()
       document.body.removeChild(link)
     } catch (error) {
-      log.error('Failed to download image:', error)
+      log.error('Failed to download image', { error })
     }
   }
 

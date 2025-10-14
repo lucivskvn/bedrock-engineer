@@ -127,7 +127,7 @@ export const MermaidBlock: React.FC<MermaidBlockProps> = ({ code, className = ''
       const svgDataUrl = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`
       img.src = svgDataUrl
     } catch (error) {
-      log.error('Failed to download PNG:', error)
+      log.error('Failed to download PNG', { error })
     }
   }
 

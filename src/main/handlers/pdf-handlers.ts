@@ -3,21 +3,37 @@
  */
 
 import { IpcMainInvokeEvent, app } from 'electron'
+import type { Stats } from 'fs'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import os from 'os'
-import pdfParse from 'pdf-parse'
+import type { PDFParse } from 'pdf-parse'
+
 import { log } from '../../common/logger'
 import { store } from '../../preload/store'
+import {
+  filterByLineRange,
+  type LineRange
+} from '../../preload/lib/line-range-utils'
+import {
+  createBooleanPlaceholder,
+  createBytesPlaceholder,
+  createCountPlaceholder,
+  createPdfError,
+  createPdfParser,
+  createPdfLineCountMetadata,
+  createPdfPageCountMetadata,
+  createPdfSizeMetadata,
+  normalizePdfLineRange,
+  summarizeAllowedDirectories,
+  summarizeLineRange as summarizePdfLineRange,
+  summarizePathForLogs,
+  toPdfError
+} from './pdf/utils'
 import {
   buildAllowedOutputDirectories,
   ensurePathWithinAllowedDirectories
 } from '../security/path-utils'
-
-export interface LineRange {
-  from?: number
-  to?: number
-}
 
 export interface PdfContent {
   text: string
@@ -29,6 +45,170 @@ export interface PdfContent {
     creationDate?: Date
     creator?: string
     producer?: string
+  }
+}
+
+const MAX_PDF_BYTES = 25 * 1024 * 1024
+
+type DocumentPathContext = {
+  projectPath?: string
+  userDataPath?: string
+}
+
+type PdfPathMetadata = {
+  requestedPath: ReturnType<typeof summarizePathForLogs>
+  resolvedPath: ReturnType<typeof summarizePathForLogs>
+  allowedDirectories: ReturnType<typeof summarizeAllowedDirectories>
+  configuration: Record<string, unknown>
+  size: string
+  maxAllowedSize: string
+}
+
+const buildConfigurationMetadata = ({
+  projectPath,
+  userDataPath
+}: DocumentPathContext): Record<string, unknown> => {
+  const metadata: Record<string, unknown> = {
+    projectPathConfigured: createBooleanPlaceholder(Boolean(projectPath)),
+    userDataPathConfigured: createBooleanPlaceholder(Boolean(userDataPath))
+  }
+
+  if (projectPath) {
+    metadata.projectPath = summarizePathForLogs(projectPath)
+  }
+
+  if (userDataPath) {
+    metadata.userDataPath = summarizePathForLogs(userDataPath)
+  }
+
+  return metadata
+}
+
+function getDocumentPathContext(): DocumentPathContext {
+  const projectPathValue = store.get('projectPath')
+  const projectPath =
+    typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
+      ? projectPathValue
+      : undefined
+  const userDataPathValue = store.get('userDataPath')
+  const userDataPath =
+    typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
+      ? userDataPathValue
+      : undefined
+
+  return { projectPath, userDataPath }
+}
+
+function getAllowedDocumentDirectories({
+  projectPath,
+  userDataPath
+}: DocumentPathContext): string[] {
+  return buildAllowedOutputDirectories({
+    projectPath,
+    userDataPath,
+    additional: [
+      app.getPath('documents'),
+      path.join(app.getPath('documents'), 'bedrock-engineer'),
+      app.getPath('downloads'),
+      path.join(app.getPath('downloads'), 'bedrock-engineer'),
+      os.tmpdir()
+    ]
+  }).sort()
+}
+
+function isPdfFile(filePath: string): boolean {
+  return path.extname(filePath).toLowerCase() === '.pdf'
+}
+
+function resolvePdfPath(
+  filePath: string,
+  context: DocumentPathContext,
+  allowedDirectories: string[]
+): string {
+  const candidate = path.isAbsolute(filePath)
+    ? filePath
+    : context.projectPath
+    ? path.resolve(context.projectPath, filePath)
+    : path.resolve(filePath)
+
+  return ensurePathWithinAllowedDirectories(candidate, allowedDirectories)
+}
+
+async function assertPdfFileSafe(filePath: string): Promise<{
+  safePath: string
+  metadata: PdfPathMetadata
+}> {
+  const context = getDocumentPathContext()
+  const allowedDirectories = getAllowedDocumentDirectories(context)
+  const allowedSummary = summarizeAllowedDirectories(allowedDirectories)
+  const configuration = buildConfigurationMetadata(context)
+  const requestedSummary = summarizePathForLogs(filePath)
+  const trimmedPath = filePath.trim()
+
+  if (trimmedPath.length === 0) {
+    throw createPdfError('PDF_PATH_NOT_ALLOWED', {
+      reason: 'empty_path',
+      requestedPath: requestedSummary,
+      allowedDirectories: allowedSummary,
+      configuration
+    })
+  }
+
+  let safePath: string
+  try {
+    safePath = resolvePdfPath(trimmedPath, context, allowedDirectories)
+  } catch (error) {
+    throw toPdfError(error, 'PDF_PATH_NOT_ALLOWED', {
+      requestedPath: requestedSummary,
+      allowedDirectories: allowedSummary,
+      configuration
+    })
+  }
+
+  const resolvedSummary = summarizePathForLogs(safePath)
+
+  if (!isPdfFile(safePath)) {
+    throw createPdfError('PDF_EXTENSION_UNSUPPORTED', {
+      requestedPath: requestedSummary,
+      resolvedPath: resolvedSummary
+    })
+  }
+
+  let stats: Stats
+  try {
+    stats = await fs.stat(safePath)
+  } catch (error) {
+    throw toPdfError(error, 'PDF_FILE_ACCESS_FAILED', {
+      requestedPath: requestedSummary,
+      resolvedPath: resolvedSummary,
+      allowedDirectories: allowedSummary,
+      configuration
+    })
+  }
+
+  if (stats.size > MAX_PDF_BYTES) {
+    throw createPdfError('PDF_FILE_TOO_LARGE', {
+      requestedPath: requestedSummary,
+      resolvedPath: resolvedSummary,
+      allowedDirectories: allowedSummary,
+      configuration,
+      actualSize: createBytesPlaceholder(stats.size),
+      maxAllowedSize: createBytesPlaceholder(MAX_PDF_BYTES)
+    })
+  }
+
+  const metadata: PdfPathMetadata = {
+    requestedPath: requestedSummary,
+    resolvedPath: resolvedSummary,
+    allowedDirectories: allowedSummary,
+    configuration,
+    maxAllowedSize: createBytesPlaceholder(MAX_PDF_BYTES),
+    ...createPdfSizeMetadata(stats.size)
+  }
+
+  return {
+    safePath,
+    metadata
   }
 }
 
@@ -47,91 +227,6 @@ function cleanupText(text: string): string {
     .trim() // Remove leading/trailing whitespace
 }
 
-/**
- * Apply line range filtering to text content
- */
-function filterByLineRange(content: string, lineRange?: LineRange): string {
-  if (!lineRange) return content
-
-  const lines = content.split('\n')
-  const from = Math.max(1, lineRange.from || 1)
-  const to = Math.min(lines.length, lineRange.to || lines.length)
-
-  // Convert 1-based to 0-based array indices and slice
-  return lines.slice(from - 1, to).join('\n')
-}
-
-/**
- * Check if the file is a PDF based on file extension
- */
-function isPdfFile(filePath: string): boolean {
-  const ext = path.extname(filePath).toLowerCase()
-  return ext === '.pdf'
-}
-
-/**
- * Validate PDF file path
- */
-const MAX_PDF_BYTES = 25 * 1024 * 1024
-
-function getDocumentPathContext(): { projectPath?: string; userDataPath?: string } {
-  const projectPathValue = store.get('projectPath')
-  const projectPath =
-    typeof projectPathValue === 'string' && projectPathValue.trim().length > 0
-      ? projectPathValue
-      : undefined
-  const userDataPathValue = store.get('userDataPath')
-  const userDataPath =
-    typeof userDataPathValue === 'string' && userDataPathValue.trim().length > 0
-      ? userDataPathValue
-      : undefined
-
-  return { projectPath, userDataPath }
-}
-
-function getAllowedDocumentDirectories(): string[] {
-  const { projectPath, userDataPath } = getDocumentPathContext()
-
-  return buildAllowedOutputDirectories({
-    projectPath,
-    userDataPath,
-    additional: [
-      app.getPath('documents'),
-      path.join(app.getPath('documents'), 'bedrock-engineer'),
-      app.getPath('downloads'),
-      path.join(app.getPath('downloads'), 'bedrock-engineer'),
-      os.tmpdir()
-    ]
-  })
-}
-
-function resolvePdfPath(filePath: string): string {
-  const { projectPath } = getDocumentPathContext()
-  const allowedDirectories = getAllowedDocumentDirectories()
-  const candidatePath = path.isAbsolute(filePath)
-    ? filePath
-    : projectPath
-    ? path.resolve(projectPath, filePath)
-    : path.resolve(filePath)
-
-  return ensurePathWithinAllowedDirectories(candidatePath, allowedDirectories)
-}
-
-async function assertPdfFileSafe(filePath: string): Promise<string> {
-  const safePath = resolvePdfPath(filePath)
-
-  if (!isPdfFile(safePath)) {
-    throw new Error(`File ${filePath} is not a PDF file`)
-  }
-
-  const stats = await fs.stat(safePath)
-  if (stats.size > MAX_PDF_BYTES) {
-    throw new Error('PDF file is too large to process safely')
-  }
-
-  return safePath
-}
-
 export const pdfHandlers = {
   /**
    * Extract text from PDF file with optional line range filtering
@@ -140,33 +235,63 @@ export const pdfHandlers = {
     _event: IpcMainInvokeEvent,
     { filePath, lineRange }: { filePath: string; lineRange?: LineRange }
   ): Promise<string> => {
-    log.info('Extracting text from PDF', { filePath, hasLineRange: !!lineRange })
+    const normalizedLineRange = normalizePdfLineRange(lineRange)
+    const lineRangeSummary = summarizePdfLineRange(normalizedLineRange)
+    const { safePath, metadata: pathMetadata } = await assertPdfFileSafe(filePath)
 
+    log.info('Extracting text from PDF', {
+      path: pathMetadata,
+      lineRange: lineRangeSummary
+    })
+
+    let parser: PDFParse | undefined
     try {
-      const safePath = await assertPdfFileSafe(filePath)
-
       const dataBuffer = await fs.readFile(safePath)
-      const pdfData = await pdfParse(dataBuffer)
-      const cleanedText = cleanupText(pdfData.text)
+      const parserInstance = createPdfParser(dataBuffer, {
+        path: pathMetadata,
+        lineRange: lineRangeSummary
+      })
+      parser = parserInstance
 
-      // Apply line range filtering if specified
-      const result = filterByLineRange(cleanedText, lineRange)
+      let textResult
+      try {
+        textResult = await parser.getText()
+      } catch (error) {
+        throw toPdfError(error, 'PDF_PARSE_FAILED', {
+          path: pathMetadata
+        })
+      }
+
+      const cleanedText = cleanupText(textResult.text)
+      const result = filterByLineRange(cleanedText, normalizedLineRange)
+      const totalLines = cleanedText.split('\n').length
 
       log.info('PDF text extraction successful', {
-        filePath: safePath,
-        pages: pdfData.numpages,
-        originalLength: cleanedText.length,
-        filteredLength: result.length
+        path: pathMetadata,
+        lineRange: lineRangeSummary,
+        ...createPdfPageCountMetadata(textResult.total),
+        ...createPdfLineCountMetadata(totalLines),
+        extractedLength: createCountPlaceholder('length', cleanedText.length),
+        filteredLength: createCountPlaceholder('length', result.length)
       })
 
       return result
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      log.error('PDF text extraction failed', {
-        filePath,
-        error: errorMessage
+      const pdfError = toPdfError(error, 'PDF_TEXT_EXTRACTION_FAILED', {
+        path: pathMetadata,
+        lineRange: lineRangeSummary
       })
-      throw new Error(`Failed to extract text from PDF ${filePath}: ${errorMessage}`)
+
+      log.error('PDF text extraction failed', {
+        code: pdfError.code,
+        metadata: pdfError.metadata
+      })
+
+      throw pdfError
+    } finally {
+      if (parser) {
+        await parser.destroy()
+      }
     }
   },
 
@@ -177,46 +302,83 @@ export const pdfHandlers = {
     _event: IpcMainInvokeEvent,
     { filePath }: { filePath: string }
   ): Promise<PdfContent> => {
-    log.info('Extracting PDF metadata', { filePath })
+    const { safePath, metadata: pathMetadata } = await assertPdfFileSafe(filePath)
 
+    log.info('Extracting PDF metadata', {
+      path: pathMetadata
+    })
+
+    let parser: PDFParse | undefined
     try {
-      const safePath = await assertPdfFileSafe(filePath)
-
       const dataBuffer = await fs.readFile(safePath)
-      const pdfData = await pdfParse(dataBuffer)
-      const cleanedText = cleanupText(pdfData.text)
+      parser = createPdfParser(dataBuffer, {
+        path: pathMetadata
+      })
+
+      let textResult
+      try {
+        textResult = await parser.getText()
+      } catch (error) {
+        throw toPdfError(error, 'PDF_PARSE_FAILED', {
+          path: pathMetadata
+        })
+      }
+
+      const cleanedText = cleanupText(textResult.text)
       const lines = cleanedText.split('\n')
+
+      let infoResult
+      try {
+        infoResult = await parser.getInfo()
+      } catch (error) {
+        throw toPdfError(error, 'PDF_PARSE_FAILED', {
+          path: pathMetadata
+        })
+      }
+
+      const dateNode = infoResult.getDateNode()
+      const creationDate =
+        dateNode.CreationDate ??
+        dateNode.XmpCreateDate ??
+        dateNode.XapCreateDate ??
+        undefined
 
       const result: PdfContent = {
         text: cleanedText,
         totalLines: lines.length,
         metadata: {
-          pages: pdfData.numpages || 0,
-          title: pdfData.info?.Title,
-          author: pdfData.info?.Author,
-          creationDate: pdfData.info?.CreationDate
-            ? new Date(pdfData.info.CreationDate)
-            : undefined,
-          creator: pdfData.info?.Creator,
-          producer: pdfData.info?.Producer
+          pages: infoResult.total,
+          title: infoResult.info?.Title,
+          author: infoResult.info?.Author,
+          creationDate: creationDate ?? undefined,
+          creator: infoResult.info?.Creator,
+          producer: infoResult.info?.Producer
         }
       }
 
       log.info('PDF metadata extraction successful', {
-        filePath: safePath,
-        pages: result.metadata.pages,
-        totalLines: result.totalLines,
-        title: result.metadata.title
+        path: pathMetadata,
+        ...createPdfPageCountMetadata(result.metadata.pages),
+        ...createPdfLineCountMetadata(result.totalLines),
+        textLength: createCountPlaceholder('length', cleanedText.length)
       })
 
       return result
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      log.error('PDF metadata extraction failed', {
-        filePath,
-        error: errorMessage
+      const pdfError = toPdfError(error, 'PDF_METADATA_EXTRACTION_FAILED', {
+        path: pathMetadata
       })
-      throw new Error(`Failed to parse PDF file ${filePath}: ${errorMessage}`)
+
+      log.error('PDF metadata extraction failed', {
+        code: pdfError.code,
+        metadata: pdfError.metadata
+      })
+
+      throw pdfError
+    } finally {
+      if (parser) {
+        await parser.destroy()
+      }
     }
   },
 
@@ -227,36 +389,55 @@ export const pdfHandlers = {
     _event: IpcMainInvokeEvent,
     { filePath }: { filePath: string }
   ): Promise<{ pages: number; title?: string; author?: string }> => {
-    log.info('Getting PDF info', { filePath })
+    const { safePath, metadata: pathMetadata } = await assertPdfFileSafe(filePath)
 
+    log.info('Getting PDF info', {
+      path: pathMetadata
+    })
+
+    let parser: PDFParse | undefined
     try {
-      const safePath = await assertPdfFileSafe(filePath)
-
       const dataBuffer = await fs.readFile(safePath)
-      const pdfData = await pdfParse(dataBuffer, {
-        max: 1 // Only parse first page for metadata
+      parser = createPdfParser(dataBuffer, {
+        path: pathMetadata
       })
 
+      let infoResult
+      try {
+        infoResult = await parser.getInfo()
+      } catch (error) {
+        throw toPdfError(error, 'PDF_PARSE_FAILED', {
+          path: pathMetadata
+        })
+      }
+
       const result = {
-        pages: pdfData.numpages || 0,
-        title: pdfData.info?.Title,
-        author: pdfData.info?.Author
+        pages: infoResult.total,
+        title: infoResult.info?.Title,
+        author: infoResult.info?.Author
       }
 
       log.info('PDF info extraction successful', {
-        filePath: safePath,
-        pages: result.pages,
-        title: result.title
+        path: pathMetadata,
+        ...createPdfPageCountMetadata(result.pages)
       })
 
       return result
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      log.error('PDF info extraction failed', {
-        filePath,
-        error: errorMessage
+      const pdfError = toPdfError(error, 'PDF_INFO_EXTRACTION_FAILED', {
+        path: pathMetadata
       })
-      throw new Error(`Failed to get PDF info for ${filePath}: ${errorMessage}`)
+
+      log.error('PDF info extraction failed', {
+        code: pdfError.code,
+        metadata: pdfError.metadata
+      })
+
+      throw pdfError
+    } finally {
+      if (parser) {
+        await parser.destroy()
+      }
     }
   },
 

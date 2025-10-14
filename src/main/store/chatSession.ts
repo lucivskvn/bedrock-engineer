@@ -6,13 +6,22 @@ import { store } from '../../preload/store'
 import { log } from '../../common/logger'
 import { ensureValidStorageKey } from '../../common/security/pathGuards'
 
+type ChatSessionMetadataStoreState = {
+  activeSessionId?: string
+  recentSessions: string[]
+  metadata: Record<string, SessionMetadata>
+}
+
+type ChatSessionMetadataStore = {
+  get<K extends keyof ChatSessionMetadataStoreState>(key: K): ChatSessionMetadataStoreState[K]
+  set<K extends keyof ChatSessionMetadataStoreState>(key: K, value: ChatSessionMetadataStoreState[K]): void
+  delete(key: keyof ChatSessionMetadataStoreState): void
+  store: ChatSessionMetadataStoreState
+}
+
 export class ChatSessionManager {
   private readonly sessionsDir: string
-  private metadataStore: Store<{
-    activeSessionId?: string
-    recentSessions: string[]
-    metadata: { [key: string]: SessionMetadata }
-  }>
+  private metadataStore: ChatSessionMetadataStore
 
   constructor() {
     const userDataPath = store.get('userDataPath')
@@ -25,13 +34,13 @@ export class ChatSessionManager {
     fs.mkdirSync(this.sessionsDir, { recursive: true })
 
     // メタデータ用のストアを初期化
-    this.metadataStore = new Store({
+    this.metadataStore = new Store<ChatSessionMetadataStoreState>({
       name: 'chat-sessions-meta',
       defaults: {
-        recentSessions: [] as string[],
-        metadata: {} as { [key: string]: SessionMetadata }
+        recentSessions: [],
+        metadata: {}
       }
-    })
+    }) as unknown as ChatSessionMetadataStore
 
     // 初回起動時またはメタデータが空の場合、既存のセッションからメタデータを生成
     this.initializeMetadata()
@@ -85,7 +94,10 @@ export class ChatSessionManager {
       const data = fs.readFileSync(filePath, 'utf-8')
       return JSON.parse(data) as ChatSession
       } catch (error) {
-        log.error(`Error reading session file ${sessionId}:`, { error })
+        log.error('Failed to read chat session file', {
+          sessionId,
+          error: error instanceof Error ? error.message : String(error)
+        })
         return null
       }
   }
@@ -95,7 +107,10 @@ export class ChatSessionManager {
     try {
       await fs.promises.writeFile(filePath, JSON.stringify(session, null, 2))
       } catch (error) {
-        log.error(`Error writing session file ${sessionId}:`, { error })
+        log.error('Failed to write chat session file', {
+          sessionId,
+          error: error instanceof Error ? error.message : String(error)
+        })
       }
   }
 
@@ -186,7 +201,10 @@ export class ChatSessionManager {
         delete metadata[safeSessionId]
       this.metadataStore.set('metadata', metadata)
       } catch (error) {
-        log.error(`Error deleting session file ${sessionId}:`, { error })
+        log.error('Failed to delete chat session file', {
+          sessionId,
+          error: error instanceof Error ? error.message : String(error)
+        })
       }
 
     const recentSessions = this.metadataStore.get('recentSessions')
@@ -291,7 +309,11 @@ export class ChatSessionManager {
 
     // 指定されたインデックスが有効な範囲内かチェック
     if (messageIndex < 0 || messageIndex >= session.messages.length) {
-      log.error(`Invalid message index: ${messageIndex}`)
+      log.error('Invalid chat message index', {
+        sessionId: safeSessionId,
+        messageIndex,
+        messageCount: session.messages.length
+      })
       return
     }
 
@@ -311,7 +333,11 @@ export class ChatSessionManager {
 
     // 指定されたインデックスが有効な範囲内かチェック
     if (messageIndex < 0 || messageIndex >= session.messages.length) {
-      log.error(`Invalid message index: ${messageIndex}`)
+      log.error('Invalid chat message index', {
+        sessionId: safeSessionId,
+        messageIndex,
+        messageCount: session.messages.length
+      })
       return
     }
 

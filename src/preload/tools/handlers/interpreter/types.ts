@@ -68,6 +68,12 @@ export interface CodeExecutionResult {
   executionTime: number
 }
 
+export interface TaskErrorInfo {
+  message: string
+  code?: string
+  metadata?: Record<string, unknown>
+}
+
 /**
  * Simplified CodeInterpreter result type
  */
@@ -145,6 +151,7 @@ export interface TaskInfo {
   inputFiles?: InputFile[]
   result?: CodeInterpreterResult
   error?: string
+  errorInfo?: TaskErrorInfo
   progress?: number // 0-100 for progress indication
 }
 
@@ -164,6 +171,7 @@ export interface AsyncTaskResult extends ToolResult {
     startedAt?: string
     completedAt?: string
     executionResult?: CodeInterpreterResult
+    errorInfo?: TaskErrorInfo
   }
 }
 
@@ -183,6 +191,19 @@ export interface TaskListResult extends ToolResult {
     cancelled: number
   }
   message: string
+  result: {
+    tasks: TaskInfo[]
+    summary: {
+      total: number
+      pending: number
+      running: number
+      completed: number
+      failed: number
+      cancelled: number
+    }
+    statusFilter?: TaskStatus
+    errorInfo?: TaskErrorInfo
+  }
 }
 
 /**

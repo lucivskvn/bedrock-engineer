@@ -7,6 +7,7 @@ import { ValidationResult } from '../../base/types'
 import { ExecutionError } from '../../base/errors'
 import { ToolResult } from '../../../../types/tools'
 import { McpServerConfig } from '../../../../types/agent-chat'
+import { McpToolExecutionResult } from '../../../../types/mcp'
 import { ipcRenderer } from 'electron'
 
 /**
@@ -69,7 +70,7 @@ export class McpToolAdapter extends BaseTool<McpToolInput, McpToolResult> {
     // Extract arguments (exclude type, mcpToolName, and internal BackgroundAgentService metadata)
     const { type, mcpToolName: _mcpToolName, _agentId, _mcpServers, ...args } = input
 
-    this.logger.debug(`Executing MCP tool: ${toolName}`, {
+    this.logger.debug('Executing MCP tool.', {
       originalType: type,
       toolName,
       hasArgs: Object.keys(args).length > 0,
@@ -77,7 +78,7 @@ export class McpToolAdapter extends BaseTool<McpToolInput, McpToolResult> {
     })
 
     try {
-      this.logger.info(`Calling MCP tool: ${toolName}`)
+      this.logger.info('Calling MCP tool.', { toolName })
 
       let mcpServers: McpServerConfig[] | undefined
       let agentId: string | undefined
@@ -114,7 +115,7 @@ export class McpToolAdapter extends BaseTool<McpToolInput, McpToolResult> {
 
         if (!currentAgent) {
           throw new ExecutionError(
-            `Agent not found: ${selectedAgentId}. Please check your agent configuration.`,
+            'Agent not found for MCP tool execution.',
             this.name,
             undefined,
             { toolName, selectedAgentId }
@@ -135,7 +136,7 @@ export class McpToolAdapter extends BaseTool<McpToolInput, McpToolResult> {
         )
       }
 
-      this.logger.debug(`Found ${mcpServers.length} MCP servers for agent: ${agentName}`, {
+      this.logger.debug('Resolved MCP servers for agent.', {
         agentId,
         agentName,
         serverCount: mcpServers.length,
@@ -143,41 +144,65 @@ export class McpToolAdapter extends BaseTool<McpToolInput, McpToolResult> {
       })
 
       // Execute the MCP tool via direct IPC to Main Process
-      const result = await ipcRenderer.invoke('mcp:executeTool', toolName, args, mcpServers)
+      const result = (await ipcRenderer.invoke(
+        'mcp:executeTool',
+        toolName,
+        args,
+        mcpServers
+      )) as McpToolExecutionResult
 
-      this.logger.info(`MCP tool execution completed`, {
+      this.logger.info('MCP tool execution completed.', {
         toolName,
         success: result.success,
         found: result.found,
         resultType: typeof result.result
       })
 
+      const normalizedDetails: Record<string, unknown> = result.details
+        ? { ...result.details }
+        : {}
+
+      if (result.message) {
+        normalizedDetails.serviceMessage = result.message
+      }
+
+      const hasDetails = Object.keys(normalizedDetails).length > 0
+
       // Check if the tool was found
       if (!result.found) {
         throw new ExecutionError(
-          result.message ||
-            `MCP tool not found: ${toolName}. Please check if the tool is available in your configured MCP servers.`,
+          'MCP tool not found.',
           this.name,
           undefined,
-          { toolName, availableServers: mcpServers.length }
+          {
+            toolName,
+            availableServers: mcpServers.length,
+            resultDetails: hasDetails ? normalizedDetails : undefined
+          }
         )
       }
 
       // Check if execution was successful
       if (!result.success) {
         throw new ExecutionError(
-          result.message || result.error || 'MCP tool execution failed',
+          'MCP tool execution failed.',
           this.name,
           undefined,
-          { toolName, args }
+          {
+            toolName,
+            args: this.sanitizeObject(args),
+            resultDetails: hasDetails ? normalizedDetails : undefined,
+            rawError: result.error
+          }
         )
       }
 
       return {
         success: true,
         name: 'mcp',
-        message: result.message || `Executed MCP tool: ${toolName}`,
-        result: result.result
+        message: 'MCP tool execution succeeded.',
+        result: result.result,
+        details: hasDetails ? normalizedDetails : undefined
       }
     } catch (error) {
       // If it's already an ExecutionError, re-throw it
@@ -185,19 +210,21 @@ export class McpToolAdapter extends BaseTool<McpToolInput, McpToolResult> {
         throw error
       }
 
-      this.logger.error('Error executing MCP tool', {
+      this.logger.error('MCP tool execution failed.', {
         error: error instanceof Error ? error.message : String(error),
         toolName,
-        args: JSON.stringify(args)
+        args: this.sanitizeObject(args)
       })
 
       throw new ExecutionError(
-        `Error executing MCP tool ${toolName}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        'MCP tool execution failed.',
         this.name,
         error instanceof Error ? error : undefined,
-        { toolName, args }
+        {
+          toolName,
+          args: this.sanitizeObject(args),
+          causeMessage: error instanceof Error ? error.message : String(error)
+        }
       )
     }
   }

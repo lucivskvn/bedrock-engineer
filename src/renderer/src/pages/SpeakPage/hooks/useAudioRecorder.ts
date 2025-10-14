@@ -45,7 +45,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
       const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName })
       return permission.state
     } catch (error) {
-      log.warn('Could not check microphone permission:', error)
+      log.warn('Could not check microphone permission', { error })
       return 'prompt' // Default to prompt if checking fails
     }
   }, [])
@@ -150,7 +150,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
       setStatus('recording')
       isRecordingRef.current = true
     } catch (error) {
-      log.error('Error starting recording:', error)
+      log.error('Error starting recording', { error })
       setStatus('error')
       throw error
     }
@@ -191,7 +191,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
 
       setStatus('idle')
     } catch (error) {
-      log.error('Error stopping recording:', error)
+      log.error('Error stopping recording', { error })
       setStatus('error')
     }
   }, [status])

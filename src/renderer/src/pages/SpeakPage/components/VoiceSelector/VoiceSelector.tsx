@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeftIcon, ChevronRightIcon, GlobeAltIcon } from '@heroicons/react/24/outline'
-import { Modal } from 'flowbite-react'
+import { Modal, ModalBody, ModalFooter, ModalHeader } from 'flowbite-react'
 import { AVAILABLE_VOICES, VoiceId } from '../../constants/voices'
 import { VoiceVisual } from './VoiceVisual'
 import { TRANSLATION_LANGUAGES } from '../../constants/translationLanguages'
@@ -70,8 +70,8 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
 
   return (
     <Modal dismissible show={isOpen} onClose={onCancel} size="md">
-      <Modal.Header>{t('Select Voice')}</Modal.Header>
-      <Modal.Body>
+      <ModalHeader>{t('Select Voice')}</ModalHeader>
+      <ModalBody>
         <div className="p-4">
           {/* Voice Selection Section */}
           <div className="text-center mb-8">
@@ -185,8 +185,8 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
             )}
           </div>
         </div>
-      </Modal.Body>
-      <Modal.Footer>
+      </ModalBody>
+      <ModalFooter>
         <div className="flex justify-center gap-4">
           <button
             onClick={onCancel}
@@ -201,7 +201,7 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
             {t('Start New Chat')}
           </button>
         </div>
-      </Modal.Footer>
+      </ModalFooter>
     </Modal>
   )
 }

@@ -3,7 +3,7 @@ import React, { useState } from 'react'
 import { CustomAgent } from '@/types/agent-chat'
 import useSetting from '@renderer/hooks/useSetting'
 import { useTranslation } from 'react-i18next'
-import { Modal } from 'flowbite-react'
+import { Modal, ModalBody, ModalHeader } from 'flowbite-react'
 import { AgentForm } from '../components/AgentForm/AgentForm'
 import { AgentList } from '../components/AgentList'
 import { useShareToOrganizationModal } from './useShareToOrganizationModal'
@@ -78,7 +78,7 @@ const AgentSettingsModal = React.memo(
         setEditingAgent(null)
         onClose()
       } catch (error) {
-        log.error('Error saving agent:', error)
+        log.error('Error saving agent', { error })
         toast.error(t('Failed to save agent'))
       }
     }
@@ -121,11 +121,11 @@ const AgentSettingsModal = React.memo(
             duration: 5000
           })
         } else {
-          log.error('Failed to save agent as shared file:', result.error)
+          log.error('Failed to save agent as shared file', { error: result.error })
           toast.error(result.error || t('failedToSaveShared'))
         }
       } catch (error) {
-        log.error('Error saving shared agent:', error)
+        log.error('Error saving shared agent', { error })
         toast.error(t('failedToSaveShared'))
       }
     }
@@ -155,10 +155,10 @@ const AgentSettingsModal = React.memo(
           log.debug('Conversion successful:', result.savedFiles)
         } else {
           toast.error(result.error || 'Failed to convert agent to Strands Agents')
-          log.error('Conversion failed:', result.errors)
+          log.error('Conversion failed', { errors: result.errors })
         }
       } catch (error) {
-        log.error('Error converting agent to Strands Agents:', error)
+        log.error('Error converting agent to Strands Agents', { error })
         toast.error('Failed to convert agent to Strands Agents')
       }
     }
@@ -185,7 +185,7 @@ const AgentSettingsModal = React.memo(
         }}
       >
         <div className="border-[0.5px] border-white dark:border-gray-100 rounded-lg shadow-xl dark:shadow-gray-900/80">
-          <Modal.Header className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
+          <ModalHeader className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
             <div className="flex items-center space-x-2">
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
                 {editingAgent ? t('editAgent') : t('customAgents')}
@@ -211,8 +211,8 @@ const AgentSettingsModal = React.memo(
                 </p>
               </div>
             )}
-          </Modal.Header>
-          <Modal.Body
+          </ModalHeader>
+          <ModalBody
             className="p-0 bg-white dark:bg-gray-900 rounded-b-lg"
             onClick={(e) => {
               // モーダルボディのクリックイベントは伝播させない
@@ -246,7 +246,7 @@ const AgentSettingsModal = React.memo(
                 </>
               )}
             </div>
-          </Modal.Body>
+          </ModalBody>
         </div>
       </Modal>
     )

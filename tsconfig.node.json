@@ -10,6 +10,10 @@
   ],
   "compilerOptions": {
     "composite": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
     "types": ["electron-vite/node", "jest"]
   }
 }

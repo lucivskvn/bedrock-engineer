@@ -129,7 +129,7 @@ export const useTodoModal = (messages?: any[], currentSessionId?: string) => {
       const data = await window.api.todo.getTodoList({ sessionId: currentSessionId })
       setTodoList(data)
     } catch (err) {
-      log.error('Failed to fetch TODO list:', err)
+      log.error('Failed to fetch TODO list', { error: err })
       setError(err instanceof Error ? err.message : 'Failed to fetch TODO list')
       setTodoList(null)
     } finally {

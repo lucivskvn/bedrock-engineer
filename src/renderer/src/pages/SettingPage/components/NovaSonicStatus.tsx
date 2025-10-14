@@ -19,7 +19,7 @@ export const NovaSonicStatus: React.FC<NovaSonicStatusProps> = ({ currentRegion 
       const result = await checkNovaSonicRegionSupport(currentRegion)
       setRegionCheck(result)
     } catch (error) {
-      log.error('Failed to check Nova Sonic region support:', error)
+      log.error('Failed to check Nova Sonic region support', { error })
       setRegionCheck({
         isSupported: false,
         currentRegion,

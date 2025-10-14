@@ -69,7 +69,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
       const cameras = await enumerateCameraDevices()
       setAvailableCameras(cameras)
     } catch (error) {
-      log.error('Failed to fetch available cameras:', error)
+      log.error('Failed to fetch available cameras', { error })
       setAvailableCameras([])
     } finally {
       setIsLoadingCameras(false)
@@ -118,7 +118,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
           setPreviewPosition(status.options.position || 'bottom-right')
         }
       } catch (error) {
-        log.error('Failed to get preview status:', error)
+        log.error('Failed to get preview status', { error })
       }
     }
   }, [])
@@ -164,7 +164,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
             setPreviewStatus({ isActive: true })
             log.debug('Preview windows created successfully:', result.message)
           } else {
-            log.error('Failed to create preview windows:', result.message)
+            log.error('Failed to create preview windows', { message: result.message })
             setPreviewEnabled(false)
             setPreviewStatus({ isActive: false })
           }
@@ -177,7 +177,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
           }
         }
       } catch (error) {
-        log.error('Failed to toggle preview window:', error)
+        log.error('Failed to toggle preview window', { error })
         setPreviewEnabled(false)
         setPreviewStatus({ isActive: false })
       }
@@ -203,7 +203,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
         position: previewPosition
       })
     } catch (error) {
-      log.error('Failed to update preview settings:', error)
+      log.error('Failed to update preview settings', { error })
     }
   }, [previewSize, previewOpacity, previewPosition, previewStatus.isActive])
 
@@ -240,7 +240,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
 
         {/* LLMモデル選択 */}
         <div className="w-full">
-          <Label htmlFor="cameraCaptureModel" value={t('AI Model for Image Analysis')} />
+          <Label htmlFor="cameraCaptureModel">{t('AI Model for Image Analysis')}</Label>
           <Select
             id="cameraCaptureModel"
             value={recognizeImageModel}
@@ -257,7 +257,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
 
         {/* カメラ品質設定 */}
         <div className="w-full">
-          <Label htmlFor="cameraQuality" value={t('Image Quality')} />
+          <Label htmlFor="cameraQuality">{t('Image Quality')}</Label>
           <Select id="cameraQuality" className="mt-2 w-full" defaultValue="medium">
             <option value="low">{t('Low (640x480)')}</option>
             <option value="medium">{t('Medium (1280x720)')}</option>
@@ -469,7 +469,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
           <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border border-gray-200 dark:border-gray-600">
             {/* ウィンドウサイズ設定 */}
             <div className="w-full">
-              <Label htmlFor="previewSize" value={t('Preview Window Size')} />
+              <Label htmlFor="previewSize">{t('Preview Window Size')}</Label>
               <Select
                 id="previewSize"
                 value={previewSize}
@@ -484,7 +484,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
 
             {/* ウィンドウ位置設定 */}
             <div className="w-full">
-              <Label htmlFor="previewPosition" value={t('Preview Window Position')} />
+              <Label htmlFor="previewPosition">{t('Preview Window Position')}</Label>
               <Select
                 id="previewPosition"
                 value={previewPosition}
@@ -504,7 +504,7 @@ export const CameraCaptureSettingForm: React.FC = () => {
 
             {/* 透明度設定 */}
             <div className="w-full">
-              <Label htmlFor="previewOpacity" value={t('Window Opacity')} />
+              <Label htmlFor="previewOpacity">{t('Window Opacity')}</Label>
               <div className="flex items-center gap-4 mt-2">
                 <input
                   type="range"

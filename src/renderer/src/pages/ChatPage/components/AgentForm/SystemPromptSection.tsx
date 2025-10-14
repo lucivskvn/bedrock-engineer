@@ -71,7 +71,7 @@ export const SystemPromptSection: React.FC<SystemPromptSectionProps> = ({
         })
         setEnvironmentContextText(replacedContext)
       } catch (error) {
-        log.error('Failed to load environment context:', error)
+        log.error('Failed to load environment context', { error })
         setEnvironmentContextText('Error loading environment context')
       }
     }

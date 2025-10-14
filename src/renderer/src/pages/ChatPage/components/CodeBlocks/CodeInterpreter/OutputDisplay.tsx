@@ -25,7 +25,7 @@ export const OutputDisplay: React.FC<OutputDisplayProps> = ({ stdout, output }) 
       )
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      log.error('Failed to copy output:', err)
+      log.error('Failed to copy output', { error: err })
       toast.error(t('code interpreter display.Failed to copy output', 'Failed to copy output'))
     }
   }

@@ -32,7 +32,7 @@ export const ProjectPathDisplay: React.FC<ProjectPathDisplayProps> = ({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
-      log.error('Failed to copy path:', error)
+      log.error('Failed to copy path', { error })
     }
   }
 

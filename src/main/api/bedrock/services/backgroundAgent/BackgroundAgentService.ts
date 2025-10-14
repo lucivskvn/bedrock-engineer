@@ -20,6 +20,7 @@ import { pubSubManager } from '../../../../lib/pubsub-manager'
 import { MainToolSpecProvider } from './MainToolSpecProvider'
 import { v4 as uuidv4 } from 'uuid'
 import { BrowserWindow, ipcMain } from 'electron'
+import { createBackgroundAgentError } from './errors'
 
 const logger = createCategoryLogger('background-agent')
 
@@ -291,7 +292,9 @@ export class BackgroundAgentService {
     // エージェント設定を取得
     const agent = await this.getAgentById(config.agentId)
     if (!agent) {
-      throw new Error(`Agent not found: ${config.agentId}`)
+      throw createBackgroundAgentError('background_agent_not_found', {
+        agentId: config.agentId
+      })
     }
 
     // エージェント固有のツール設定を生成
@@ -354,12 +357,22 @@ export class BackgroundAgentService {
           }
         }
       } catch (error: any) {
+        const structuredError = createBackgroundAgentError(
+          'background_user_message_persist_failed',
+          {
+            sessionId,
+            agentId: config.agentId,
+            causeMessage: error instanceof Error ? error.message : String(error)
+          }
+        )
+
         logger.error('Failed to save user message to session', {
           sessionId,
-          error: error.message
+          errorCode: structuredError.code,
+          errorMetadata: structuredError.metadata
         })
         // ユーザーメッセージの保存に失敗した場合もエラーを投げる
-        throw new Error(`Failed to save user message: ${error.message}`)
+        throw structuredError
       }
 
       // エージェントのシステムプロンプトを構築（環境コンテキスト＋プレースホルダー置換）
@@ -490,13 +503,24 @@ export class BackgroundAgentService {
             }
           }
         } catch (error: any) {
+          const structuredError = createBackgroundAgentError(
+            'background_assistant_message_persist_failed',
+            {
+              sessionId,
+              messageId: result.response.id,
+              agentId: config.agentId,
+              causeMessage: error instanceof Error ? error.message : String(error)
+            }
+          )
+
           logger.error('Failed to save assistant response to session', {
             sessionId,
             messageId: result.response.id,
-            error: error.message
+            errorCode: structuredError.code,
+            errorMetadata: structuredError.metadata
           })
           // アシスタントレスポンスの保存に失敗した場合もエラーを投げる
-          throw new Error(`Failed to save assistant response: ${error.message}`)
+          throw structuredError
         }
       }
 
@@ -534,7 +558,9 @@ export class BackgroundAgentService {
     // エージェント設定を取得
     const agent = await this.getAgentById(config.agentId)
     if (!agent) {
-      throw new Error(`Agent not found: ${config.agentId}`)
+      throw createBackgroundAgentError('background_agent_not_found', {
+        agentId: config.agentId
+      })
     }
 
     while (executionCount < maxExecutions) {
@@ -900,13 +926,16 @@ export class BackgroundAgentService {
       const task = scheduler.getTask(taskId)
 
       if (!task) {
-        throw new Error(`Task not found: ${taskId}`)
+        throw createBackgroundAgentError('background_task_not_found', { taskId })
       }
 
       // エージェント設定を取得
       const agent = await this.getAgentById(task.agentId)
       if (!agent) {
-        throw new Error(`Agent not found: ${task.agentId}`)
+        throw createBackgroundAgentError('background_agent_not_found', {
+          agentId: task.agentId,
+          taskId
+        })
       }
 
       // システムプロンプトを構築（プレースホルダー置換済み）

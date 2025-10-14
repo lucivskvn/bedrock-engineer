@@ -6,7 +6,7 @@ import * as fs from 'fs/promises'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
-import { ExecutionError } from '../../base/errors'
+import { createFileExecutionError, summarizeError } from './errorUtils'
 
 /**
  * Input type for CreateFolderTool
@@ -84,14 +84,15 @@ export class CreateFolderTool extends BaseTool<CreateFolderInput, string> {
     } catch (error) {
       this.logger.error('Failed to create folder', {
         path,
-        error: error instanceof Error ? error.message : String(error)
+        error: summarizeError(error)
       })
 
-      throw new ExecutionError(
-        `Error creating folder: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined
-      )
+      throw createFileExecutionError({
+        toolName: this.name,
+        reason: 'CREATE_FOLDER_FAILED',
+        error,
+        metadata: { path }
+      })
     }
   }
 

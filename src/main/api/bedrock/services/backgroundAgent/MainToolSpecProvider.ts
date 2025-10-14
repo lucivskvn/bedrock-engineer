@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { BrowserWindow, ipcMain } from 'electron'
 import { McpServerConfig } from '../../../../../types/agent-chat'
+import { log } from '../../../../../common/logger'
 import { getMcpToolSpecs } from '../../../../mcp/index'
 
 export class MainToolSpecProvider {
@@ -59,7 +60,9 @@ export class MainToolSpecProvider {
       const toolSpecs = await getMcpToolSpecs(mcpServers)
       return toolSpecs
     } catch (error: any) {
-      console.error('Failed to get MCP tool specs directly:', error)
+      log.error('Failed to get MCP tool specs directly', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       return []
     }
   }

@@ -101,7 +101,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ onSessionSelect, curre
         setMenuOpenSessionId(undefined)
       }
     } catch (error) {
-      log.error('Failed to generate AI title:', error)
+      log.error('Failed to generate AI title', { error })
       // エラーメッセージは generateSessionTitle 内で既に表示されるため不要
     } finally {
       setIsGenerating(false)

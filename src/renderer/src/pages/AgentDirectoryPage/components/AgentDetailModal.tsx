@@ -35,7 +35,7 @@ export const AgentDetailModal: React.FC<AgentDetailModalProps> = ({
         }, 2000)
       } catch (error) {
         setAddSuccess(false)
-        log.error('Error adding agent:', error)
+        log.error('Error adding agent', { error })
       } finally {
         setIsAdding(false)
       }

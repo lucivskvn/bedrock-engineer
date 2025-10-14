@@ -21,7 +21,7 @@ const LocalImage: React.FC<LocalImageProps> = ({ src, alt, className }) => {
         setError('')
       } catch (err) {
         setError('Failed to load image')
-        log.error('Error loading image:', err)
+        log.error('Error loading image', { error: err })
       } finally {
         setLoading(false)
       }

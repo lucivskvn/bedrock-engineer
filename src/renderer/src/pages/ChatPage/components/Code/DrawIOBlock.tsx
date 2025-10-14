@@ -52,7 +52,7 @@ export const DrawIOBlock: React.FC<DrawIOBlockProps> = ({ xml, className = '' })
         })
       }
     } catch (error) {
-      log.error('Failed to download PNG:', error)
+      log.error('Failed to download PNG', { error })
     }
   }
 
@@ -65,7 +65,7 @@ export const DrawIOBlock: React.FC<DrawIOBlockProps> = ({ xml, className = '' })
             await drawioRef.current.load({ xml })
           }
         } catch (error) {
-          log.error('Failed to load DrawIO XML:', error)
+          log.error('Failed to load DrawIO XML', { error })
         }
       }, 100)
 

@@ -10,10 +10,13 @@ import {
   sanitizeProxyConfiguration,
   sanitizeAwsMetadata,
   sanitizeProjectPathValue,
+  store,
   __test__
 } from '../store'
 
-const { sanitizeTavilyApiKey } = __test__
+const { sanitizeTavilyApiKey, setElectronStoreForTests } = __test__
+
+jest.setTimeout(15000)
 
 const createTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'store-security-'))
 
@@ -79,10 +82,109 @@ describe('AWS credential coercion', () => {
     expect(result.sessionToken).toBe('AQoDYXdzEjr123+/=')
   })
 
-  it('throws on invalid credential characters', () => {
-    expect(() =>
-      coerceAwsCredentials({ accessKeyId: 'INVALID KEY', secretAccessKey: 'bad', sessionToken: undefined })
-    ).toThrow()
+  it('throws on invalid credential characters with structured metadata', () => {
+    expect.assertions(4)
+
+    try {
+      coerceAwsCredentials({
+        accessKeyId: 'INVALID KEY',
+        secretAccessKey: 'abcDEF123+/=abcDEF123+/=abcDEF123+/=abcDEF12',
+        sessionToken: undefined
+      })
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('AWS credential validation failed')
+      expect(structured.code).toBe('aws_credential_invalid_format')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          label: 'AWS access key ID'
+        })
+      )
+    }
+  })
+
+  it('identifies invalid secret access key formats', () => {
+    expect.assertions(4)
+
+    try {
+      coerceAwsCredentials({
+        accessKeyId: 'AKIAEXAMPLE123456',
+        secretAccessKey: 'bad',
+        sessionToken: undefined
+      })
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('AWS credential validation failed')
+      expect(structured.code).toBe('aws_credential_invalid_format')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          label: 'AWS secret access key'
+        })
+      )
+    }
+  })
+
+  it('surfaces metadata when credential types are invalid', () => {
+    expect.assertions(4)
+
+    try {
+      coerceAwsCredentials({
+        accessKeyId: 123456 as unknown as string,
+        secretAccessKey: 'abcDEF123+/=abcDEF123+/=abcDEF123+/=abcDEF12',
+        sessionToken: undefined
+      })
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('AWS credential validation failed')
+      expect(structured.code).toBe('aws_credential_invalid_type')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          label: 'AWS access key ID',
+          receivedType: 'number'
+        })
+      )
+    }
+  })
+
+  it('identifies invalid session token characters with structured metadata', () => {
+    expect.assertions(4)
+
+    try {
+      coerceAwsCredentials({
+        accessKeyId: 'AKIAEXAMPLE123456',
+        secretAccessKey: 'abcDEF123+/=abcDEF123+/=abcDEF123+/=abcDEF12',
+        sessionToken: 'AQoDYXdzEjr123!/'
+      })
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('AWS credential validation failed')
+      expect(structured.code).toBe('aws_credential_invalid_format')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          label: 'AWS session token'
+        })
+      )
+    }
   })
 })
 
@@ -107,8 +209,48 @@ describe('Proxy configuration sanitization', () => {
     })
   })
 
-  it('rejects incomplete enabled proxy configuration', () => {
-    expect(() => sanitizeProxyConfiguration({ enabled: true, host: 'proxy.example.com' })).toThrow()
+  it('rejects incomplete enabled proxy configuration with structured metadata', () => {
+    expect.assertions(4)
+
+    try {
+      sanitizeProxyConfiguration({ enabled: true, host: 'proxy.example.com' })
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('Configuration sanitization failed')
+      expect(structured.code).toBe('proxy_missing_required_fields')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          missingFields: expect.arrayContaining(['port', 'protocol'])
+        })
+      )
+    }
+  })
+
+  it('reports out-of-range proxy ports through structured errors', () => {
+    expect.assertions(4)
+
+    try {
+      sanitizeProxyConfiguration({ enabled: true, host: 'proxy.example.com', protocol: 'https', port: 70000 })
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('Configuration sanitization failed')
+      expect(structured.code).toBe('proxy_port_out_of_range')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          constraint: '1-65535'
+        })
+      )
+    }
   })
 })
 
@@ -136,7 +278,91 @@ describe('Project path sanitization', () => {
 
   it('rejects filesystem root assignments', () => {
     const rootPath = path.parse(process.cwd()).root
-    expect(() => sanitizeProjectPathValue(rootPath)).toThrow()
+    expect.assertions(4)
+
+    try {
+      sanitizeProjectPathValue(rootPath)
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('Configuration sanitization failed')
+      expect(structured.code).toBe('project_path_root_forbidden')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          reason: 'filesystem_root'
+        })
+      )
+    }
+  })
+
+  it('rejects null project paths with structured metadata', () => {
+    expect.assertions(4)
+
+    try {
+      sanitizeProjectPathValue(null)
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('Configuration sanitization failed')
+      expect(structured.code).toBe('project_path_missing')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          reason: 'nullish'
+        })
+      )
+    }
+  })
+
+  it('rejects non-string project paths', () => {
+    expect.assertions(4)
+
+    try {
+      sanitizeProjectPathValue(123)
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('Configuration sanitization failed')
+      expect(structured.code).toBe('project_path_invalid_type')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          receivedType: 'number'
+        })
+      )
+    }
+  })
+
+  it('rejects empty project path strings', () => {
+    expect.assertions(4)
+
+    try {
+      sanitizeProjectPathValue('   ')
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('Configuration sanitization failed')
+      expect(structured.code).toBe('project_path_empty')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          reason: 'empty_string'
+        })
+      )
+    }
   })
 })
 
@@ -151,6 +377,104 @@ describe('Tavily API key sanitization', () => {
   })
 
   it('rejects malformed keys', () => {
-    expect(() => sanitizeTavilyApiKey('invalid-key')).toThrow('Tavily API key has an unexpected format')
+    expect.assertions(4)
+
+    try {
+      sanitizeTavilyApiKey('invalid-key')
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('Configuration sanitization failed')
+      expect(structured.code).toBe('tavily_api_key_invalid_format')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          allowedPattern: expect.stringContaining('tvly-')
+        })
+      )
+    }
+  })
+
+  it('rejects non-string Tavily API keys', () => {
+    expect.assertions(4)
+
+    try {
+      sanitizeTavilyApiKey(123 as unknown as string)
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('Configuration sanitization failed')
+      expect(structured.code).toBe('tavily_api_key_invalid_type')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          receivedType: 'number'
+        })
+      )
+    }
+  })
+})
+
+describe('store inspector integration', () => {
+  beforeEach(() => {
+    setElectronStoreForTests(null)
+  })
+
+  afterEach(() => {
+    setElectronStoreForTests(null)
+  })
+
+  it('rejects open requests when the store is unavailable', async () => {
+    await expect(store.openInEditor()).rejects.toMatchObject({
+      message: 'Configuration store is unavailable',
+      code: 'store_uninitialized',
+      metadata: { operation: 'open_in_editor' }
+    })
+  })
+
+  it('delegates to electron-store when available', async () => {
+    const openInEditor = jest.fn().mockResolvedValue(undefined)
+
+    setElectronStoreForTests({
+      openInEditor,
+      get: jest.fn(),
+      set: jest.fn(),
+      delete: jest.fn(),
+      clear: jest.fn(),
+      store: {} as Record<string, unknown>,
+      path: '/tmp/mock-store'
+    } as unknown as any)
+
+    await expect(store.openInEditor()).resolves.toBeUndefined()
+    expect(openInEditor).toHaveBeenCalledTimes(1)
+  })
+
+  it('wraps failures in a structured error with metadata', async () => {
+    const openInEditor = jest.fn().mockRejectedValue(new Error('permission denied'))
+
+    setElectronStoreForTests({
+      openInEditor,
+      get: jest.fn(),
+      set: jest.fn(),
+      delete: jest.fn(),
+      clear: jest.fn(),
+      store: {} as Record<string, unknown>,
+      path: '/tmp/mock-store'
+    } as unknown as any)
+
+    await expect(store.openInEditor()).rejects.toMatchObject({
+      message: 'Failed to open configuration store.',
+      code: 'store_open_in_editor_failed',
+      metadata: expect.objectContaining({
+        reason: 'electron_store_open_failed',
+        errorMessage: 'permission denied'
+      })
+    })
   })
 })

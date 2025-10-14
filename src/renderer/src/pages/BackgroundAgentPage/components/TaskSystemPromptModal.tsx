@@ -1,7 +1,7 @@
 import { rendererLogger as log } from '@renderer/lib/logger';
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Modal } from 'flowbite-react'
+import { Modal, ModalBody, ModalHeader } from 'flowbite-react'
 import MD from '@renderer/components/Markdown/MD'
 import { ArrowPathIcon } from '@heroicons/react/24/outline'
 
@@ -58,7 +58,7 @@ const TaskSystemPromptModal = React.memo(
           const prompt = await getTaskSystemPrompt(taskId)
           setSystemPrompt(prompt)
         } catch (err: any) {
-          log.error('Failed to fetch system prompt:', err)
+          log.error('Failed to fetch system prompt', { error: err })
           setError(err.message || t('backgroundAgent.errors.getSystemPrompt'))
         } finally {
           setIsLoading(false)
@@ -81,15 +81,15 @@ const TaskSystemPromptModal = React.memo(
     return (
       <Modal dismissible show={isOpen} onClose={onClose} size="7xl" className="dark:bg-gray-900">
         <div className="border-[0.5px] border-white dark:border-gray-100 rounded-lg shadow-xl dark:shadow-gray-900/80">
-          <Modal.Header className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
+          <ModalHeader className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
             <div className="flex items-center space-x-2">
               <span>{t('backgroundAgent.systemPrompt.title')}</span>
               {taskName && (
                 <span className="text-sm text-gray-500 dark:text-gray-400">- {taskName}</span>
               )}
             </div>
-          </Modal.Header>
-          <Modal.Body className="p-0 bg-white dark:bg-gray-900 rounded-b-lg">
+          </ModalHeader>
+          <ModalBody className="p-0 bg-white dark:bg-gray-900 rounded-b-lg">
             <div className="p-6 dark:text-white">
               {isLoading ? (
                 <div className="flex items-center justify-center py-8 h-[70vh]">
@@ -119,7 +119,7 @@ const TaskSystemPromptModal = React.memo(
                 </div>
               )}
             </div>
-          </Modal.Body>
+          </ModalBody>
         </div>
       </Modal>
     )

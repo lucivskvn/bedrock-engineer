@@ -123,7 +123,13 @@ async function testModel(
     console.log(`✓ ${modelName} (${modelId}) @ ${region}: Connected successfully`)
     return { success: true }
   } catch (error: any) {
-    console.error(`✗ ${modelName} (${modelId}) @ ${region}: ${error.name} - ${error.message}`)
+    console.error('Model connectivity test failed', {
+      modelName,
+      modelId,
+      region,
+      errorName: error?.name,
+      errorMessage: error?.message
+    })
 
     // Re-throw certain errors that should fail the test
     if (error.name === 'ValidationException' || error.name === 'InvalidRequestException') {
@@ -216,7 +222,11 @@ async function testRegion(region: BedrockSupportRegion): Promise<{
           err.error?.name === 'ValidationException' ||
           err.error?.name === 'InvalidRequestException'
         ) {
-          console.error(`  ✗ ${err.modelName}: ${err.error.message}`)
+          console.error('Model validation error detected', {
+            modelName: err.modelName,
+            errorName: err.error?.name,
+            errorMessage: err.error?.message
+          })
         }
       })
     })

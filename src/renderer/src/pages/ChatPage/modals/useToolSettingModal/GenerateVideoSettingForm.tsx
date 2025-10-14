@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSettings } from '@renderer/contexts/SettingsContext'
-import { Label, TextInput } from 'flowbite-react'
+import { HelperText, Label, TextInput } from 'flowbite-react'
 
 export const GenerateVideoSettingForm: React.FC = () => {
   const { t } = useTranslation()
@@ -67,10 +67,9 @@ export const GenerateVideoSettingForm: React.FC = () => {
       <div className="flex flex-col gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md mb-6 w-full">
         {/* S3 URI設定 */}
         <div className="w-full">
-          <Label
-            htmlFor="generateVideoS3Uri"
-            value={t('S3 Output URI (Required)', 'S3 Output URI (Required)')}
-          />
+          <Label htmlFor="generateVideoS3Uri">
+            {t('S3 Output URI (Required)', 'S3 Output URI (Required)')}
+          </Label>
           <TextInput
             id="generateVideoS3Uri"
             type="text"
@@ -80,24 +79,22 @@ export const GenerateVideoSettingForm: React.FC = () => {
             onBlur={handleS3UriBlur}
             className="mt-2 w-full"
             color={!isValidUri ? 'failure' : 'gray'}
-            helperText={
-              !isValidUri ? (
-                <span className="text-red-600 dark:text-red-400">
-                  {t(
-                    'S3 URI must start with s3:// and include a bucket name',
-                    'S3 URI must start with s3:// and include a bucket name'
-                  )}
-                </span>
-              ) : (
-                <span className="text-gray-500 dark:text-gray-400">
-                  {t(
-                    'Example: s3://my-bucket/nova-reel-videos/',
-                    'Example: s3://my-bucket/nova-reel-videos/'
-                  )}
-                </span>
-              )
-            }
           />
+          {!isValidUri ? (
+            <HelperText color="failure" className="mt-2">
+              {t(
+                'S3 URI must start with s3:// and include a bucket name',
+                'S3 URI must start with s3:// and include a bucket name'
+              )}
+            </HelperText>
+          ) : (
+            <HelperText className="mt-2 text-gray-500 dark:text-gray-400">
+              {t(
+                'Example: s3://my-bucket/nova-reel-videos/',
+                'Example: s3://my-bucket/nova-reel-videos/'
+              )}
+            </HelperText>
+          )}
         </div>
 
         {/* モデル情報 */}

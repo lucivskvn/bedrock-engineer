@@ -8,6 +8,7 @@ import { BackgroundAgentService } from './BackgroundAgentService'
 import { ServiceContext } from '../../types'
 import { MainNotificationService } from '../NotificationService'
 import { z } from 'zod'
+import { createBackgroundAgentError } from './errors'
 
 const logger = createCategoryLogger('background-agent:scheduler')
 
@@ -33,12 +34,25 @@ const persistedTaskSchema = z.object({
   lastExecutionStarted: z.number().optional()
 })
 
+type ExecutionHistoryStoreState = {
+  executionHistory: Record<string, TaskExecutionResult[]>
+}
+
+type ExecutionHistoryStore = {
+  get<K extends keyof ExecutionHistoryStoreState>(key: K): ExecutionHistoryStoreState[K]
+  set<K extends keyof ExecutionHistoryStoreState>(
+    key: K,
+    value: ExecutionHistoryStoreState[K]
+  ): void
+  store: ExecutionHistoryStoreState
+}
+
 export class BackgroundAgentScheduler {
   private scheduledTasks: Map<string, ScheduledTask> = new Map()
   private cronJobs: Map<string, cron.ScheduledTask> = new Map()
   private backgroundAgentService: BackgroundAgentService
   private context: ServiceContext
-  private executionHistoryStore: any
+  private executionHistoryStore: ExecutionHistoryStore
   private notificationService: MainNotificationService
   private timezone: string
   constructor(context: ServiceContext, timezone?: string) {
@@ -51,12 +65,12 @@ export class BackgroundAgentScheduler {
       Intl.DateTimeFormat().resolvedOptions().timeZone
 
     // 実行履歴用のストアを初期化
-    this.executionHistoryStore = new Store({
+    this.executionHistoryStore = new Store<ExecutionHistoryStoreState>({
       name: 'background-agent-execution-history',
       defaults: {
-        executionHistory: {} as { [key: string]: TaskExecutionResult[] }
+        executionHistory: {}
       }
-    }) as any
+    }) as unknown as ExecutionHistoryStore
 
     // BackgroundAgentServiceにコールバックを設定してリアルタイム更新を有効化
     this.backgroundAgentService.setExecutionHistoryUpdateCallback(
@@ -245,7 +259,9 @@ export class BackgroundAgentScheduler {
     try {
       // Cron式の妥当性を検証
       if (!cron.validate(config.cronExpression)) {
-        throw new Error(`Invalid cron expression: ${config.cronExpression}`)
+        throw createBackgroundAgentError('background_cron_expression_invalid', {
+          cronExpression: config.cronExpression
+        })
       }
 
       const task: ScheduledTask = {
@@ -322,7 +338,10 @@ export class BackgroundAgentScheduler {
 
       // Cron式の妥当性を再確認
       if (!cron.validate(task.cronExpression)) {
-        throw new Error(`Invalid cron expression for task ${taskId}: ${task.cronExpression}`)
+        throw createBackgroundAgentError('background_cron_expression_invalid', {
+          cronExpression: task.cronExpression,
+          taskId
+        })
       }
 
       // 新しいCronジョブを作成
@@ -978,7 +997,10 @@ export class BackgroundAgentScheduler {
 
       // Cron式の妥当性を検証
       if (!cron.validate(config.cronExpression)) {
-        throw new Error(`Invalid cron expression: ${config.cronExpression}`)
+        throw createBackgroundAgentError('background_cron_expression_invalid', {
+          cronExpression: config.cronExpression,
+          taskId
+        })
       }
 
       // 既存のCronジョブを停止
@@ -1113,7 +1135,7 @@ export class BackgroundAgentScheduler {
   async executeTaskManually(taskId: string): Promise<TaskExecutionResult> {
     const task = this.scheduledTasks.get(taskId)
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`)
+      throw createBackgroundAgentError('background_task_not_found', { taskId })
     }
 
     logger.info('Manual task execution requested', {
@@ -1129,7 +1151,9 @@ export class BackgroundAgentScheduler {
     const latestResult = history[history.length - 1]
 
     if (!latestResult) {
-      throw new Error(`No execution result found for task: ${taskId}`)
+      throw createBackgroundAgentError('background_execution_result_missing', {
+        taskId
+      })
     }
 
     return latestResult

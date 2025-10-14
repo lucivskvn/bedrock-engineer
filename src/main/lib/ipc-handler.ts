@@ -102,21 +102,21 @@ export function registerIpcHandler<C extends IPCChannels>(
     try {
       ensureTrustedRenderer(event, channel, logger)
 
-      logger.debug(`IPC handler invoked: ${channel}`, {
+      logger.debug('IPC handler invoked', {
         channel,
         argsLength: args.length
       })
 
       const result = await handler(event, ...args)
 
-      logger.debug(`IPC handler completed: ${channel}`, {
+      logger.debug('IPC handler completed', {
         channel,
         success: true
       })
 
       return result
     } catch (error) {
-      logger.error(`IPC handler error: ${channel}`, {
+      logger.error('IPC handler error', {
         channel,
         error: error instanceof Error ? error.message : String(error)
       })
@@ -124,7 +124,7 @@ export function registerIpcHandler<C extends IPCChannels>(
     }
   })
 
-  logger.verbose(`IPC handler registered: ${channel}`)
+  logger.verbose('IPC handler registered', { channel })
 }
 
 /**
@@ -168,12 +168,17 @@ export function registerLogHandler(): void {
       process: processType || 'unknown'
     }
 
+    const forwardedMeta = {
+      forwardedMessage: message,
+      ...metaWithProcess
+    }
+
     switch (level) {
       case 'error':
-        categoryLogger.error(message, metaWithProcess)
+        categoryLogger.error('Forwarded renderer error log', forwardedMeta)
         break
       case 'warn':
-        categoryLogger.warn(message, metaWithProcess)
+        categoryLogger.warn('Forwarded renderer warning log', forwardedMeta)
         break
       case 'info':
         categoryLogger.info(message, metaWithProcess)

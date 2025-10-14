@@ -3,6 +3,10 @@ import { MCPClient } from './mcp-client'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { McpServerConfig } from '../../types/agent-chat'
 import { log } from '../../common/logger'
+import {
+  McpConnectionTestResult,
+  McpToolExecutionResult
+} from '../../types/mcp'
 
 const configSchema = z.object({
   mcpServers: z.record(
@@ -149,7 +153,9 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
       // configSchema によるバリデーション
       const { success, error } = configSchema.safeParse(configData)
       if (!success) {
-        log.error(`Invalid MCP server configuration: ${error}`)
+        log.error('Invalid MCP server configuration', {
+          validationError: error
+        })
         throw new Error('Invalid MCP server configuration')
       }
 
@@ -158,7 +164,7 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
           mcpServers.map(async (serverConfig) => {
             try {
               if (!serverConfig.command) {
-                log.error(`MCP server "${serverConfig.name}" missing command`)
+                log.error('MCP server missing command', { serverName: serverConfig.name })
                 return undefined
               }
               const client = await MCPClient.fromCommand(
@@ -180,7 +186,9 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
 
     await initializationInProgress
   } catch (error) {
-    log.error(`Error during MCP initialization: ${error}`)
+    log.error('Error during MCP initialization', {
+      error: error instanceof Error ? error.message : String(error)
+    })
     // エラーが発生した場合はキャッシュをクリアして次回再試行できるようにする
     lastMcpServerConfigHash = null
     lastMcpServerLength = 0
@@ -215,16 +223,20 @@ export const tryExecuteMcpTool = async (
   toolName: string,
   input: any,
   mcpServers?: McpServerConfig[]
-) => {
+): Promise<McpToolExecutionResult> => {
   // MCPサーバー設定がない場合はツールが見つからない旨を返す
   if (!mcpServers || mcpServers.length === 0) {
     return {
       found: false,
       success: false,
       name: toolName,
-      error: `No MCP servers configured`,
-      message: `This agent does not have any MCP servers configured. Please add MCP server configuration in agent settings.`,
-      result: null
+      error: 'No MCP servers configured.',
+      message: 'No MCP servers configured.',
+      result: null,
+      details: {
+        toolName,
+        serverCount: 0
+      }
     }
   }
 
@@ -242,9 +254,13 @@ export const tryExecuteMcpTool = async (
       found: false,
       success: false,
       name: toolName,
-      error: `MCP tool "${toolName}" not found`,
-      message: `No MCP server provides tool "${toolName}"`,
-      result: null
+      error: 'MCP tool not found.',
+      message: 'MCP tool not found.',
+      result: null,
+      details: {
+        toolName,
+        availableServers: mcpServers.length
+      }
     }
   }
 
@@ -257,8 +273,12 @@ export const tryExecuteMcpTool = async (
       found: true,
       success: true,
       name: toolName,
-      message: `MCP tool execution successful: ${toolName}`,
-      result: res
+      message: 'MCP tool execution succeeded.',
+      result: res,
+      details: {
+        toolName,
+        responseType: typeof res
+      }
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
@@ -268,8 +288,12 @@ export const tryExecuteMcpTool = async (
       success: false,
       name: toolName,
       error: errorMessage,
-      message: `Error executing MCP tool "${toolName}": ${errorMessage}`,
-      result: null
+      message: 'MCP tool execution failed.',
+      result: null,
+      details: {
+        toolName,
+        error: errorMessage
+      }
     }
   }
 }
@@ -281,17 +305,7 @@ export const tryExecuteMcpTool = async (
  */
 export const testMcpServerConnection = async (
   mcpServer: McpServerConfig
-): Promise<{
-  success: boolean
-  message: string
-  details?: {
-    toolCount?: number
-    toolNames?: string[]
-    error?: string
-    errorDetails?: string
-    startupTime?: number
-  }
-}> => {
+): Promise<McpConnectionTestResult> => {
   const startTime = Date.now()
 
   try {
@@ -318,8 +332,9 @@ export const testMcpServerConnection = async (
     const endTime = Date.now()
     return {
       success: true,
-      message: `Successfully connected to MCP server "${mcpServer.name}"`,
+      message: 'MCP server connection test succeeded.',
       details: {
+        serverName: mcpServer.name,
         toolCount: tools.length,
         toolNames,
         startupTime: endTime - startTime
@@ -335,8 +350,9 @@ export const testMcpServerConnection = async (
 
     return {
       success: false,
-      message: `Failed to connect to MCP server "${mcpServer.name}"`,
+      message: 'MCP server connection test failed.',
       details: {
+        serverName: mcpServer.name,
         error: errorMessage,
         errorDetails: errorAnalysis
       }
@@ -351,28 +367,13 @@ export const testMcpServerConnection = async (
  */
 export const testAllMcpServerConnections = async (
   mcpServers: McpServerConfig[]
-): Promise<
-  Record<
-    string,
-    {
-      success: boolean
-      message: string
-      details?: {
-        toolCount?: number
-        toolNames?: string[]
-        error?: string
-        errorDetails?: string
-        startupTime?: number
-      }
-    }
-  >
-> => {
+): Promise<Record<string, McpConnectionTestResult>> => {
   // MCPサーバー設定がない場合は空オブジェクトを返す
   if (!mcpServers || mcpServers.length === 0) {
     return {}
   }
 
-  const results: Record<string, any> = {}
+  const results: Record<string, McpConnectionTestResult> = {}
 
   // 逐次処理（直列）でテスト実行
   for (const server of mcpServers) {

@@ -32,7 +32,7 @@ export const FileDisplay: React.FC<FileDisplayProps> = ({ files }) => {
       const base64DataUrl = await window.api.images.getLocalImage(filePath)
       return base64DataUrl
     } catch (error) {
-      log.error('Failed to load image as base64:', error)
+      log.error('Failed to load image as base64', { error })
       throw error
     }
   }
@@ -60,7 +60,10 @@ export const FileDisplay: React.FC<FileDisplayProps> = ({ files }) => {
               [filePath]: dataUrl
             }))
           } catch (error) {
-            log.error(`Failed to load image ${filePath}:`, error)
+            log.error('Failed to load image preview', {
+              filePath,
+              error: error instanceof Error ? error.message : String(error)
+            })
             // エラーが発生した場合はプレビューを無効にする
             setPreviewingImages((prev) => ({
               ...prev,

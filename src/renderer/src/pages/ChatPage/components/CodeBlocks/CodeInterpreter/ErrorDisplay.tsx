@@ -28,7 +28,7 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, stderr, exitC
       )
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      log.error('Failed to copy error:', err)
+      log.error('Failed to copy error', { error: err })
       toast.error(t('code interpreter display.Failed to copy error', 'Failed to copy error'))
     }
   }

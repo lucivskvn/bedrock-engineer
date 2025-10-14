@@ -3,6 +3,12 @@ import { FaList, FaClock, FaDocker, FaCheck, FaTimes } from 'react-icons/fa'
 import { MdCancel } from 'react-icons/md'
 import { AsyncTaskCard, TaskStatus } from './AsyncTaskCard'
 
+export interface TaskErrorInfo {
+  message: string
+  code?: string
+  metadata?: Record<string, unknown>
+}
+
 export interface TaskListResult {
   success: boolean
   name: 'codeInterpreter'
@@ -17,6 +23,19 @@ export interface TaskListResult {
     cancelled: number
   }
   message: string
+  result?: {
+    tasks: TaskInfo[]
+    summary: {
+      total: number
+      pending: number
+      running: number
+      completed: number
+      failed: number
+      cancelled: number
+    }
+    statusFilter?: TaskStatus
+    errorInfo?: TaskErrorInfo
+  }
 }
 
 export interface TaskInfo {
@@ -30,6 +49,7 @@ export interface TaskInfo {
   inputFiles?: Array<{ path: string }>
   result?: any
   error?: string
+  errorInfo?: TaskErrorInfo
   progress?: number
 }
 
@@ -68,6 +88,7 @@ export const TaskListCard: React.FC<TaskListCardProps> = ({ result }) => {
   })
 
   if (!result.success) {
+    const errorInfo = result.result?.errorInfo
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 p-4 mb-2">
         <div className="flex items-center gap-3 mb-2">
@@ -77,6 +98,16 @@ export const TaskListCard: React.FC<TaskListCardProps> = ({ result }) => {
           </span>
         </div>
         <div className="text-sm text-red-700 dark:text-red-300">{result.message}</div>
+        {errorInfo && (
+          <div className="mt-2 text-xs text-red-600 dark:text-red-200 space-y-1">
+            {errorInfo.code && <div>Code: {errorInfo.code}</div>}
+            {errorInfo.metadata && Object.keys(errorInfo.metadata).length > 0 && (
+              <pre className="whitespace-pre-wrap break-words bg-red-100/60 dark:bg-red-900/40 p-2 rounded border border-red-200 dark:border-red-700">
+                {JSON.stringify(errorInfo.metadata, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
       </div>
     )
   }

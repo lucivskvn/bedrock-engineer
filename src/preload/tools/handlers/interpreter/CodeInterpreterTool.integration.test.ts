@@ -46,7 +46,8 @@ describe('CodeInterpreterTool Integration Tests', () => {
 
     const storeManager = {
       get: () => undefined as any,
-      set: () => {}
+      set: () => {},
+      openInEditor: async () => {}
     }
 
     dependencies = { logger, store: storeManager }
@@ -60,10 +61,10 @@ describe('CodeInterpreterTool Integration Tests', () => {
 
       if (!dockerAvailable) {
         console.warn('⚠️  Docker is not available. Integration tests will be skipped.')
-        console.warn(`Docker check error: ${dockerCheck.error}`)
+        console.warn('Docker check error', { error: dockerCheck.error })
       }
     } catch (error) {
-      console.warn('⚠️  Failed to check Docker availability:', error)
+      console.warn('⚠️  Failed to check Docker availability', { error })
     }
   })
 
@@ -72,7 +73,7 @@ describe('CodeInterpreterTool Integration Tests', () => {
       try {
         await tool.dispose()
       } catch (error) {
-        console.warn('Warning: Failed to dispose tool:', error)
+        console.warn('Warning: Failed to dispose tool', { error })
       }
     }
   })
@@ -134,7 +135,7 @@ print(f"Pi rounded: {pi_rounded}")
       }
     })
 
-    test.only('should handle file creation and report generated files', async () => {
+    test('should handle file creation and report generated files', async () => {
       if (!dockerAvailable) {
         console.log('⏭️  Skipping test: Docker not available')
         return
@@ -411,7 +412,7 @@ print("All standard library tests passed!")
         expect(typeof result.summary.completed).toBe('number')
         expect(typeof result.summary.failed).toBe('number')
         expect(typeof result.summary.cancelled).toBe('number')
-        expect(result.message).toContain('Found')
+        expect(result.message).toBe('Task list retrieved.')
       }
     })
   })

@@ -57,11 +57,10 @@ export class VideoService {
 
     // Validate that Nova Reel is supported in the selected region
     if (!isNovaReelSupportedInRegion(this.region)) {
-      log.warn(
-        `Nova Reel is not available in region ${this.region}. Supported regions: ${Object.keys(
-          NOVA_REEL_REGION_SUPPORT
-        ).join(', ')}`
-      )
+      log.warn('Nova Reel is not available in the configured region', {
+        region: this.region,
+        supportedRegions: Object.keys(NOVA_REEL_REGION_SUPPORT)
+      })
     }
 
     this.runtimeClient = createRuntimeClient(awsCredentials)
@@ -406,10 +405,13 @@ export class VideoService {
 
     try {
       // Add detailed logging for debugging
-      log.debug('Nova Reel Request Structure:', {
-        request: JSON.stringify(novaReelRequest, null, 2)
+      log.debug('Nova Reel request structure', {
+        request: novaReelRequest
       })
-      log.debug(`Using Nova Reel model: ${modelId} for region: ${this.region}`)
+      log.debug('Using Nova Reel model for region', {
+        modelId,
+        region: this.region
+      })
 
       const command = new StartAsyncInvokeCommand({
         modelId,
@@ -421,16 +423,12 @@ export class VideoService {
         }
       })
 
-      log.debug('AWS Command:', {
-        command: JSON.stringify(
-          {
-            modelId,
-            modelInput: novaReelRequest,
-            outputDataConfig: { s3OutputDataConfig: { s3Uri: request.s3Uri } }
-          },
-          null,
-          2
-        )
+      log.debug('Prepared AWS command payload', {
+        command: {
+          modelId,
+          modelInput: novaReelRequest,
+          outputDataConfig: { s3OutputDataConfig: { s3Uri: request.s3Uri } }
+        }
       })
 
       const response = await this.runtimeClient.send(command)
@@ -454,7 +452,7 @@ export class VideoService {
         }
       }
     } catch (error: any) {
-      log.error('Error starting video generation:', { error })
+      log.error('Failed to start video generation', { error })
 
       // If MULTI_SHOT_MANUAL fails with validation error, try fallback to MULTI_SHOT_AUTOMATED
       if (
@@ -647,7 +645,9 @@ export class VideoService {
     // Wait for completion
     const finalStatus = await this.waitForCompletion(initialResult.invocationArn, {
       onProgress: (status) => {
-        log.debug(`Video generation status: ${status.status}`)
+        log.debug('Video generation status update', {
+          status: status.status
+        })
       }
     })
 

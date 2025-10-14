@@ -74,7 +74,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         player.initialized
       )
     } catch (error) {
-      log.error('Error starting audio player:', error)
+      log.error('Error starting audio player', { error })
       setStatus('error')
       statusRef.current = 'error'
       audioPlayerRef.current = null
@@ -124,7 +124,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             }
           }, 100)
         } catch (error) {
-          log.error('Error during audio playback:', error)
+          log.error('Error during audio playback', { error })
         }
       } else {
         log.warn('Cannot play audio: player not ready', {
@@ -197,7 +197,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
       return float32Array
     } catch (error) {
-      log.error('Error in base64ToFloat32Array:', error)
+      log.error('Error in base64ToFloat32Array', { error })
       throw error
     }
   }, [])
@@ -209,7 +209,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         const audioData = base64ToFloat32Array(base64Data)
         playAudio(audioData)
       } catch (error) {
-        log.error('Error playing audio from base64:', error)
+        log.error('Error playing audio from base64', { error })
       }
     },
     [base64ToFloat32Array, playAudio]

@@ -7,6 +7,7 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { WorkspaceConfig } from './types'
 import { ToolLogger } from '../../base/types'
+import { createStructuredError } from '../../../../common/errors'
 import { SecurityManager } from './SecurityManager'
 
 /**
@@ -83,7 +84,14 @@ export class FileManager {
       this.logger.error('Failed to initialize workspace', {
         error: error instanceof Error ? error.message : String(error)
       })
-      throw new Error(`Failed to initialize workspace: ${error}`)
+      throw createStructuredError({
+        name: 'CodeInterpreterWorkspaceError',
+        message: 'Failed to initialize workspace.',
+        code: 'WORKSPACE_INITIALIZATION_FAILED',
+        metadata: {
+          errorMessage: error instanceof Error ? error.message : String(error)
+        }
+      })
     }
   }
 
@@ -92,7 +100,11 @@ export class FileManager {
    */
   getWorkspacePath(): string {
     if (!this.workspacePath) {
-      throw new Error('Workspace not initialized')
+      throw createStructuredError({
+        name: 'CodeInterpreterWorkspaceError',
+        message: 'Workspace not initialized.',
+        code: 'WORKSPACE_NOT_INITIALIZED'
+      })
     }
     return this.workspacePath
   }

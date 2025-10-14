@@ -44,7 +44,9 @@ class ExpandableBuffer {
     const now = Date.now()
     if (this.lastWriteTime !== 0) {
       const elapsed = now - this.lastWriteTime
-      log.debug(`Elapsed time since last audio buffer write: ${elapsed} ms`)
+      log.debug('Elapsed time since last audio buffer write', {
+        elapsedMs: elapsed
+      })
     }
     this.lastWriteTime = now
   }
@@ -58,13 +60,19 @@ class ExpandableBuffer {
       if (samples.length <= this.readIndex) {
         // ... but we can shift samples to the beginning of the buffer
         const subarray = this.buffer.subarray(this.readIndex, this.writeIndex)
-        log.debug(`Shifting the audio buffer of length ${subarray.length} by ${this.readIndex}`)
+        log.debug('Shifting the audio buffer', {
+          length: subarray.length,
+          shiftBy: this.readIndex
+        })
         this.buffer.set(subarray)
       } else {
         // ... and we need to grow the buffer capacity to make room for more audio
         const newLength = (samples.length + this.writeIndex - this.readIndex) * 2
         const newBuffer = new Float32Array(newLength)
-        log.debug(`Expanding the audio buffer from ${this.buffer.length} to ${newLength}`)
+        log.debug('Expanding the audio buffer', {
+          previousLength: this.buffer.length,
+          nextLength: newLength
+        })
         newBuffer.set(this.buffer.subarray(this.readIndex, this.writeIndex))
         this.buffer = newBuffer
       }
@@ -89,7 +97,9 @@ class ExpandableBuffer {
     destination.set(this.buffer.subarray(this.readIndex, this.readIndex + copyLength))
     this.readIndex += copyLength
     if (copyLength > 0 && this.underflowedSamples > 0) {
-      log.debug(`Detected audio buffer underflow of ${this.underflowedSamples} samples`)
+      log.debug('Detected audio buffer underflow', {
+        underflowSamples: this.underflowedSamples
+      })
       this.underflowedSamples = 0
     }
     if (copyLength < destination.length) {
@@ -129,7 +139,9 @@ class AudioPlayerProcessor extends AudioWorkletProcessor {
         // Override the current playback initial buffer length
         const newLength = event.data.bufferLength
         this.playbackBuffer.initialBufferLength = newLength
-        log.debug(`Changed initial audio buffer length to: ${newLength}`)
+        log.debug('Changed initial audio buffer length', {
+          bufferLength: newLength
+        })
       } else if (event.data.type === 'barge-in') {
         this.playbackBuffer.clearBuffer()
       }

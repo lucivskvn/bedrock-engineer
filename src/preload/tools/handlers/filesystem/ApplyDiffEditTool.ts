@@ -6,7 +6,7 @@ import * as fs from 'fs/promises'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
-import { ExecutionError } from '../../base/errors'
+import { createFileExecutionError, summarizeError } from './errorUtils'
 import { ToolResult } from '../../../../types/tools'
 
 /**
@@ -171,15 +171,15 @@ Example:
     } catch (error) {
       this.logger.error('Error applying diff edit to file', {
         path,
-        error: error instanceof Error ? error.message : String(error)
+        error: summarizeError(error)
       })
 
-      throw new ExecutionError(
-        `Error applying diff edit: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined,
-        { path }
-      )
+      throw createFileExecutionError({
+        toolName: this.name,
+        reason: 'APPLY_DIFF_EDIT_FAILED',
+        error,
+        metadata: { path }
+      })
     }
   }
 

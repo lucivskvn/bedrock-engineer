@@ -44,13 +44,22 @@ export interface TodoUpdateResult {
   error?: string
 }
 
+type TodoMetadataStoreState = {
+  activeTodoListId?: string
+  recentTodos: string[]
+  metadata: Record<string, TodoMetadata>
+}
+
+type TodoMetadataStore = {
+  get<K extends keyof TodoMetadataStoreState>(key: K): TodoMetadataStoreState[K]
+  set<K extends keyof TodoMetadataStoreState>(key: K, value: TodoMetadataStoreState[K]): void
+  delete(key: keyof TodoMetadataStoreState): void
+  store: TodoMetadataStoreState
+}
+
 export class TodoSessionManager {
   private readonly todosDir: string
-  private metadataStore: Store<{
-    activeTodoListId?: string
-    recentTodos: string[]
-    metadata: { [key: string]: TodoMetadata }
-  }>
+  private metadataStore: TodoMetadataStore
 
   constructor() {
     const userDataPath = store.get('userDataPath')
@@ -63,13 +72,13 @@ export class TodoSessionManager {
     fs.mkdirSync(this.todosDir, { recursive: true })
 
     // メタデータ用のストアを初期化
-    this.metadataStore = new Store({
+    this.metadataStore = new Store<TodoMetadataStoreState>({
       name: 'todo-sessions-meta',
       defaults: {
-        recentTodos: [] as string[],
-        metadata: {} as { [key: string]: TodoMetadata }
+        recentTodos: [],
+        metadata: {}
       }
-    })
+    }) as unknown as TodoMetadataStore
 
     // 初回起動時またはメタデータが空の場合、既存のTODOリストからメタデータを生成
     this.initializeMetadata()
@@ -124,7 +133,10 @@ export class TodoSessionManager {
       const data = fs.readFileSync(filePath, 'utf-8')
       return JSON.parse(data) as TodoList
       } catch (error) {
-        log.error(`Error reading todo file ${sessionId}:`, { error })
+        log.error('Failed to read todo session file', {
+          sessionId,
+          error: error instanceof Error ? error.message : String(error)
+        })
         return null
       }
   }
@@ -134,7 +146,10 @@ export class TodoSessionManager {
     try {
       await fs.promises.writeFile(filePath, JSON.stringify(todoList, null, 2))
       } catch (error) {
-        log.error(`Error writing todo file ${sessionId}:`, { error })
+        log.error('Failed to write todo session file', {
+          sessionId,
+          error: error instanceof Error ? error.message : String(error)
+        })
       }
   }
 
@@ -261,7 +276,10 @@ export class TodoSessionManager {
         delete metadata[safeSessionId]
       this.metadataStore.set('metadata', metadata)
       } catch (error) {
-        log.error(`Error deleting todo file ${sessionId}:`, { error })
+        log.error('Failed to delete todo session file', {
+          sessionId,
+          error: error instanceof Error ? error.message : String(error)
+        })
       }
 
     const recentTodos = this.metadataStore.get('recentTodos')

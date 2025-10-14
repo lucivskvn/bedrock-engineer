@@ -326,7 +326,7 @@ export class ConverseService {
   ): Promise<T> {
     // スロットリングまたはサービス利用不可の場合
     if (error.name === 'ThrottlingException' || error.name === 'ServiceUnavailableException') {
-      converseLogger.warn(`${error.name} occurred - retrying`, {
+      converseLogger.warn('Bedrock converse request throttled or unavailable', {
         retry: retries,
         errorName: error.name,
         message: error.message,
@@ -363,14 +363,16 @@ export class ConverseService {
     // バリデーションエラーの場合
     if (error.name === 'ValidationException') {
       // その他のバリデーションエラー
-      converseLogger.error(`ValidationException in ${methodName}`, {
+      converseLogger.error('Bedrock converse validation failure', {
+        method: methodName,
         errorMessage: error.message,
         errorDetails: error.$metadata,
         modelId: props.modelId
       })
     } else {
       // その他のエラー
-      converseLogger.error(`Error in ${methodName}`, {
+      converseLogger.error('Bedrock converse request failed', {
+        method: methodName,
         errorName: error.name,
         errorMessage: error.message,
         modelId: props.modelId,

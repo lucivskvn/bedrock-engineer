@@ -33,7 +33,7 @@ const BackgroundAgentPage: React.FC = () => {
       setShowCreateForm(false)
       await refreshAll()
     } catch (error) {
-      log.error('Failed to create task:', error)
+      log.error('Failed to create task', { error })
     }
   }
 

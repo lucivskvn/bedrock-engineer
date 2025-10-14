@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
-import { Modal, Button } from 'flowbite-react'
+import { Modal, ModalBody, ModalFooter, ModalHeader, Button } from 'flowbite-react'
 import { useTranslation } from 'react-i18next'
 import { HiOfficeBuilding } from 'react-icons/hi'
 import { CustomAgent, OrganizationConfig } from '@/types/agent-chat'
 import { useSettings } from '@renderer/contexts/SettingsContext'
+import { rendererLogger as log } from '@renderer/lib/logger'
 
 interface ShareToOrganizationModalProps {
   agent?: CustomAgent
@@ -63,10 +64,10 @@ const ShareToOrganizationModal: React.FC<ShareToOrganizationModalProps> = ({
   return (
     <Modal show={isOpen} onClose={handleClose} size="md" className="dark:bg-gray-900">
       <div className="border-[0.5px] border-white dark:border-gray-100 rounded-lg shadow-xl dark:shadow-gray-900/80">
-        <Modal.Header className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
+        <ModalHeader className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
           {t('shareAgentToOrganization', 'Share Agent to Organization')}
-        </Modal.Header>
-        <Modal.Body className="p-0 bg-white dark:bg-gray-900">
+        </ModalHeader>
+        <ModalBody className="p-0 bg-white dark:bg-gray-900">
           <div className="space-y-4 p-6">
             {/* エージェント情報 */}
             <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
@@ -163,8 +164,8 @@ const ShareToOrganizationModal: React.FC<ShareToOrganizationModalProps> = ({
               </div>
             )}
           </div>
-        </Modal.Body>
-        <Modal.Footer className="border-t border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-b-lg">
+        </ModalBody>
+        <ModalFooter className="border-t border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-b-lg">
           <Button
             onClick={handleShare}
             disabled={isSharing || !selectedOrgId || organizations.length === 0}
@@ -175,7 +176,7 @@ const ShareToOrganizationModal: React.FC<ShareToOrganizationModalProps> = ({
           <Button color="gray" onClick={handleClose} disabled={isSharing}>
             {t('cancel', 'Cancel')}
           </Button>
-        </Modal.Footer>
+        </ModalFooter>
       </div>
     </Modal>
   )
@@ -204,7 +205,9 @@ export const useShareToOrganizationModal = () => {
         throw new Error(result.error || 'Failed to share agent to organization')
       }
     } catch (error) {
-      console.error('Error sharing agent to organization:', error)
+      log.error('Error sharing agent to organization', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       throw error
     }
   }

@@ -18,6 +18,7 @@ import {
 } from './types'
 import { ToolLogger } from '../../base/types'
 import { SecurityManager } from './SecurityManager'
+import { createStructuredError } from '../../../../common/errors'
 
 /**
  * Docker executor class
@@ -72,7 +73,15 @@ export class DockerExecutor {
       // Validate execution config
       const validation = this.securityManager.validateExecutionConfig(config)
       if (!validation.isValid) {
-        throw new Error(`Invalid execution config: ${validation.errors.join(', ')}`)
+        throw createStructuredError({
+          name: 'CodeInterpreterConfigError',
+          message: 'Invalid execution config.',
+          code: 'INVALID_EXECUTION_CONFIG',
+          metadata: {
+            errorCount: validation.errors.length,
+            errors: validation.errors
+          }
+        })
       }
 
       // Validate and prepare input files
@@ -307,9 +316,15 @@ export class DockerExecutor {
         dataPath,
         error: error instanceof Error ? error.message : String(error)
       })
-      throw new Error(
-        `Failed to create data directory: ${error instanceof Error ? error.message : String(error)}`
-      )
+      throw createStructuredError({
+        name: 'CodeInterpreterWorkspaceError',
+        message: 'Failed to create data directory.',
+        code: 'DATA_DIRECTORY_CREATION_FAILED',
+        metadata: {
+          dataPath,
+          errorMessage: error instanceof Error ? error.message : String(error)
+        }
+      })
     }
   }
 
@@ -822,15 +837,27 @@ CMD ["python"]
       const dockerProcess = spawn('docker', ['--version'], { stdio: 'pipe' })
 
       let output = ''
+      let settled = false
+
+      const settle = (result: { available: boolean; error?: string }) => {
+        if (settled) {
+          return
+        }
+
+        settled = true
+        clearTimeout(timeoutId)
+        resolve(result)
+      }
+
       dockerProcess.stdout?.on('data', (data) => {
         output += data.toString()
       })
 
       dockerProcess.on('close', (code) => {
         if (code === 0 && output.includes('Docker version')) {
-          resolve({ available: true })
+          settle({ available: true })
         } else {
-          resolve({
+          settle({
             available: false,
             error: 'Docker not found or not running'
           })
@@ -838,16 +865,15 @@ CMD ["python"]
       })
 
       dockerProcess.on('error', (error) => {
-        resolve({
+        settle({
           available: false,
           error: error.message
         })
       })
 
-      // Timeout after 5 seconds
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         dockerProcess.kill()
-        resolve({
+        settle({
           available: false,
           error: 'Docker check timed out'
         })

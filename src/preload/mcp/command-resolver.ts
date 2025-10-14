@@ -96,7 +96,10 @@ export function resolveCommand(command: string): string {
       }
     }
   } catch (error) {
-    log.error(`Error resolving command path for ${command}: ${error}`)
+    log.error('Failed to resolve command path', {
+      command,
+      error: error instanceof Error ? error.message : String(error)
+    })
   }
 
   // 最終的には元のコマンド名を返す

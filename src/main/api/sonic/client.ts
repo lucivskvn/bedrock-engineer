@@ -258,7 +258,7 @@ export class NovaSonicBidirectionalStreamClient {
   }
 
   private async processToolUse(toolName: string, toolUseContent: object): Promise<object> {
-    logger.debug(`Processing tool use: ${toolName}`, {
+    logger.debug('Processing tool use', {
       toolName,
       hasToolExecutor: !!this.toolExecutor,
       contentPreview: JSON.stringify(toolUseContent).substring(0, 100) + '...'
@@ -267,7 +267,10 @@ export class NovaSonicBidirectionalStreamClient {
     // Ensure tool executor is available
     if (!this.toolExecutor) {
       const errorMessage = `Tool executor not available. Please ensure frontend connection is active.`
-      logger.error(errorMessage, { toolName })
+      logger.error('Tool executor unavailable', {
+        toolName,
+        detail: errorMessage
+      })
 
       return {
         error: true,
@@ -281,18 +284,18 @@ export class NovaSonicBidirectionalStreamClient {
     }
 
     try {
-      logger.debug(`Converting tool input for ${toolName}...`)
+      logger.debug('Converting tool input', { toolName })
       let toolInput = this.convertToToolInput(toolName, toolUseContent)
 
       // Apply default values for tools that need them
       toolInput = this.applyDefaultValuesForTool(toolName, toolInput)
 
-      logger.debug(`Executing tool via preload system:`, {
+      logger.debug('Executing tool via preload system', {
         toolInput
       })
 
       const result = await this.toolExecutor.executeToolViaSocket(toolInput)
-      logger.debug(`Tool executed successfully:`, {
+      logger.debug('Tool executed successfully', {
         toolName,
         resultType: typeof result,
         resultPreview:
@@ -306,7 +309,7 @@ export class NovaSonicBidirectionalStreamClient {
       try {
         parsedResult = typeof result === 'string' ? JSON.parse(result) : result
       } catch (parseError) {
-        logger.warn(`Failed to parse tool result as JSON, using as string:`, {
+        logger.warn('Failed to parse tool result as JSON; using string fallback', {
           error: parseError
         })
         parsedResult = { result: result }
@@ -315,7 +318,7 @@ export class NovaSonicBidirectionalStreamClient {
       return parsedResult
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      logger.error(`Tool execution failed for ${toolName}:`, {
+      logger.error('Tool execution failed', {
         toolName,
         error: errorMessage,
         errorType: error instanceof Error ? error.constructor.name : typeof error,
@@ -367,7 +370,10 @@ export class NovaSonicBidirectionalStreamClient {
 
       return toolInput
     } catch (error) {
-      logger.error(`Error converting tool input for ${toolName}:`, { error })
+      logger.error('Tool input conversion failed', {
+        toolName,
+        error: error instanceof Error ? error.message : String(error)
+      })
       throw new Error(`Failed to convert tool input for ${toolName}: ${error}`)
     }
   }
@@ -380,11 +386,11 @@ export class NovaSonicBidirectionalStreamClient {
       // Get project path from store - we'll need to import this
       const projectPath = this.getProjectPath()
       if (!projectPath) {
-        logger.warn('Project path not available, skipping default value application')
+        logger.warn('Project path not available; skipping default value application')
         return toolInput
       }
 
-      logger.debug(`Applying default values for tool ${toolName}`, {
+      logger.debug('Applying default values for tool', {
         toolName,
         projectPath,
         originalInput: this.sanitizeInputForLogging(toolInput)
@@ -422,7 +428,7 @@ export class NovaSonicBidirectionalStreamClient {
           break
       }
 
-      logger.debug(`Default values applied for ${toolName}`, {
+      logger.debug('Default values applied for tool', {
         toolName,
         hasChanges: JSON.stringify(updatedInput) !== JSON.stringify(toolInput),
         updatedInput: this.sanitizeInputForLogging(updatedInput)
@@ -430,7 +436,10 @@ export class NovaSonicBidirectionalStreamClient {
 
       return updatedInput
     } catch (error) {
-      logger.error(`Error applying default values for ${toolName}:`, { error })
+      logger.error('Default value application failed', {
+        toolName,
+        error: error instanceof Error ? error.message : String(error)
+      })
       // Return original input if error occurs
       return toolInput
     }
@@ -448,10 +457,12 @@ export class NovaSonicBidirectionalStreamClient {
 
       // Fallback to user home directory
       const homeDir = process.env[process.platform === 'win32' ? 'USERPROFILE' : 'HOME']
-      logger.warn('No project path in store, using home directory:', { homeDir })
+      logger.warn('No project path in store, using home directory', { homeDir })
       return homeDir
     } catch (error) {
-      logger.error('Error getting project path from store:', { error })
+      logger.error('Error getting project path from store', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       // Fallback to user home directory
       return process.env[process.platform === 'win32' ? 'USERPROFILE' : 'HOME']
     }
@@ -629,7 +640,10 @@ export class NovaSonicBidirectionalStreamClient {
       // Process responses for this session
       await this.processResponseStream(sessionId, response)
     } catch (error) {
-      logger.error(`Error in session ${sessionId}: `, { error })
+      logger.error('Session processing error', {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error)
+      })
       this.dispatchEventForSession(sessionId, 'error', {
         source: 'bidirectionalStream',
         error
@@ -652,7 +666,11 @@ export class NovaSonicBidirectionalStreamClient {
       try {
         handler(data)
       } catch (e) {
-        logger.error(`Error in ${eventType} handler for session ${sessionId}: `, { error: e })
+        logger.error('Session event handler error', {
+          sessionId,
+          eventType,
+          error: e instanceof Error ? e.message : String(e)
+        })
       }
     }
 
@@ -662,7 +680,11 @@ export class NovaSonicBidirectionalStreamClient {
       try {
         anyHandler({ type: eventType, data })
       } catch (e) {
-        logger.error(`Error in 'any' handler for session ${sessionId}: `, { error: e })
+        logger.error('Session wildcard handler error', {
+          sessionId,
+          eventType,
+          error: e instanceof Error ? e.message : String(e)
+        })
       }
     }
   }
@@ -717,7 +739,10 @@ export class NovaSonicBidirectionalStreamClient {
                       return { value: undefined, done: true }
                     }
                   } else {
-                    logger.error(`Error on event close`, { error })
+                    logger.error('Sonic client event close error', {
+                      sessionId,
+                      error: error instanceof Error ? error.message : String(error)
+                    })
                   }
                 }
               }
@@ -743,7 +768,10 @@ export class NovaSonicBidirectionalStreamClient {
                 done: false
               }
             } catch (error) {
-              logger.error(`Error in session ${sessionId} iterator: `, { error })
+              logger.error('Session iterator error', {
+                sessionId,
+                error: error instanceof Error ? error.message : String(error)
+              })
               session.isActive = false
               return { value: undefined, done: true }
             }
@@ -848,22 +876,25 @@ export class NovaSonicBidirectionalStreamClient {
                   )
               }
           } catch (e) {
-            logger.error(`Error processing response chunk for session ${sessionId}: `, { error: e })
+            logger.error('Response chunk processing error', {
+              sessionId,
+              error: e instanceof Error ? e.message : String(e)
+            })
           }
         } else if (event.modelStreamErrorException) {
-          logger.error(
-            `Model stream error for session ${sessionId}: `,
-            { error: event.modelStreamErrorException }
-          )
+          logger.error('Model stream error received', {
+            sessionId,
+            error: event.modelStreamErrorException
+          })
           this.dispatchEvent(sessionId, 'error', {
             type: 'modelStreamErrorException',
             details: event.modelStreamErrorException
           })
         } else if (event.internalServerException) {
-          logger.error(
-            `Internal server error for session ${sessionId}: `,
-            { error: event.internalServerException }
-          )
+          logger.error('Internal server error received', {
+            sessionId,
+            error: event.internalServerException
+          })
           this.dispatchEvent(sessionId, 'error', {
             type: 'internalServerException',
             details: event.internalServerException
@@ -876,7 +907,10 @@ export class NovaSonicBidirectionalStreamClient {
         timestamp: new Date().toISOString()
       })
     } catch (error) {
-      logger.error(`Error processing response stream for session ${sessionId}: `, { error })
+      logger.error('Response stream processing error', {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error)
+      })
       this.dispatchEvent(sessionId, 'error', {
         source: 'responseStream',
         message: 'Error processing response stream',
@@ -1229,7 +1263,11 @@ export class NovaSonicBidirectionalStreamClient {
       try {
         handler(data)
       } catch (e) {
-        logger.error(`Error in ${eventType} handler for session ${sessionId}:`, { error: e })
+        logger.error('Session event handler error', {
+          sessionId,
+          eventType,
+          error: e instanceof Error ? e.message : String(e)
+        })
       }
     }
 
@@ -1239,7 +1277,11 @@ export class NovaSonicBidirectionalStreamClient {
       try {
         anyHandler({ type: eventType, data })
       } catch (e) {
-        logger.error(`Error in 'any' handler for session ${sessionId}:`, { error: e })
+        logger.error('Session wildcard handler error', {
+          sessionId,
+          eventType,
+          error: e instanceof Error ? e.message : String(e)
+        })
       }
     }
   }
@@ -1257,7 +1299,10 @@ export class NovaSonicBidirectionalStreamClient {
       await this.sendSessionEnd(sessionId)
       logger.debug(`Session ${sessionId} cleanup complete`)
     } catch (error) {
-      logger.error(`Error during closing sequence for session ${sessionId}:`, { error })
+      logger.error('Session closing sequence error', {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error)
+      })
 
       // Ensure cleanup happens even if there's an error
       const session = this.activeSessions.get(sessionId)

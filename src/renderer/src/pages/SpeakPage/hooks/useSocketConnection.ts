@@ -79,29 +79,37 @@ export function useSocketConnection(
 
       // Connection event handlers
       socket.on('connect', () => {
-        log.debug('Connected to server:', socket.id)
+        log.debug('Connected to server', {
+          socketId: socket.id
+        })
         setStatus('connected')
       })
 
       socket.on('disconnect', (reason) => {
-        log.debug('Disconnected from server:', reason)
+        log.debug('Disconnected from server', {
+          reason
+        })
         setStatus('disconnected')
       })
 
       socket.on('connect_error', (error) => {
-        log.error('Connection error:', error)
+        log.error('Connection error', { error })
         setStatus('error')
         events?.error?.(error)
       })
 
       // Application event handlers
       socket.on('contentStart', (data) => {
-        log.debug('contentStart received:', data)
+        log.debug('contentStart received', {
+          payload: data
+        })
         events?.contentStart?.(data)
       })
 
       socket.on('textOutput', (data) => {
-        log.debug('textOutput received:', data)
+        log.debug('textOutput received', {
+          payload: data
+        })
         events?.textOutput?.(data)
       })
 
@@ -111,17 +119,23 @@ export function useSocketConnection(
       })
 
       socket.on('toolUse', (data) => {
-        log.debug('toolUse received:', data)
+        log.debug('toolUse received', {
+          payload: data
+        })
         events?.toolUse?.(data)
       })
 
       socket.on('toolResult', (data) => {
-        log.debug('toolResult received:', data)
+        log.debug('toolResult received', {
+          payload: data
+        })
         events?.toolResult?.(data)
       })
 
       socket.on('contentEnd', (data) => {
-        log.debug('contentEnd received:', data)
+        log.debug('contentEnd received', {
+          payload: data
+        })
         events?.contentEnd?.(data)
       })
 
@@ -131,7 +145,7 @@ export function useSocketConnection(
       })
 
       socket.on('error', (error) => {
-        log.error('Socket error:', error)
+        log.error('Socket error', { error })
         setStatus('error')
         events?.error?.(error)
       })
@@ -142,9 +156,9 @@ export function useSocketConnection(
         const requestId = toolRequest.requestId || 'unknown'
 
         try {
-          log.debug('Received tool execution request:', {
+          log.debug('Received tool execution request', {
             requestId,
-            toolRequest: toolRequest
+            toolRequest
           })
 
           // Validate request structure
@@ -157,14 +171,16 @@ export function useSocketConnection(
           }
 
           // Execute the tool using the preload API
-          log.debug(`Executing tool ${toolRequest.type} via preload API...`)
+          log.debug('Executing tool via preload API', {
+            toolType: toolRequest.type
+          })
           const result = await window.api.bedrock.executeTool(toolRequest)
 
           const duration = Date.now() - startTime
-          log.debug('Tool execution completed successfully:', {
+          log.debug('Tool execution completed successfully', {
             requestId,
             toolType: toolRequest.type,
-            duration: `${duration}ms`,
+            durationMs: duration,
             resultType: typeof result,
             resultPreview:
               typeof result === 'string'
@@ -182,10 +198,10 @@ export function useSocketConnection(
           const duration = Date.now() - startTime
           const errorMessage = error instanceof Error ? error.message : String(error)
 
-          log.error('Tool execution failed:', {
+          log.error('Tool execution failed', {
             requestId,
             toolType: toolRequest.type,
-            duration: `${duration}ms`,
+            durationMs: duration,
             error: errorMessage,
             errorType: error instanceof Error ? error.constructor.name : typeof error,
             stack: error instanceof Error ? error.stack : undefined
@@ -218,7 +234,7 @@ export function useSocketConnection(
         }
       })
     } catch (error) {
-      log.error('Failed to create socket connection:', error)
+      log.error('Failed to create socket connection', { error })
       setStatus('error')
       events?.error?.(error)
     }

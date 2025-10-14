@@ -27,7 +27,10 @@ export class MCPClient {
     // コマンドパスを解決
     const resolvedCommand = resolveCommand(command)
     if (resolvedCommand !== command) {
-      log.debug(`Using resolved command path: ${resolvedCommand} (original: ${command})`)
+      log.debug('Using resolved command path', {
+        resolvedCommand,
+        originalCommand: command
+      })
     }
     await client.connectToServer(resolvedCommand, args, env ?? {})
     return client
@@ -63,13 +66,13 @@ export class MCPClient {
           }
         }
       })
-      log.debug(
-        `Connected to server with tools: ${this._tools
-          .map(({ toolSpec }) => toolSpec!.name)
-          .join(', ')}`
-      )
+      log.debug('Connected to server with tools', {
+        toolNames: this._tools.map(({ toolSpec }) => toolSpec!.name)
+      })
     } catch (e) {
-      log.error(`Failed to connect to MCP server: ${e}`)
+      log.error('Failed to connect to MCP server', {
+        error: e instanceof Error ? e.message : String(e)
+      })
       throw e
     }
   }

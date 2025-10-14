@@ -63,7 +63,7 @@ export const ScreenCaptureSettingForm: React.FC = () => {
       const windows = await window.api.screen.listAvailableWindows()
       setAvailableWindows(windows || [])
     } catch (error) {
-      log.error('Failed to fetch available windows:', error)
+      log.error('Failed to fetch available windows', { error })
       setAvailableWindows([])
     } finally {
       setIsLoadingWindows(false)
@@ -123,7 +123,7 @@ export const ScreenCaptureSettingForm: React.FC = () => {
 
         {/* LLMモデル選択 */}
         <div className="w-full">
-          <Label htmlFor="recognizeImageModel" value={t('AI Model for Image Analysis')} />
+          <Label htmlFor="recognizeImageModel">{t('AI Model for Image Analysis')}</Label>
           <Select
             id="recognizeImageModel"
             value={recognizeImageModel}

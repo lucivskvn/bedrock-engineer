@@ -103,14 +103,11 @@ export const CodeRenderer: React.FC<CodeRendererProps> = ({ text = '', className
 
   return (
     <div className={`w-full dark:text-white ${className}`}>
-      <Markdown
-        className={style.reactMarkDown}
-        remarkPlugins={[[remarkGfm, { singleTilde: false }], [remarkMath]]}
-        rehypePlugins={[rehypeKatex]}
-        components={components}
-      >
-        {text}
-      </Markdown>
+      <div className={style.reactMarkDown}>
+        <Markdown remarkPlugins={[[remarkGfm, { singleTilde: false }], [remarkMath]]} rehypePlugins={[rehypeKatex]} components={components}>
+          {text}
+        </Markdown>
+      </div>
     </div>
   )
 }
