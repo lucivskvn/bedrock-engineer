@@ -29,7 +29,7 @@ describe('preload sandbox', () => {
       jest.doMock('../../../preload/tools', () => ({ executeTool: jest.fn() }))
       jest.doMock('../../../preload/tools/registry', () => ({ ToolMetadataCollector: { getToolSpecs: jest.fn() } }))
       // eslint-disable-next-line no-restricted-syntax -- preload index must be imported after mocks are registered
-      await import('../../../preload/index')
+      await import('../../../preload/index.ts')
     })
 
     ;(process as any).contextIsolated = originalContext

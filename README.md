@@ -2,6 +2,8 @@
 
 Language: [English](./README.md) / [Japanese](./README-ja.md)
 
+> **Documentation language policy** — English is the source of truth for maintenance notes and contributor guidance. Provide translations only when the entire document is localised (for example, [README-ja.md](./README-ja.md)).
+
 # 🧙 Bedrock Engineer
 
 Bedrock Engineer is Autonomous software development agent apps using [Amazon Bedrock](https://aws.amazon.com/bedrock/), capable of customize to create/edit files, execute commands, search the web, use knowledge base, use multi-agents, generative images and more.
@@ -39,6 +41,8 @@ It is optimized for MacOS, but can also be built and used on Windows and Linux O
 > - `additionalPathEntries` extends the sanitised `PATH` via the `commandSearchPaths` preference without leaking host secrets.
 >
 > Configure these values from **Settings → Advanced → Command execution** or by editing the encrypted store keys `commandMaxConcurrentProcesses`, `commandMaxStdinBytes`, `commandPassthroughEnvKeys`, and `commandSearchPaths`.
+
+> **October 2025 logging update** — Runtime values are now redacted from warning/error metadata. Keep message strings static and move dynamic details into metadata (placeholders like `[USER_ID]` are safe). See [Logging Hygiene and Redaction Policy](./docs/logging.md) for examples and testing guidance.
 
 <details>
 <summary>Tips for Installation</summary>
@@ -118,12 +122,49 @@ npm test
 npm run test:integration
 ```
 
+> The Jest wrapper verifies that `jest` and `jest-environment-jsdom` are installed before execution; if it reports missing dependencies, rerun `npm ci` (or `npm install`) to restore the pinned toolchain before retrying the test or lint commands.
+> The TypeScript wrapper now confirms that `typescript` is installed, then resolves every `extends` config and `references.path` entry declared in the requested tsconfig files before running `npm run typecheck:*`; rerun `npm ci` (or restore the missing config files) if it exits with a missing dependency warning.
+
 
 #### October 2025 maintenance notes
 
-- ESLint now consumes the flat-config-powered `typescript-eslint` bundle. Run `npm ci` (or `npm install`) after pulling to ensure the new dependency tree is present before invoking `npm run lint`.
+- ESLint now consumes the flat-config-powered `typescript-eslint` bundle. Run `npm ci` (or `npm install`) after pulling to ensure the dependency tree is present before invoking `npm run lint`; the lint wrapper resolves the bundle, parser, and plugin from the workspace root as well as nested `node_modules` directories and exits with a remediation hint if any of them are missing.
+- The TypeScript toolchain now targets TypeScript 5.9.x together with `@types/node@22.18.x`. Remove stale `node_modules` directories and rerun `npm ci` if you encounter compiler errors that reference missing 5.9 features or Node 22 ambient types.
+- Type checking commands now execute through `scripts/run-tsc.mjs`, which resolves `typescript`, walks every `extends` entry, and verifies each project reference path declared in the requested tsconfig files (including hoisted installs) before spawning `tsc`. Refresh your dependencies with `npm ci` or restore the missing config package if the wrapper reports unresolved extends or references.
+- Shared tsconfig presets have been bumped to `@electron-toolkit/tsconfig@2.0.0`, which enables bundler-style module resolution for renderer code and opts Node-facing projects into `moduleResolution: nodenext`. If you maintain custom `tsconfig.*` variants, mirror the new `moduleDetection: "force"` / module resolution settings so imports of packages that expose only ESM exports continue to resolve under TypeScript 5.9.
+- Frontend tooling now targets PostCSS 8.5.x, Autoprefixer 10.4.21, and Prettier 3.6.x. Run `npm ci` after pulling to refresh the lockfile before running Tailwind builds or `npm run format` so the upgraded toolchain is available locally.
+- Vite 7.x and `@vitejs/plugin-react` 5.x power the renderer build. Pull the latest dependencies with `npm ci` before running `npm run dev`, and import Flowbite React’s named subcomponents (for example `ModalHeader`, `DropdownItem`, and `AccordionPanel`) directly instead of the deprecated `Modal.Header`/`Dropdown.Item` statics; the legacy `flowbite-compat` shim has been removed.
+- Flowbite React 0.12 requires labels to render via children and replaces the `TextInput` `helperText` prop with the standalone `HelperText` component. Mirror the patterns in `GenerateVideoSettingForm` and `useOrganizationModal` when updating forms so UI copy renders consistently in both light and dark modes.
+- When customising Flowbite dropdown triggers, always provide a descriptive `label`/`aria-label` and set `type="button"` on the trigger element. If a dropdown item exposes inline actions, render it with `as="div"`, apply `role="menuitemradio"`/`aria-checked` for selection state, and reveal icon buttons on both `:hover` and `:focus-within` so keyboard users can reach the controls without encountering nested `<button>` elements.
+- The markdown pipeline now relies on `react-markdown@10.x`, which no longer accepts a `className` prop. Wrap markdown renderers in container elements (see `components/Markdown/MD.tsx` and `CodeRenderer.tsx`) when applying layout styles.
+- Internationalisation is now handled by `i18next@25.x` and `react-i18next@16.x`. The renderer bootstraps language selection via `resolveInitialLanguage()` in `src/renderer/src/i18n/config.ts`; prefer that helper when adding new entry points or persisting language overrides so unsupported locales gracefully fall back to English.
+- The embedded API rate limiting layer and Markdown renderer now rely on `rate-limiter-flexible@8.1.x` and `remark-gfm@4.0.x`. Pin compatible versions if you extend these integrations outside the main Electron bundle.
+- Electron packaging now targets `electron-builder` 26.x, `electron-vite` 4.x, and `electron-store` 11.x. Run `npm ci` after pulling to refresh the toolchain, and when extending the store configuration helpers import the official `ElectronStore.Options` types instead of reintroducing the legacy `src/types/electron-store.d.ts` shim.
 - When adding new `logger.error` or `logger.warn` calls, keep the primary message static and attach dynamic details (IDs, paths, URLs, etc.) via the structured metadata object so logs remain stable across releases.
+- In preload and renderer code, route errors and warnings through the shared logging bridge (`preloadLogger`, `rendererLogger`, or `window.logger`) instead of `console.error`/`console.warn` so metadata can be sanitised before it reaches the main process.
+- Logger fallbacks now redact structured metadata before printing to the console, so avoid embedding literal values (such as specific years or quota numbers) in the primary message text—surface them through metadata instead.
+- Jest test runs install a buffered console writer (see `src/test/setup/logging.ts`) so log noise stays out of CI output; use `getLoggerBuffer()` or `createBufferedConsoleWriter()` when you need to assert against sanitised payloads.
+- All Jest scripts (`npm test`, `npm run test:watch`, and integration variants) now execute through `scripts/run-jest.mjs`, which checks for required dev dependencies before spawning the CLI and exits with a remediation hint when the jsdom environment package or `babel-jest` transformer is missing.
+- MCP IPC handlers now rely on the shared logger and static message strings. When extending the IPC surface, keep primary messages value-agnostic and move request context (tool names, server counts, etc.) into metadata.
+- Real-time streaming hooks (renderer socket bridges, Speak page audio worklets, Nova streaming clients) must log connection IDs, durations, and tool identifiers through metadata only. Keep the primary message constant so rapid event loops do not leak raw payloads into production logs.
+- `npm run lint:logs` enforces the static-message policy for `warn`/`error` calls on any logger (including the shared root logger `log` and the global `console`) across both the application sources under `src/` and the build/maintenance scripts under `scripts/`. The command runs as part of `npm run lint` and fails if a template literal or variable is passed as the primary message—move runtime context into metadata instead.
+- When you need to attach context to a warning or error, wrap values in a metadata object (for example `log.error('Failed to fetch tools', { error })`). Passing bare values like `log.error('Failed', error)` will be sanitised under anonymous keys (`meta_0`), making it harder to trace issues in production logs.
+- Validation helpers such as `ensureValidStorageKey` and `coerceAwsCredentials` now throw structured errors (`StorageKeyValidationError`, `AwsCredentialSanitizationError`) with static messages. Inspect `error.code` and `error.metadata` instead of parsing message strings when handling validation failures.
+- Configuration store sanitisation helpers (`sanitizeProjectPathValue`, `sanitizeProxyConfiguration`, `sanitizeTavilyApiKey`, and the `store` getters/setters) now emit structured `StoreValidationError`/`StoreStateError` instances. Downstream callers should branch on `error.code` (for example `project_path_empty`, `proxy_missing_required_fields`, or `store_uninitialized`) rather than matching message text, and rely on the `metadata` payload for remediation hints.
+- Preload tool error wrappers (`wrapError`, `ToolNotFoundError`, `RateLimitError`) now produce static message strings. Consume the structured metadata (`causeName`, `causeMessage`, `detailMessage`, etc.) when presenting diagnostics or logging follow-up context instead of interpolating tool names or service responses into the primary string.
+- Filesystem automation tools (`writeToFile`, `copyFile`, `moveFile`, `createFolder`, `applyDiffEdit`, and `readFiles`/`listFiles`) emit static `Tool execution failed.` messages backed by reason codes such as `WRITE_FILE_FAILED`, `FILE_TOO_LARGE`, and `READ_PDF_FAILED`. Inspect the accompanying `error.metadata` object for hashed paths, byte counts, and detail strings instead of relying on message parsing.
+- Code Interpreter asynchronous task APIs now expose structured `errorInfo` payloads (`message`, `code`, and `metadata`) on both task snapshots and list results. Downstream consumers should display these structured fields rather than parsing `task.error` strings, and keep any follow-up logging value-agnostic by echoing only the metadata object.
+- The desktop `CommandService` now raises `CommandServiceError` instances with static message strings (for example `'Command execution failed.'` or `'Command execution timed out.'`). When handling CLI results, inspect `error.code` and `error.metadata` rather than parsing message text so hashed command summaries and cwd details stay in metadata.
+- Background agent session helpers and schedulers emit `BackgroundAgentError` instances for persistence, cron validation, and lookup failures (for example `background_session_write_failed`, `background_cron_expression_invalid`, or `background_agent_not_found`). When handling these flows, branch on `error.code` and surface remediation hints from `error.metadata` instead of relying on interpolated message strings.
+- Dashboard analytics now ship with `chart.js@4.5.1`; run `npm ci` to refresh the dependency if charts fail to render after pulling the latest changes.
+- PDF IPC handlers (`pdf-extract-text`, `pdf-extract-metadata`, `pdf-get-info`) now raise `PdfProcessingError` codes such as `PDF_FILE_TOO_LARGE`, `PDF_PARSE_FAILED`, and `PDF_TEXT_EXTRACTION_FAILED`. Renderer bridges should branch on `error.code`/`error.metadata` to present hashed path summaries, byte-length placeholders, and validated line-range context instead of relying on message strings.
+- The PDF toolchain now defends against stale `pdf-parse` installs. If the `PDFParse` class export is missing you will receive `error.metadata.reason === 'parser_initialization_failed'` alongside a remediation hint (`npm ci`), so refresh your dependencies to ensure version 2.2.x APIs are present before debugging further.
+- `COMMAND_WORKDIR_RESOLUTION_FAILED` responses hash the rejected working directory before attaching it to `error.metadata`, and `stopProcess` now falls back to direct child termination on Windows while treating missing processes (`ESRCH`) as a successful no-op. Consumers should continue to rely on the structured metadata rather than logging raw cwd values or assuming negative PIDs are available on every platform.
+- Legacy sandbox Jest fixtures have been removed. Use the curated unit and integration suites (plus the buffered logging helpers under `src/test/setup/logging.ts`) when experimenting locally.
+- Before committing tests, ensure there are no focused suites (`describe.only`) or specs (`test.only`/`it.only`). They silently bypass the broader Jest suite and will cause CI to miss regressions.
 - Prompt cache handling and session cost reporting now rely on the shared `PromptCacheManager` and `PricingCalculator` utilities. Reuse these helpers instead of duplicating ad-hoc implementations when touching chat-related code.
+- Sample Python directory agents now log through the `_format_log_summary` helper so CloudWatch entries stay free of raw payloads; mirror this approach when adding new non-TypeScript runtimes.
+- AWS Bedrock service clients and the Model Context Protocol SDK are pinned to the latest 3.908.x/1.20.x releases to pick up October 2025 security fixes—run `npm ci` after pulling to refresh the lockfile.
 
 
 ### URL Allowlist
@@ -460,6 +501,11 @@ The local API surface is hardened with multiple layers of protection:
   `MAX_AUDIO_PAYLOAD_BYTES` are disconnected.
 * **Standardised rate limiting responses** – HTTP clients now receive structured JSON errors together
   with RFC 9110 compatible `RateLimit-*` headers, simplifying automated backoff.
+* **Structured API error payloads** – REST endpoints and streaming sockets now emit static messages with
+  stable `code` plus optional `metadata` and `referenceId` fields. Inspect these structured fields instead
+  of parsing message text when handling failures. Every error response also carries an `X-Request-Id`
+  header that matches the payload `referenceId`, making it easy to correlate client-side telemetry with
+  backend logs.
 * **Strict HTTP headers** – the API disables the Express `X-Powered-By` header, adds modern Helmet
   defaults (including `Referrer-Policy: no-referrer`) and publishes a restrictive `Permissions-Policy`
   (`camera=(), microphone=(), geolocation=()`).

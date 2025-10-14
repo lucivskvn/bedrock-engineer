@@ -9,7 +9,8 @@ import {
   TaskStatus,
   TaskManagerConfig,
   CodeInterpreterResult,
-  PythonEnvironment
+  PythonEnvironment,
+  TaskErrorInfo
 } from './types'
 import { ToolLogger } from '../../base/types'
 
@@ -143,17 +144,31 @@ export class TaskManager {
   /**
    * Set task error when failed
    */
-  setTaskError(taskId: string, error: string): boolean {
+  setTaskError(taskId: string, error: TaskErrorInfo | string): boolean {
     const task = this.tasks.get(taskId)
     if (!task) {
       this.logger.warn('Task not found for error setting', { taskId })
       return false
     }
 
-    task.error = error
+    const normalizedError: TaskErrorInfo =
+      typeof error === 'string'
+        ? { message: error }
+        : {
+            message: error.message,
+            code: error.code,
+            metadata: error.metadata
+          }
+
+    task.error = normalizedError.message
+    task.errorInfo = normalizedError
     this.updateTaskStatus(taskId, 'failed', 0)
 
-    this.logger.error('Task error set', { taskId, error })
+    this.logger.error('Task error set', {
+      taskId,
+      errorCode: normalizedError.code,
+      hasMetadata: !!normalizedError.metadata
+    })
 
     return true
   }
@@ -291,7 +306,15 @@ export class TaskManager {
     })
 
     timedOutTasks.forEach((task) => {
-      this.setTaskError(task.taskId, 'Task timed out')
+      this.setTaskError(task.taskId, {
+        message: 'Task timed out.',
+        code: 'TASK_TIMEOUT',
+        metadata: {
+          taskId: task.taskId,
+          runningTimeMs: now.getTime() - (task.startedAt?.getTime() || 0),
+          timeoutMs: this.config.taskTimeout
+        }
+      })
       this.logger.warn('Task timed out and marked as failed', {
         taskId: task.taskId,
         runningTime: now.getTime() - (task.startedAt?.getTime() || 0)

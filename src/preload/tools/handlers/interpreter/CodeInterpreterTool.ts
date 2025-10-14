@@ -18,12 +18,14 @@ import {
   WorkspaceConfig,
   ExecutionConfig,
   PythonEnvironment,
-  TaskManagerConfig
+  TaskManagerConfig,
+  TaskErrorInfo
 } from './types'
 import { DockerExecutor } from './DockerExecutor'
 import { FileManager } from './FileManager'
 import { SecurityManager } from './SecurityManager'
 import { TaskManager } from './TaskManager'
+import { createStructuredError, StructuredError } from '../../../../common/errors'
 
 /**
  * CodeInterpreter tool with async execution support
@@ -245,6 +247,43 @@ Optional parameter to show only tasks with specific status.`,
     this.taskManager = new TaskManager(this.logger, taskManagerConfig)
   }
 
+  private buildTaskErrorInfo(
+    error: unknown,
+    fallbackMessage: string = 'Task execution failed.'
+  ): TaskErrorInfo {
+    if (error && typeof error === 'object' && 'code' in error) {
+      const structured = error as StructuredError<string>
+      const metadata: Record<string, unknown> = { errorName: structured.name }
+
+      if (structured.metadata && typeof structured.metadata === 'object') {
+        Object.assign(metadata, structured.metadata)
+      }
+
+      return {
+        message: structured.message || fallbackMessage,
+        code: structured.code,
+        metadata
+      }
+    }
+
+    if (error instanceof Error) {
+      const metadata: Record<string, unknown> = { errorName: error.name }
+      if (error.message) {
+        metadata.originalMessage = error.message
+      }
+
+      return {
+        message: fallbackMessage,
+        metadata
+      }
+    }
+
+    return {
+      message: fallbackMessage,
+      metadata: { originalError: error }
+    }
+  }
+
   /**
    * Get current workspace path for UI access
    */
@@ -329,7 +368,12 @@ Optional parameter to show only tasks with specific status.`,
       case 'list':
         return this.listTasks(input.statusFilter)
       default:
-        throw new ExecutionError(`Unknown operation: ${operation}`, this.name)
+        throw new ExecutionError(
+          'Unsupported Code Interpreter operation.',
+          this.name,
+          undefined,
+          { requestedOperation: operation }
+        )
     }
   }
 
@@ -346,7 +390,15 @@ Optional parameter to show only tasks with specific status.`,
       // Check Docker availability
       const dockerCheck = await this.dockerExecutor.checkDockerAvailability()
       if (!dockerCheck.available) {
-        throw new ExecutionError(`Docker is not available: ${dockerCheck.error}`, this.name)
+        throw new ExecutionError(
+          'Docker is not available for Code Interpreter execution.',
+          this.name,
+          undefined,
+          {
+            dockerAvailable: dockerCheck.available,
+            dockerError: dockerCheck.error
+          }
+        )
       }
 
       // Initialize workspace
@@ -485,14 +537,13 @@ Optional parameter to show only tasks with specific status.`,
 
     // Start execution in background
     this.executeTaskInBackground(task.taskId).catch((error) => {
+      const errorInfo = this.buildTaskErrorInfo(error)
       this.logger.error('Background task execution failed', {
         taskId: task.taskId,
-        error: error instanceof Error ? error.message : String(error)
+        errorCode: errorInfo.code,
+        hasMetadata: !!errorInfo.metadata
       })
-      this.taskManager.setTaskError(
-        task.taskId,
-        error instanceof Error ? error.message : String(error)
-      )
+      this.taskManager.setTaskError(task.taskId, errorInfo)
     })
 
     return {
@@ -515,7 +566,12 @@ Optional parameter to show only tasks with specific status.`,
   private async executeTaskInBackground(taskId: string): Promise<void> {
     const task = this.taskManager.getTask(taskId)
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`)
+      throw createStructuredError({
+        name: 'CodeInterpreterTaskError',
+        message: 'Task not found.',
+        code: 'TASK_NOT_FOUND',
+        metadata: { taskId }
+      })
     }
 
     try {
@@ -535,7 +591,7 @@ Optional parameter to show only tasks with specific status.`,
       // Set task result
       this.taskManager.setTaskResult(taskId, result)
     } catch (error) {
-      this.taskManager.setTaskError(taskId, error instanceof Error ? error.message : String(error))
+      this.taskManager.setTaskError(taskId, this.buildTaskErrorInfo(error))
     }
   }
 
@@ -545,16 +601,22 @@ Optional parameter to show only tasks with specific status.`,
   private getTaskStatus(taskId: string): AsyncTaskResult {
     const task = this.taskManager.getTask(taskId)
     if (!task) {
+      const errorInfo: TaskErrorInfo = {
+        message: 'Task not found.',
+        code: 'TASK_NOT_FOUND',
+        metadata: { taskId }
+      }
       return {
         success: false,
         name: 'codeInterpreter',
         taskId,
         status: 'failed',
-        message: 'Task not found',
+        message: errorInfo.message,
         result: {
           taskId,
           status: 'failed',
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          errorInfo
         }
       }
     }
@@ -564,7 +626,7 @@ Optional parameter to show only tasks with specific status.`,
       name: 'codeInterpreter',
       taskId: task.taskId,
       status: task.status,
-      message: `Task status: ${task.status}`,
+      message: 'Task status retrieved.',
       progress: task.progress,
       result: {
         taskId: task.taskId,
@@ -572,7 +634,8 @@ Optional parameter to show only tasks with specific status.`,
         createdAt: task.createdAt.toISOString(),
         startedAt: task.startedAt?.toISOString(),
         completedAt: task.completedAt?.toISOString(),
-        executionResult: task.result
+        executionResult: task.result,
+        errorInfo: task.errorInfo
       }
     }
   }
@@ -589,7 +652,7 @@ Optional parameter to show only tasks with specific status.`,
       name: 'codeInterpreter',
       taskId,
       status: task?.status || 'failed',
-      message: cancelled ? 'Task cancelled' : 'Failed to cancel task',
+      message: cancelled ? 'Task cancelled.' : 'Failed to cancel task.',
       result: {
         taskId,
         status: task?.status || 'failed',
@@ -615,9 +678,7 @@ Optional parameter to show only tasks with specific status.`,
         operation: 'list',
         tasks,
         summary,
-        message: statusFilter
-          ? `Found ${tasks.length} tasks with status '${statusFilter}'`
-          : `Found ${tasks.length} total tasks`,
+        message: 'Task list retrieved.',
         result: {
           tasks,
           summary,
@@ -625,8 +686,10 @@ Optional parameter to show only tasks with specific status.`,
         }
       }
     } catch (error) {
+      const errorInfo = this.buildTaskErrorInfo(error, 'Failed to list tasks.')
       this.logger.error('Failed to list tasks', {
-        error: error instanceof Error ? error.message : String(error)
+        errorCode: errorInfo.code,
+        hasMetadata: !!errorInfo.metadata
       })
 
       return {
@@ -642,7 +705,7 @@ Optional parameter to show only tasks with specific status.`,
           failed: 0,
           cancelled: 0
         },
-        message: `Failed to list tasks: ${error instanceof Error ? error.message : String(error)}`,
+        message: errorInfo.message,
         result: {
           tasks: [],
           summary: {
@@ -653,7 +716,8 @@ Optional parameter to show only tasks with specific status.`,
             failed: 0,
             cancelled: 0
           },
-          statusFilter
+          statusFilter,
+          errorInfo
         }
       }
     }

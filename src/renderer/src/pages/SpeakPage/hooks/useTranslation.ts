@@ -62,7 +62,7 @@ export function useTranslation(
       const stats = await window.api.bedrock.getTranslationCacheStats()
       setCacheStats(stats)
     } catch (error) {
-      log.error('Failed to refresh cache stats:', error)
+      log.error('Failed to refresh cache stats', { error })
     }
   }, [])
 
@@ -73,7 +73,7 @@ export function useTranslation(
       await refreshCacheStats()
       log.info('Translation cache cleared')
     } catch (error) {
-      log.error('Failed to clear translation cache:', error)
+      log.error('Failed to clear translation cache', { error })
     }
   }, [refreshCacheStats])
 

@@ -68,7 +68,7 @@ export class GuardrailService {
   ): Promise<ApplyGuardrailCommandOutput> {
     // スロットリングまたはサービス利用不可の場合
     if (error.name === 'ThrottlingException' || error.name === 'ServiceUnavailableException') {
-      guardrailLogger.warn(`${error.name} occurred - retrying`, {
+      guardrailLogger.warn('Guardrail apply request throttled or unavailable', {
         retry: retries,
         errorName: error.name,
         message: error.message,
@@ -92,14 +92,14 @@ export class GuardrailService {
 
     // バリデーションエラーの場合
     if (error.name === 'ValidationException') {
-      guardrailLogger.error('ValidationException in applyGuardrail', {
+      guardrailLogger.error('Guardrail apply validation failure', {
         errorMessage: error.message,
         errorDetails: error.$metadata,
         guardrailId: request.guardrailIdentifier
       })
     } else {
       // その他のエラー
-      guardrailLogger.error('Error in applyGuardrail', {
+      guardrailLogger.error('Guardrail apply request failed', {
         errorName: error.name,
         errorMessage: error.message,
         guardrailId: request.guardrailIdentifier,

@@ -7,7 +7,7 @@ import * as path from 'path'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
-import { ExecutionError } from '../../base/errors'
+import { createFileExecutionError, summarizeError } from './errorUtils'
 
 /**
  * Input type for WriteToFileTool
@@ -110,14 +110,18 @@ export class WriteToFileTool extends BaseTool<WriteToFileInput, string> {
     } catch (error) {
       this.logger.error('Failed to write to file', {
         path: filePath,
-        error: error instanceof Error ? error.message : String(error)
+        error: summarizeError(error)
       })
 
-      throw new ExecutionError(
-        `Error writing to file: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined
-      )
+      throw createFileExecutionError({
+        toolName: this.name,
+        reason: 'WRITE_FILE_FAILED',
+        error,
+        metadata: {
+          path: filePath,
+          contentLength: content.length
+        }
+      })
     }
   }
 

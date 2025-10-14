@@ -201,7 +201,8 @@ export class ToolRegistry {
       return await tool.execute(input, context)
     } catch (error) {
       // Log the error
-      toolSystemLogger.error(`Tool execution failed: ${toolName}`, {
+      toolSystemLogger.error('Tool execution failed', {
+        toolName,
         error: error instanceof Error ? error.message : String(error),
         errorType: error?.constructor?.name
       })

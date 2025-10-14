@@ -216,7 +216,7 @@ export default function DiagramGeneratorPage() {
           log.debug('[DEBUG] DrawIO load successful for new mode')
           setXml(newXml) // 成功後にステート更新
         } catch (error) {
-          log.error('[DEBUG] Failed to load diagram for new mode:', error)
+          log.error('[DEBUG] Failed to load diagram for new mode', { error })
           // フォールバック: ステートを更新してuseEffectに委ねる
           setXml(newXml)
         }
@@ -277,7 +277,7 @@ export default function DiagramGeneratorPage() {
               setXmlLoading(false)
               log.debug('[DEBUG] XML loaded successfully, updated states')
             } catch (error) {
-              log.error('Failed to load streaming XML:', error)
+              log.error('Failed to load streaming XML', { error })
             }
           }
         }
@@ -312,7 +312,7 @@ export default function DiagramGeneratorPage() {
           await drawioRef.current.load({ xml })
           log.debug('[DEBUG] DrawIO updated successfully via useEffect')
         } catch (error) {
-          log.error('[DEBUG] Failed to update DrawIO with new XML via useEffect:', error)
+          log.error('[DEBUG] Failed to update DrawIO with new XML via useEffect', { error })
           // リトライ処理
           setTimeout(() => {
             if (drawioRef.current) {
@@ -320,7 +320,7 @@ export default function DiagramGeneratorPage() {
                 drawioRef.current.load({ xml })
                 log.debug('[DEBUG] DrawIO retry successful')
               } catch (retryError) {
-                log.error('[DEBUG] DrawIO retry failed:', retryError)
+                log.error('[DEBUG] DrawIO retry failed', { error: retryError })
               }
             }
           }, 100)
@@ -411,9 +411,9 @@ export default function DiagramGeneratorPage() {
             })
           }
         } catch (error) {
-          log.error('Failed to load diagram:', error)
+          log.error('Failed to load diagram', { error })
           // XMLの解析に失敗した場合、エラーメッセージをコンソールに表示
-          log.error('Invalid XML content:', rawContent)
+          log.error('Invalid XML content', { error: rawContent })
         }
       }
     }
@@ -431,7 +431,7 @@ export default function DiagramGeneratorPage() {
           setUserInput(historyItem.prompt)
           setSelectedHistoryIndex(index)
         } catch (error) {
-          log.error('Failed to load diagram from history:', error)
+          log.error('Failed to load diagram from history', { error })
         }
       }
     }

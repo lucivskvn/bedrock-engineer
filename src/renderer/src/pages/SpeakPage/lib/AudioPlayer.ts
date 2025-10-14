@@ -40,9 +40,9 @@ export class AudioPlayer {
         this.onAudioPlayedListeners.push(callback)
         break
       default:
-        log.error(
-          'Listener registered for event type: ' + JSON.stringify(event) + ' which is not supported'
-        )
+        log.error('Unsupported audio player listener event', {
+          eventType: event
+        })
     }
   }
 

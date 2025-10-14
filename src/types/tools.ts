@@ -101,6 +101,7 @@ export interface ToolResult<T = any> {
   message?: string
   error?: string
   result: T
+  details?: Record<string, unknown>
 }
 
 // Line range interface for tools

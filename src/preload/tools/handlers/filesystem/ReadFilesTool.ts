@@ -8,7 +8,8 @@ import os from 'os'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult, ReadFileOptions } from '../../base/types'
-import { ExecutionError } from '../../base/errors'
+import { isExecutionError } from '../../base/errors'
+import { createFileExecutionError, summarizeError } from './errorUtils'
 import {
   filterByLineRange,
   getLineRangeInfo,
@@ -91,10 +92,16 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
     const safePath = this.resolveInputPath(filePath)
     const stats = await fs.stat(safePath)
     if (stats.size > MAX_TEXT_FILE_BYTES) {
-      throw new ExecutionError(
-        `File ${filePath} is too large to read (max ${MAX_TEXT_FILE_BYTES} bytes)`,
-        this.name
-      )
+      throw createFileExecutionError({
+        toolName: this.name,
+        reason: 'FILE_TOO_LARGE',
+        error: 'File size exceeds limit.',
+        metadata: {
+          path: safePath,
+          sizeInBytes: stats.size,
+          maxBytes: MAX_TEXT_FILE_BYTES
+        }
+      })
     }
 
     const content = await fs.readFile(safePath, encoding)
@@ -238,14 +245,19 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
     } catch (error) {
       this.logger.error('Error reading file', {
         requestedPath: filePath,
-        error: error instanceof Error ? error.message : String(error)
+        error: summarizeError(error)
       })
 
-      throw new ExecutionError(
-        `Error reading file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined
-      )
+      if (isExecutionError(error)) {
+        throw error
+      }
+
+      throw createFileExecutionError({
+        toolName: this.name,
+        reason: 'READ_FILE_FAILED',
+        error,
+        metadata: { requestedPath: filePath }
+      })
     }
   }
 
@@ -287,14 +299,19 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
     } catch (error) {
       this.logger.error('Error reading PDF file', {
         requestedPath: filePath,
-        error: error instanceof Error ? error.message : String(error)
+        error: summarizeError(error)
       })
 
-      throw new ExecutionError(
-        `Error reading PDF file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined
-      )
+      if (isExecutionError(error)) {
+        throw error
+      }
+
+      throw createFileExecutionError({
+        toolName: this.name,
+        reason: 'READ_PDF_FAILED',
+        error,
+        metadata: { requestedPath: filePath }
+      })
     }
   }
 
@@ -336,14 +353,19 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
     } catch (error) {
       this.logger.error('Error reading DOCX file', {
         requestedPath: filePath,
-        error: error instanceof Error ? error.message : String(error)
+        error: summarizeError(error)
       })
 
-      throw new ExecutionError(
-        `Error reading DOCX file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined
-      )
+      if (isExecutionError(error)) {
+        throw error
+      }
+
+      throw createFileExecutionError({
+        toolName: this.name,
+        reason: 'READ_DOCX_FAILED',
+        error,
+        metadata: { requestedPath: filePath }
+      })
     }
   }
 
@@ -386,13 +408,14 @@ export class ReadFilesTool extends BaseTool<ReadFilesInput, string> {
           contentLength: formattedContent.length
         })
       } catch (error) {
+        const errorSummary = summarizeError(error)
         this.logger.error('Error reading file during batch read', {
           requestedPath: filePath,
-          error: error instanceof Error ? error.message : String(error)
+          error: errorSummary
         })
         fileContents.push(
           `## Error reading file: ${filePath}\nError: ${
-            error instanceof Error ? error.message : String(error)
+            errorSummary
           }`
         )
       }

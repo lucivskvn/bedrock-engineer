@@ -31,9 +31,12 @@ export function generateConnectionSummary(
  * @returns {ConnectionTestResult} 整形された結果オブジェクト
  */
 export function formatConnectionResult(result: any): ConnectionTestResult {
+  const serviceMessage =
+    typeof result.details?.serviceMessage === 'string' ? result.details.serviceMessage : undefined
+
   return {
     success: result.success,
-    message: result.message,
+    message: serviceMessage ?? result.message,
     testedAt: Date.now(),
     details: result.details || {}
   }

@@ -91,7 +91,7 @@ export const ExecutedCodeBlock: React.FC<ExecutedCodeBlockProps> = ({ code }) =>
       // Reset copied state after timeout
       setTimeout(() => setCopied(false), COPY_FEEDBACK_TIMEOUT)
     } catch (error) {
-      log.error('Failed to copy code:', error)
+      log.error('Failed to copy code', { error })
       toast.error(t('code interpreter display.Failed to copy code', 'Failed to copy code'))
     }
   }, [code, t])

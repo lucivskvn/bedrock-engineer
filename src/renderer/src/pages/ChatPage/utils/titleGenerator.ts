@@ -63,11 +63,11 @@ export async function generateSessionTitle(
     if (textContent && 'text' in textContent) {
       return textContent.text
     } else {
-      log.warn('No text content found in response:', response)
+      log.warn('No text content found in response', { error: response })
       return null
     }
   } catch (error) {
-    log.error('Failed to generate AI title:', error)
+    log.error('Failed to generate AI title', { error })
     toast.error(t('Failed to generate title'))
     return null
   }

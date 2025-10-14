@@ -145,4 +145,27 @@ describe('ensureValidStorageKey', () => {
     expect(() => ensureValidStorageKey('../evil')).toThrow()
     expect(() => ensureValidStorageKey('')).toThrow()
   })
+
+  it('exposes structured metadata for invalid input types', () => {
+    expect.assertions(4)
+
+    try {
+      ensureValidStorageKey(123 as unknown as string)
+    } catch (error) {
+      const structured = error as Error & {
+        code?: string
+        metadata?: Record<string, unknown>
+      }
+
+      expect(structured).toBeInstanceOf(Error)
+      expect(structured.message).toBe('Storage key validation failed')
+      expect(structured.code).toBe('storage_key_invalid_type')
+      expect(structured.metadata).toEqual(
+        expect.objectContaining({
+          label: 'storage key',
+          receivedType: 'number'
+        })
+      )
+    }
+  })
 })

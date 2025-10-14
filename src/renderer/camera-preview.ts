@@ -34,7 +34,7 @@ class CameraPreview {
       await this.startCameraStream()
       this.isInitialized = true
     } catch (error: any) {
-      log.error('Failed to initialize camera preview:', error)
+      log.error('Failed to initialize camera preview', { error })
       this.showError('Initialization failed', error.message)
     }
   }
@@ -53,11 +53,11 @@ class CameraPreview {
         if (result.success) {
           log.debug('Individual window close result:', result.message)
         } else {
-          log.error('Failed to close individual window:', result.message)
+          log.error('Failed to close individual window', { message: result.message })
           await this.fallbackClose()
         }
       } catch (error: any) {
-        log.error('Error during individual window close:', error)
+        log.error('Error during individual window close', { error })
         await this.fallbackClose()
       }
     })
@@ -75,7 +75,7 @@ class CameraPreview {
     })
 
     this.videoElement.addEventListener('error', (error) => {
-      log.error('Video element error:', error)
+      log.error('Video element error', { error })
       this.showError('Video playback failed', 'Unable to display camera stream')
     })
   }
@@ -119,7 +119,7 @@ class CameraPreview {
 
       await this.updateCameraInfo()
     } catch (error: any) {
-      log.error('Camera access failed:', error)
+      log.error('Camera access failed', { error })
 
       if (error.name === 'OverconstrainedError' || error.name === 'NotFoundError') {
         log.info('Falling back to default camera...')
@@ -142,7 +142,7 @@ class CameraPreview {
             'Specified camera not available, using default camera instead'
           )
         } catch (fallbackError: any) {
-          log.error('Fallback camera access also failed:', fallbackError)
+          log.error('Fallback camera access also failed', { error: fallbackError })
           this.showError('Camera access failed', this.getErrorMessage(fallbackError))
         }
       } else {
@@ -172,7 +172,7 @@ class CameraPreview {
         this.cameraResolution.textContent = `${settings.width}×${settings.height}`
       }
     } catch (error: any) {
-      log.error('Failed to update camera info:', error)
+      log.error('Failed to update camera info', { error })
     }
   }
 
@@ -201,7 +201,10 @@ class CameraPreview {
   }
 
   showWarning(title: string, details: string) {
-    log.warn(`${title}: ${details}`)
+    log.warn('Camera preview warning', {
+      title,
+      details
+    })
     const warningElement = this.errorMessage.cloneNode(true) as HTMLElement
     warningElement.classList.add('warning-message')
     warningElement.classList.remove('hidden')
@@ -267,11 +270,11 @@ class CameraPreview {
       if (result.success) {
         log.debug('Fallback close successful:', result.message)
       } else {
-        log.error('Fallback close failed:', result.message)
+        log.error('Fallback close failed', { message: result.message })
         window.close()
       }
     } catch (error: any) {
-      log.error('Fallback close error:', error)
+      log.error('Fallback close error', { error })
       window.close()
     }
   }

@@ -77,7 +77,9 @@ export async function* streamChatCompletion(
               try {
                 yield JSON.parse(chunk)
               } catch (e) {
-                log.error(`Error parsing JSON:`, e)
+                log.error('Failed to parse JSON chunk', {
+                  error: e
+                })
               }
             }
           }

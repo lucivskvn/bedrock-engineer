@@ -351,7 +351,7 @@ export function usePromptGeneration(
               onScenariosGeneratedRef.current(scenarios)
             }
           } catch (e) {
-            log.error('Failed to parse scenarios:', e)
+            log.error('Failed to parse scenarios', { error: e })
           }
         }
       }

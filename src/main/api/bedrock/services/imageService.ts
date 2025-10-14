@@ -329,7 +329,7 @@ export class ImageService {
 
       throw new Error('Unsupported model type')
     } catch (error: any) {
-      log.error('Error generating image:', error)
+      log.error('Error generating image', { error })
       if (error.name === 'UnrecognizedClientException') {
         throw new Error('AWS authentication failed. Please check your credentials and permissions.')
       }

@@ -1,4 +1,4 @@
-import Store from 'electron-store'
+import Store, { type Options as ElectronStoreOptions } from 'electron-store'
 import keytar from 'keytar'
 import { randomBytes } from 'crypto'
 import { promises as fs, constants as fsConstants } from 'fs'
@@ -17,11 +17,10 @@ import { BedrockAgent } from '../types/agent'
 import { AWSCredentials, ProxyConfiguration } from '../main/api/bedrock/types'
 import { CodeInterpreterContainerConfig } from './tools/handlers/interpreter/types'
 import { log } from './logger'
-import { normalizeApiToken } from '../common/security'
+import { normalizeApiToken, MIN_API_TOKEN_LENGTH } from '../common/security'
+import { createStructuredError } from '../common/errors'
 import { isSystemRootDirectory } from '../common/security/pathGuards'
 import { normalizeNetworkEndpoint } from '../common/security/urlGuards'
-
-type ElectronStoreOptions<T extends Record<string, any>> = ConstructorParameters<typeof Store<T>>[0]
 
 const KEYCHAIN_SERVICE = 'bedrock-engineer'
 const KEYCHAIN_ACCESS_ID = 'awsAccessKeyId'
@@ -38,13 +37,63 @@ const TAVILY_API_KEY_PATTERN = /^tvly-[A-Za-z0-9]{20,}$/
 const AWS_ACCESS_KEY_PATTERN = /^[A-Z0-9]{16,128}$/
 const AWS_SECRET_KEY_PATTERN = /^[A-Za-z0-9+/=]{40,128}$/
 
+type StoreValidationErrorCode =
+  | 'tavily_api_key_invalid_type'
+  | 'tavily_api_key_invalid_format'
+  | 'proxy_port_out_of_range'
+  | 'proxy_missing_required_fields'
+  | 'project_path_missing'
+  | 'project_path_invalid_type'
+  | 'project_path_empty'
+  | 'project_path_root_forbidden'
+  | 'api_auth_token_insufficient_strength'
+
+const createStoreValidationError = (
+  code: StoreValidationErrorCode,
+  metadata: Record<string, unknown> = {}
+) =>
+  createStructuredError({
+    name: 'StoreValidationError',
+    message: 'Configuration sanitization failed',
+    code,
+    metadata
+  })
+
+type StoreStateOperation = 'get' | 'set' | 'open_in_editor'
+
+const createStoreStateError = (operation: StoreStateOperation, key?: string) =>
+  createStructuredError({
+    name: 'StoreStateError',
+    message: 'Configuration store is unavailable',
+    code: 'store_uninitialized',
+    metadata: key ? { operation, key } : { operation }
+  })
+
+type AwsCredentialErrorCode =
+  | 'aws_credential_invalid_type'
+  | 'aws_credential_invalid_format'
+
+const createAwsCredentialError = (
+  code: AwsCredentialErrorCode,
+  metadata: Record<string, unknown>
+) =>
+  createStructuredError({
+    name: 'AwsCredentialSanitizationError',
+    message: 'AWS credential validation failed',
+    code,
+    metadata
+  })
+
 const sanitizeAwsCredential = (value: unknown, label: string, pattern: RegExp): string => {
   if (value === undefined || value === null) {
     return ''
   }
 
   if (typeof value !== 'string') {
-    throw new Error(`${label} must be a string`)
+    throw createAwsCredentialError('aws_credential_invalid_type', {
+      label,
+      receivedType: typeof value
+    })
   }
 
   const trimmed = value.trim()
@@ -53,7 +102,10 @@ const sanitizeAwsCredential = (value: unknown, label: string, pattern: RegExp): 
   }
 
   if (!pattern.test(trimmed)) {
-    throw new Error(`${label} contains invalid characters`)
+    throw createAwsCredentialError('aws_credential_invalid_format', {
+      label,
+      allowedPattern: pattern.source
+    })
   }
 
   return trimmed
@@ -64,14 +116,20 @@ const sanitizeAwsSessionToken = (value: unknown): string | undefined => {
     return undefined
   }
   if (typeof value !== 'string') {
-    throw new Error('AWS session token must be a string')
+    throw createAwsCredentialError('aws_credential_invalid_type', {
+      label: 'AWS session token',
+      receivedType: typeof value
+    })
   }
   const trimmed = value.trim()
   if (trimmed.length === 0) {
     return undefined
   }
   if (/[^A-Za-z0-9+/=]/.test(trimmed)) {
-    throw new Error('AWS session token contains invalid characters')
+    throw createAwsCredentialError('aws_credential_invalid_format', {
+      label: 'AWS session token',
+      allowedPattern: '^[A-Za-z0-9+/=]+$'
+    })
   }
   return trimmed
 }
@@ -81,14 +139,18 @@ const sanitizeTavilyApiKey = (value: unknown): string | undefined => {
     return undefined
   }
   if (typeof value !== 'string') {
-    throw new Error('Tavily API key must be a string')
+    throw createStoreValidationError('tavily_api_key_invalid_type', {
+      receivedType: typeof value
+    })
   }
   const trimmed = value.trim()
   if (trimmed.length === 0) {
     return undefined
   }
   if (!TAVILY_API_KEY_PATTERN.test(trimmed)) {
-    throw new Error('Tavily API key has an unexpected format')
+    throw createStoreValidationError('tavily_api_key_invalid_format', {
+      allowedPattern: TAVILY_API_KEY_PATTERN.source
+    })
   }
   return trimmed
 }
@@ -124,7 +186,10 @@ export const sanitizeProxyConfiguration = (value: unknown): ProxyConfiguration |
     if (input.port > 0 && input.port <= 65535) {
       port = input.port
     } else {
-      throw new Error('Proxy port is out of range')
+      throw createStoreValidationError('proxy_port_out_of_range', {
+        constraint: '1-65535',
+        receivedType: typeof input.port
+      })
     }
   }
 
@@ -142,8 +207,21 @@ export const sanitizeProxyConfiguration = (value: unknown): ProxyConfiguration |
     }
   }
 
-  if (!host || !protocol || !port) {
-    throw new Error('Proxy configuration is missing required fields')
+  const missingFields: string[] = []
+  if (!host) {
+    missingFields.push('host')
+  }
+  if (!protocol) {
+    missingFields.push('protocol')
+  }
+  if (typeof port !== 'number') {
+    missingFields.push('port')
+  }
+
+  if (missingFields.length > 0) {
+    throw createStoreValidationError('proxy_missing_required_fields', {
+      missingFields
+    })
   }
 
   return {
@@ -181,20 +259,28 @@ export const sanitizeAwsMetadata = (value: Partial<AWSCredentials>) => {
 
 export const sanitizeProjectPathValue = (value: unknown): string => {
   if (value === undefined || value === null) {
-    throw new Error('projectPath must not be null or undefined')
+    throw createStoreValidationError('project_path_missing', {
+      reason: 'nullish'
+    })
   }
   if (typeof value !== 'string') {
-    throw new Error('projectPath must be a string')
+    throw createStoreValidationError('project_path_invalid_type', {
+      receivedType: typeof value
+    })
   }
 
   const trimmed = value.trim()
   if (trimmed.length === 0) {
-    throw new Error('projectPath must not be empty')
+    throw createStoreValidationError('project_path_empty', {
+      reason: 'empty_string'
+    })
   }
 
   const resolved = path.resolve(trimmed)
   if (isSystemRootDirectory(resolved)) {
-    throw new Error('projectPath cannot point to the filesystem root')
+    throw createStoreValidationError('project_path_root_forbidden', {
+      reason: 'filesystem_root'
+    })
   }
 
   return resolved
@@ -525,6 +611,7 @@ type ElectronStoreInstance = Store<StoreScheme> & {
   clear: () => void
   get: (key: any, defaultValue?: any) => any
   set: (key: any, value?: any) => void
+  openInEditor: () => Promise<void>
 }
 
 const isJsonSyntaxError = (error: unknown): error is Error => {
@@ -656,7 +743,9 @@ let electronStore: ElectronStoreInstance | null = null
 const init = async () => {
   const storeInstance = await createElectronStore()
   electronStore = storeInstance
-  log.debug(`store path ${storeInstance.path}`)
+  log.debug('Electron store path resolved', {
+    storePath: storeInstance.path
+  })
   // Initialize userDataPath if not present
   const userDataPath = storeInstance.get('userDataPath')
   if (!userDataPath) {
@@ -903,7 +992,7 @@ type Key = keyof StoreScheme
 export const store = {
   get<T extends Key>(key: T): StoreScheme[T] {
     if (!electronStore) {
-      throw new Error('Configuration store is not initialized')
+      throw createStoreStateError('get', key as string)
     }
     if (key === 'aws') {
       const aws = electronStore.get('aws') as Partial<AWSCredentials> | undefined
@@ -921,7 +1010,7 @@ export const store = {
   },
   set<T extends Key>(key: T, value: StoreScheme[T]): void {
     if (!electronStore) {
-      throw new Error('Configuration store is not initialized')
+      throw createStoreStateError('set', key as string)
     }
     if (key === 'aws') {
       const awsValue = value as AWSCredentials
@@ -967,14 +1056,43 @@ export const store = {
     if (key === 'apiAuthToken') {
       const normalized = normalizeApiToken(value)
       if (!normalized) {
-        throw new Error('apiAuthToken must satisfy minimum strength requirements')
+        throw createStoreValidationError('api_auth_token_insufficient_strength', {
+          minimumLength: MIN_API_TOKEN_LENGTH
+        })
       }
       return electronStore.set('apiAuthToken', normalized)
     }
     return electronStore.set(key, value)
+  },
+  async openInEditor(): Promise<void> {
+    if (!electronStore) {
+      throw createStoreStateError('open_in_editor')
+    }
+
+    try {
+      await electronStore.openInEditor()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      log.error('Failed to open configuration store in editor', {
+        error: errorMessage
+      })
+      throw createStructuredError({
+        name: 'StoreInspectorError',
+        message: 'Failed to open configuration store.',
+        code: 'store_open_in_editor_failed',
+        metadata: {
+          reason: 'electron_store_open_failed',
+          errorMessage
+        }
+      })
+    }
   }
 }
 
-export const __test__ = { sanitizeTavilyApiKey }
+const setElectronStoreForTests = (instance: ElectronStoreInstance | null) => {
+  electronStore = instance
+}
+
+export const __test__ = { sanitizeTavilyApiKey, setElectronStoreForTests }
 
 export type ConfigStore = typeof store

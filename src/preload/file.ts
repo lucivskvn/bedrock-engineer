@@ -47,7 +47,10 @@ async function readSharedAgents(): Promise<{ agents: CustomAgent[]; error?: Erro
           agent.isShared = true
           return agent
         } catch (error) {
-          log.error(`Error parsing agent file ${file}: ${error}`)
+          log.error('Failed to parse shared agent file', {
+            fileName: file,
+            error: error instanceof Error ? error.message : String(error)
+          })
           return null
         }
       })
@@ -81,14 +84,14 @@ async function readDirectoryAgents(): Promise<{ agents: CustomAgent[]; error?: E
       const resourcesPath = path.dirname(appPath)
       agentsDir = path.join(resourcesPath, 'directory-agents')
 
-      log.debug(`Production directory agents path: ${agentsDir}`)
+      log.debug('Resolved production directory agents path', { agentsDir })
     }
 
     // Check if the directory agents directory exists
     try {
       await fs.promises.access(agentsDir)
     } catch {
-      log.debug(`Directory agents directory not found: ${agentsDir}`)
+      log.debug('Directory agents directory not found', { agentsDir })
       return { agents: [] }
     }
 
@@ -114,7 +117,10 @@ async function readDirectoryAgents(): Promise<{ agents: CustomAgent[]; error?: E
 
           return agent
         } catch (error) {
-          log.error(`Error parsing agent file ${file}: ${error}`)
+          log.error('Failed to parse directory agent file', {
+            fileName: file,
+            error: error instanceof Error ? error.message : String(error)
+          })
           return null
         }
       })
@@ -150,7 +156,9 @@ async function saveSharedAgent(
     // Use IPC to let main process handle file operations
     return await ipcRenderer.invoke('save-shared-agent', agent, options)
   } catch (error) {
-    log.error(`Error saving shared agent: ${error}`)
+    log.error('Failed to save shared agent', {
+      error: error instanceof Error ? error.message : String(error)
+    })
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -169,7 +177,9 @@ async function loadOrganizationAgents(
   try {
     return await ipcRenderer.invoke('load-organization-agents', organizationConfig)
   } catch (error) {
-    console.error('Error loading organization agents:', error)
+    log.error('Error loading organization agents', {
+      error: error instanceof Error ? error.message : String(error)
+    })
     return {
       agents: [],
       error: error instanceof Error ? error.message : String(error)
@@ -197,7 +207,9 @@ async function saveAgentToOrganization(
       options
     )
   } catch (error) {
-    console.error('Error saving agent to organization:', error)
+    log.error('Error saving agent to organization', {
+      error: error instanceof Error ? error.message : String(error)
+    })
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)

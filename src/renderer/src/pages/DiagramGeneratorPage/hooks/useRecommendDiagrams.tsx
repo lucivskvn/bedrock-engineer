@@ -229,7 +229,7 @@ The value property should contain a detailed description of what to create. This
         }
       }
     } catch (e) {
-      log.error('Error getting recommendations:', e)
+      log.error('Error getting recommendations', { error: e })
     } finally {
       setRecommendLoading(false)
     }

@@ -32,7 +32,7 @@ describe('CommandService timeout handling', () => {
     // Fast-forward to trigger the timeout
     jest.advanceTimersByTime(5 * 60 * 1000)
 
-    await expect(promise).rejects.toThrow('Command timed out')
+    await expect(promise).rejects.toMatchObject({ code: 'COMMAND_TIMEOUT' })
 
     // allow event loop to process kill
     await Promise.resolve()

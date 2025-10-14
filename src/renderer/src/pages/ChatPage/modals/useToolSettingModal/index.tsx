@@ -16,7 +16,7 @@ import { FlowSettingForm } from './FlowSettingForm'
 import { CodeInterpreterSettingForm } from './CodeInterpreterSettingForm'
 import { ScreenCaptureSettingForm } from './ScreenCaptureSettingForm'
 import { CameraCaptureSettingForm } from './CameraCaptureSettingForm'
-import { Button, Modal, ToggleSwitch } from 'flowbite-react'
+import { Button, Modal, ModalBody, ModalFooter, ModalHeader, ToggleSwitch } from 'flowbite-react'
 import { memo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ToolState } from '@/types/agent-chat'
@@ -390,7 +390,7 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
           updatedTools = [...agentTools, newTool]
         } else {
           // ToolSpecが見つからない場合はエラー
-          log.error(`ToolSpec not found for tool: ${toolName}`)
+          log.error('ToolSpec not found for tool', { toolName })
           return
         }
       }
@@ -418,7 +418,7 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
               toast.success('Camera preview window opened')
             }
           } catch (error) {
-            log.error('Failed to show camera preview window:', error)
+            log.error('Failed to show camera preview window', { error })
           }
         }, 500)
       } else if (!isNowEnabled && window.api?.camera) {
@@ -428,7 +428,7 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
             await window.api.camera.hidePreviewWindow()
             toast.success('Camera preview window closed')
           } catch (error) {
-            log.error('Failed to hide camera preview window:', error)
+            log.error('Failed to hide camera preview window', { error })
           }
         }, 100)
       }
@@ -531,7 +531,7 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
   return (
     <Modal dismissible size="7xl" show={isOpen} onClose={onClose} className="dark:bg-gray-900">
       <div className="border-[0.5px] border-white dark:border-gray-100 rounded-lg shadow-xl dark:shadow-gray-900/80">
-        <Modal.Header className="border-b border-gray-200 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded-t-lg">
+        <ModalHeader className="border-b border-gray-200 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded-t-lg">
           {hasSelectedAgent ? (
             <div className="flex items-center">
               <span>Agent Tools: </span>
@@ -545,9 +545,9 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
               </div>
             </div>
           )}
-        </Modal.Header>
+        </ModalHeader>
 
-        <Modal.Body className="p-0 h-[700px] dark:bg-gray-900 rounded-b-lg">
+        <ModalBody className="p-0 h-[700px] dark:bg-gray-900 rounded-b-lg">
           <div className="flex h-full w-full rounded-lg">
             {/* 左側サイドバー：ツールリスト - fixed height with own scrollbar */}
             <div className="lg:w-1/3 w-[60px] border-r border-gray-200 dark:border-gray-600 overflow-y-auto h-full max-h-[700px] flex-shrink-0 dark:bg-gray-900 rounded-bl-lg">
@@ -775,15 +775,12 @@ const ToolSettingModal = memo(({ isOpen, onClose }: ToolSettingModalProps) => {
               )}
             </div>
           </div>
-        </Modal.Body>
-        <Modal.Footer className="dark:bg-gray-900 dark:border-t dark:border-gray-600 rounded-b-lg">
-          <Button
-            onClick={onClose}
-            className="dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white"
-          >
+        </ModalBody>
+        <ModalFooter className="dark:bg-gray-900 dark:border-t dark:border-gray-600 rounded-b-lg">
+          <Button onClick={onClose} className="dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white">
             {t('Close')}
           </Button>
-        </Modal.Footer>
+        </ModalFooter>
       </div>
 
       {/* JSON Spec モーダル */}

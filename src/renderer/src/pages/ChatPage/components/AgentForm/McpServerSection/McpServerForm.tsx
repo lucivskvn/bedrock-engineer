@@ -75,7 +75,9 @@ export const McpServerForm: React.FC<McpServerFormProps> = ({
         }
         // 複数サーバーの場合は追加された全サーバーをテスト
         else {
-          log.debug(`Testing all ${serversToTest.length} newly added MCP servers...`)
+          log.debug('Testing newly added MCP servers', {
+            serverCount: serversToTest.length
+          })
           // 追加されたサーバーのみループでテスト
           for (const server of serversToTest) {
             testServerConnection(server.name, updatedServers)

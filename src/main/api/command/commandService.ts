@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import {
@@ -11,6 +12,7 @@ import {
   CommandPatternConfig
 } from './types'
 import { log } from '../../../common/logger'
+import { createStructuredError, StructuredError } from '../../../common/errors'
 import { ensureDirectoryWithinAllowed } from '../../security/path-utils'
 
 const SAFE_ENV_KEY_PATTERN = /^[A-Z0-9_]+$/
@@ -34,6 +36,96 @@ const BASE_ENV_ALLOWLIST = [
 ]
 
 const WINDOWS_ENV_ALLOWLIST = ['SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT']
+
+type CommandErrorCode =
+  | 'COMMAND_WORKDIR_CONFIGURATION_MISSING'
+  | 'COMMAND_WORKDIR_REQUIRED'
+  | 'COMMAND_ARGUMENT_INVALID_CHARACTERS'
+  | 'COMMAND_INPUT_EMPTY'
+  | 'COMMAND_INPUT_CWD_INVALID_TYPE'
+  | 'COMMAND_MAX_CONCURRENCY_REACHED'
+  | 'COMMAND_WORKDIR_RESOLUTION_FAILED'
+  | 'COMMAND_NOT_ALLOWED'
+  | 'COMMAND_SPAWN_PID_UNDEFINED'
+  | 'COMMAND_STATE_NOT_FOUND'
+  | 'COMMAND_RUNTIME_FAILURE'
+  | 'COMMAND_PROCESS_EXITED_WITH_ERROR'
+  | 'COMMAND_TIMEOUT'
+  | 'COMMAND_WAIT_TIMEOUT'
+  | 'COMMAND_NO_RUNNING_PROCESS'
+  | 'COMMAND_STDIN_LIMIT_EXCEEDED'
+  | 'COMMAND_STOP_FAILED'
+
+const COMMAND_ERROR_MESSAGES: Record<CommandErrorCode, string> = {
+  COMMAND_WORKDIR_CONFIGURATION_MISSING: 'Command execution configuration is incomplete.',
+  COMMAND_WORKDIR_REQUIRED: 'Command execution requires a working directory.',
+  COMMAND_ARGUMENT_INVALID_CHARACTERS: 'Command argument validation failed.',
+  COMMAND_INPUT_EMPTY: 'Command execution input is invalid.',
+  COMMAND_INPUT_CWD_INVALID_TYPE: 'Command execution working directory is invalid.',
+  COMMAND_MAX_CONCURRENCY_REACHED: 'Command execution concurrency limit reached.',
+  COMMAND_WORKDIR_RESOLUTION_FAILED: 'Command execution working directory could not be resolved.',
+  COMMAND_NOT_ALLOWED: 'Command execution rejected by allowlist.',
+  COMMAND_SPAWN_PID_UNDEFINED: 'Command process did not expose a PID.',
+  COMMAND_STATE_NOT_FOUND: 'Command process state is unavailable.',
+  COMMAND_RUNTIME_FAILURE: 'Command execution failed.',
+  COMMAND_PROCESS_EXITED_WITH_ERROR: 'Command process exited with a non-zero status.',
+  COMMAND_TIMEOUT: 'Command execution timed out.',
+  COMMAND_WAIT_TIMEOUT: 'Command execution did not respond before timeout.',
+  COMMAND_NO_RUNNING_PROCESS: 'Command execution process is not running.',
+  COMMAND_STDIN_LIMIT_EXCEEDED: 'Command stdin payload exceeds configured limit.',
+  COMMAND_STOP_FAILED: 'Command process termination failed.'
+}
+
+type CommandServiceError = StructuredError<CommandErrorCode>
+
+const createCommandError = (
+  code: CommandErrorCode,
+  metadata?: Record<string, unknown>
+): CommandServiceError =>
+  createStructuredError({
+    name: 'CommandServiceError',
+    message: COMMAND_ERROR_MESSAGES[code],
+    code,
+    metadata
+  })
+
+const toCommandError = (
+  error: unknown,
+  code: CommandErrorCode,
+  metadata?: Record<string, unknown>
+): CommandServiceError => {
+  if (error instanceof Error && typeof (error as { code?: unknown }).code === 'string') {
+    const structured = error as CommandServiceError
+    if (metadata && Object.keys(metadata).length > 0) {
+      structured.metadata = {
+        ...(structured.metadata ?? {}),
+        ...metadata
+      }
+    }
+    return structured
+  }
+
+  return createCommandError(code, {
+    ...metadata,
+    errorMessage: error instanceof Error ? error.message : String(error)
+  })
+}
+
+const summarizeText = (value: string) => ({
+  length: value.length,
+  sha256: createHash('sha256').update(value).digest('hex'),
+  lines: value.length > 0 ? value.split('\n').length : 0
+})
+
+const summarizeSensitiveValue = (value: string) => ({
+  length: value.length,
+  sha256: createHash('sha256').update(value).digest('hex')
+})
+
+const summarizeProcessStreams = (stdout: string, stderr: string) => ({
+  stdout: summarizeText(stdout),
+  stderr: summarizeText(stderr)
+})
 
 export class CommandService {
   private config: CommandConfig
@@ -100,12 +192,14 @@ export class CommandService {
   private resolveWorkingDirectory(cwd: string): string {
     const allowedDirectories = this.config.allowedWorkingDirectories || []
     if (allowedDirectories.length === 0) {
-      throw new Error('No allowed working directories configured')
+      throw createCommandError('COMMAND_WORKDIR_CONFIGURATION_MISSING', {
+        configuredDirectoryCount: 0
+      })
     }
 
     const trimmed = cwd?.trim()
     if (!trimmed) {
-      throw new Error('Working directory must be provided')
+      throw createCommandError('COMMAND_WORKDIR_REQUIRED')
     }
 
     const candidate = path.isAbsolute(trimmed)
@@ -114,7 +208,13 @@ export class CommandService {
       ? path.resolve(this.config.projectPath, trimmed)
       : path.resolve(trimmed)
 
-    return ensureDirectoryWithinAllowed(candidate, allowedDirectories)
+    try {
+      return ensureDirectoryWithinAllowed(candidate, allowedDirectories)
+    } catch (error) {
+      throw toCommandError(error, 'COMMAND_WORKDIR_RESOLUTION_FAILED', {
+        candidateDirectory: summarizeSensitiveValue(candidate)
+      })
+    }
   }
 
   /**
@@ -230,7 +330,9 @@ export class CommandService {
     for (const arg of args) {
       // Reject potentially dangerous characters
       if (/[^a-zA-Z0-9@%+=:,./-]/.test(arg)) {
-        throw new Error(`Invalid characters in argument: ${arg}`)
+        throw createCommandError('COMMAND_ARGUMENT_INVALID_CHARACTERS', {
+          argumentSummary: summarizeSensitiveValue(arg)
+        })
       }
     }
   }
@@ -318,19 +420,32 @@ export class CommandService {
     return new Promise((resolve, reject) => {
       // 入力値の事前検証
       if (!input.command || typeof input.command !== 'string' || input.command.trim() === '') {
-        reject(new Error('Invalid command: Command cannot be empty'))
+        reject(
+          createCommandError('COMMAND_INPUT_EMPTY', {
+            receivedType: typeof input.command
+          })
+        )
         return
       }
 
       if (!input.cwd || typeof input.cwd !== 'string') {
-        reject(new Error('Invalid working directory: cwd must be a valid string'))
+        reject(
+          createCommandError('COMMAND_INPUT_CWD_INVALID_TYPE', {
+            receivedType: typeof input.cwd
+          })
+        )
         return
       }
 
       const maxConcurrent = this.config.maxConcurrentProcesses
       if (typeof maxConcurrent === 'number' && maxConcurrent > 0) {
         if (this.runningProcesses.size >= maxConcurrent) {
-          reject(new Error('Maximum concurrent command limit reached'))
+          reject(
+            createCommandError('COMMAND_MAX_CONCURRENCY_REACHED', {
+              configuredLimit: maxConcurrent,
+              activeProcessCount: this.runningProcesses.size
+            })
+          )
           return
         }
       }
@@ -339,7 +454,11 @@ export class CommandService {
       try {
         resolvedCwd = this.resolveWorkingDirectory(input.cwd)
       } catch (error) {
-        reject(error instanceof Error ? error : new Error(String(error)))
+        reject(
+          toCommandError(error, 'COMMAND_WORKDIR_RESOLUTION_FAILED', {
+            receivedWorkingDirectory: summarizeSensitiveValue(input.cwd)
+          })
+        )
         return
       }
 
@@ -352,7 +471,12 @@ export class CommandService {
       }
 
       if (!this.isCommandAllowed(input.command)) {
-        reject(new Error(`Command not allowed: ${input.command}`))
+        reject(
+          createCommandError('COMMAND_NOT_ALLOWED', {
+            commandSummary: summarizeSensitiveValue(input.command),
+            allowedPatternCount: this.config.allowedCommands?.length ?? 0
+          })
+        )
         return
       }
 
@@ -370,18 +494,25 @@ export class CommandService {
       })
 
       if (typeof childProcess.pid === 'undefined') {
-        const errorMessage = `Failed to start process: PID is undefined
-Platform: ${process.platform}
-Command: ${input.command}
-Working Directory: ${input.cwd}`
-        log.error('Process spawn failed:', {
+        log.error('Process spawn failed', {
           platform: process.platform,
-          command: input.command,
-          cwd: input.cwd,
-          spawnfile: childProcess.spawnfile,
-          spawnargs: childProcess.spawnargs
+          commandSummary: summarizeSensitiveValue(input.command),
+          workingDirectory: summarizeSensitiveValue(input.cwd),
+          spawnfile:
+            typeof childProcess.spawnfile === 'string'
+              ? summarizeSensitiveValue(childProcess.spawnfile)
+              : null,
+          spawnargsCount: Array.isArray(childProcess.spawnargs)
+            ? childProcess.spawnargs.length
+            : 0
         })
-        reject(new Error(errorMessage))
+        reject(
+          createCommandError('COMMAND_SPAWN_PID_UNDEFINED', {
+            platform: process.platform,
+            commandSummary: summarizeSensitiveValue(input.command),
+            workingDirectory: summarizeSensitiveValue(resolvedCwd)
+          })
+        )
         return
       }
 
@@ -410,11 +541,11 @@ Working Directory: ${input.cwd}`
         this.processStates.delete(pid)
       }
 
-      const completeWithError = (error: string) => {
+      const completeWithError = (error: CommandServiceError) => {
         if (!isCompleted) {
           isCompleted = true
           cleanup()
-          reject(new Error(error))
+          reject(error)
         }
       }
 
@@ -422,7 +553,12 @@ Working Directory: ${input.cwd}`
         if (!isCompleted) {
           const state = this.processStates.get(pid)
           if (!state) {
-            reject(new Error('Process state not found'))
+            reject(
+              createCommandError('COMMAND_STATE_NOT_FOUND', {
+                pid,
+                commandSummary: summarizeSensitiveValue(input.command)
+              })
+            )
             return
           }
 
@@ -488,7 +624,15 @@ Working Directory: ${input.cwd}`
           // エラーチェック
           if (this.checkForErrors(chunk, '')) {
             this.updateProcessState(pid, { hasError: true })
-            completeWithError(`Command failed: \n${currentOutput}\n${currentError}`)
+            completeWithError(
+              createCommandError('COMMAND_RUNTIME_FAILURE', {
+                pid,
+                failureSource: 'stdout',
+                commandSummary: summarizeSensitiveValue(input.command),
+                workingDirectory: summarizeSensitiveValue(resolvedCwd),
+                streams: summarizeProcessStreams(currentOutput, currentError)
+              })
+            )
             return
           }
 
@@ -513,26 +657,43 @@ Working Directory: ${input.cwd}`
           // エラーチェック
           if (this.checkForErrors('', chunk)) {
             this.updateProcessState(pid, { hasError: true })
-            completeWithError(`Command failed: \n${currentOutput}\n${currentError}`)
+            completeWithError(
+              createCommandError('COMMAND_RUNTIME_FAILURE', {
+                pid,
+                failureSource: 'stderr',
+                commandSummary: summarizeSensitiveValue(input.command),
+                workingDirectory: summarizeSensitiveValue(resolvedCwd),
+                streams: summarizeProcessStreams(currentOutput, currentError)
+              })
+            )
           }
         }
       })
 
       childProcess.on('error', (error) => {
-        let errorMessage = `Command execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-
-        // Windows固有のエラーの詳細情報を追加
+        const hints: string[] = []
         if (process.platform === 'win32' && error instanceof Error) {
           if (error.message.includes('ENOENT')) {
-            errorMessage +=
-              '\nHint: The command or shell may not be found. Please check if the command exists and the shell path is correct.'
+            hints.push('missing_command_or_shell')
           } else if (error.message.includes('EACCES')) {
-            errorMessage +=
-              '\nHint: Permission denied. Please check if you have the necessary permissions to execute this command.'
+            hints.push('permission_denied')
           }
         }
 
-        completeWithError(errorMessage)
+        const errorMetadata: Record<string, unknown> = {
+          pid,
+          failureSource: 'process_error',
+          commandSummary: summarizeSensitiveValue(input.command),
+          workingDirectory: summarizeSensitiveValue(resolvedCwd),
+          platform: process.platform
+        }
+
+        if (hints.length > 0) {
+          errorMetadata.hints = hints
+        }
+
+        const structuredError = toCommandError(error, 'COMMAND_RUNTIME_FAILURE', errorMetadata)
+        completeWithError(structuredError)
       })
 
       childProcess.on('exit', (code) => {
@@ -546,7 +707,15 @@ Working Directory: ${input.cwd}`
           if (!this.checkForErrors(currentOutput, currentError) && code === 0) {
             completeWithSuccess()
           } else if (!isCompleted) {
-            completeWithError(`Process exited with code ${code}\n${currentOutput}\n${currentError}`)
+            completeWithError(
+              createCommandError('COMMAND_PROCESS_EXITED_WITH_ERROR', {
+                pid,
+                exitCode: code ?? null,
+                commandSummary: summarizeSensitiveValue(input.command),
+                workingDirectory: summarizeSensitiveValue(resolvedCwd),
+                streams: summarizeProcessStreams(currentOutput, currentError)
+              })
+            )
           }
         }
       })
@@ -559,7 +728,15 @@ Working Directory: ${input.cwd}`
           if (!state) return
 
           if (state.hasError) {
-            completeWithError(`Command failed to start: \n${currentError}`)
+            completeWithError(
+              createCommandError('COMMAND_RUNTIME_FAILURE', {
+                pid,
+                failureSource: 'startup',
+                commandSummary: summarizeSensitiveValue(input.command),
+                workingDirectory: summarizeSensitiveValue(resolvedCwd),
+                stderr: summarizeText(currentError)
+              })
+            )
           } else {
             // 開発サーバーの状態チェック
             if (
@@ -569,9 +746,19 @@ Working Directory: ${input.cwd}`
               completeWithSuccess()
             } else {
               await this.stopProcess(pid).catch((err) =>
-                log.error(`Failed to stop process ${pid}:`, err)
+                log.error('Failed to stop process after timeout', {
+                  pid,
+                  error: err instanceof Error ? err.message : String(err)
+                })
               )
-              completeWithError('Command timed out')
+              completeWithError(
+                createCommandError('COMMAND_TIMEOUT', {
+                  pid,
+                  commandSummary: summarizeSensitiveValue(input.command),
+                  workingDirectory: summarizeSensitiveValue(resolvedCwd),
+                  streams: summarizeProcessStreams(currentOutput, currentError)
+                })
+              )
             }
           }
         }
@@ -582,20 +769,26 @@ Working Directory: ${input.cwd}`
   async sendInput(input: CommandStdinInput): Promise<CommandExecutionResult> {
     const state = this.processStates.get(input.pid)
     if (!state || !state.process) {
-      throw new Error(`No running process found with PID: ${input.pid}`)
+      throw createCommandError('COMMAND_NO_RUNNING_PROCESS', {
+        pid: input.pid
+      })
     }
 
     if (typeof this.config.maxStdinBytes === 'number' && this.config.maxStdinBytes > 0) {
       const payloadSize = Buffer.byteLength(input.stdin ?? '', 'utf8')
       if (payloadSize > this.config.maxStdinBytes) {
-        throw new Error(
-          `stdin payload exceeds configured limit of ${this.config.maxStdinBytes} bytes`
-        )
+        throw createCommandError('COMMAND_STDIN_LIMIT_EXCEEDED', {
+          configuredLimit: this.config.maxStdinBytes,
+          payloadSize
+        })
       }
     }
 
     return new Promise((resolve, reject) => {
       const { process: childProcess } = state
+      const commandSummary = summarizeSensitiveValue(
+        Array.isArray(childProcess.spawnargs) ? childProcess.spawnargs.join(' ') : ''
+      )
       let currentOutput = state.output.stdout
       let currentError = state.output.stderr
       let isCompleted = false
@@ -606,10 +799,10 @@ Working Directory: ${input.cwd}`
       childProcess.removeAllListeners('error')
       childProcess.removeAllListeners('exit')
 
-      const completeWithError = (error: string) => {
+      const completeWithError = (error: CommandServiceError) => {
         if (!isCompleted) {
           isCompleted = true
-          reject(new Error(error))
+          reject(error)
         }
       }
 
@@ -646,7 +839,14 @@ Working Directory: ${input.cwd}`
         // エラーチェック
         if (this.checkForErrors(chunk, '')) {
           this.updateProcessState(input.pid, { hasError: true })
-          completeWithError(`Command failed: \n${currentOutput}\n${currentError}`)
+          completeWithError(
+            createCommandError('COMMAND_RUNTIME_FAILURE', {
+              pid: input.pid,
+              failureSource: 'stdout',
+              commandSummary,
+              streams: summarizeProcessStreams(currentOutput, currentError)
+            })
+          )
           return
         }
 
@@ -667,13 +867,24 @@ Working Directory: ${input.cwd}`
 
         if (this.checkForErrors('', chunk)) {
           this.updateProcessState(input.pid, { hasError: true })
-          completeWithError(`Command failed: \n${currentOutput}\n${currentError}`)
+          completeWithError(
+            createCommandError('COMMAND_RUNTIME_FAILURE', {
+              pid: input.pid,
+              failureSource: 'stderr',
+              commandSummary,
+              streams: summarizeProcessStreams(currentOutput, currentError)
+            })
+          )
         }
       })
 
       childProcess.on('error', (error) => {
         completeWithError(
-          `Command execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          toCommandError(error, 'COMMAND_RUNTIME_FAILURE', {
+            pid: input.pid,
+            failureSource: 'process_error',
+            commandSummary
+          })
         )
       })
 
@@ -686,7 +897,14 @@ Working Directory: ${input.cwd}`
         if (!this.checkForErrors(currentOutput, currentError) && code === 0) {
           completeWithSuccess()
         } else if (!isCompleted) {
-          completeWithError(`Process exited with code ${code}\n${currentOutput}\n${currentError}`)
+          completeWithError(
+            createCommandError('COMMAND_PROCESS_EXITED_WITH_ERROR', {
+              pid: input.pid,
+              exitCode: code ?? null,
+              commandSummary,
+              streams: summarizeProcessStreams(currentOutput, currentError)
+            })
+          )
         }
 
         // プロセスが終了したらクリーンアップ
@@ -704,14 +922,27 @@ Working Directory: ${input.cwd}`
           if (!currentState) return
 
           if (currentState.hasError) {
-            completeWithError(`Command failed: \n${currentError}`)
+            completeWithError(
+              createCommandError('COMMAND_RUNTIME_FAILURE', {
+                pid: input.pid,
+                failureSource: 'stdin_timeout',
+                commandSummary,
+                stderr: summarizeText(currentError)
+              })
+            )
           } else if (
             this.isServerReady(currentOutput) ||
             currentOutput.includes('waiting for file changes')
           ) {
             completeWithSuccess()
           } else {
-            completeWithError('Command timed out waiting for response')
+            completeWithError(
+              createCommandError('COMMAND_WAIT_TIMEOUT', {
+                pid: input.pid,
+                commandSummary,
+                streams: summarizeProcessStreams(currentOutput, currentError)
+              })
+            )
           }
         }
       }, 5000)
@@ -736,23 +967,75 @@ Working Directory: ${input.cwd}`
         resolve()
       }
 
+      const terminateProcess = () => {
+        const attempts: Array<() => void> = []
+        const isWindows = process.platform === 'win32'
+
+        if (!isWindows) {
+          attempts.push(() => process.kill(-pid))
+        }
+
+        if (childProcess) {
+          attempts.push(() => childProcess.kill())
+        }
+
+        attempts.push(() => process.kill(pid))
+
+        let lastError: unknown
+
+        for (const attempt of attempts) {
+          try {
+            attempt()
+            return
+          } catch (error) {
+            lastError = error
+          }
+        }
+
+        if (
+          lastError &&
+          typeof lastError === 'object' &&
+          'code' in lastError &&
+          (lastError as { code?: unknown }).code === 'ESRCH'
+        ) {
+          return
+        }
+
+        throw lastError ?? new Error('Process termination failed')
+      }
+
       if (childProcess) {
         childProcess.stdout?.removeAllListeners()
         childProcess.stderr?.removeAllListeners()
         childProcess.removeAllListeners('error')
         childProcess.removeAllListeners('exit')
         childProcess.once('exit', cleanup)
-      } else {
-        cleanup()
-      }
 
-      try {
-        // プロセスグループ全体を終了
-        process.kill(-pid)
-      } catch (error) {
-        childProcess?.removeAllListeners('exit')
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        reject(new Error(`Failed to stop process ${pid}: ${errorMessage}`))
+        try {
+          terminateProcess()
+        } catch (error) {
+          childProcess.removeAllListeners('exit')
+          reject(
+            toCommandError(error, 'COMMAND_STOP_FAILED', {
+              pid,
+              hasProcessHandle: true,
+              attemptedProcessGroupKill: process.platform !== 'win32'
+            })
+          )
+        }
+      } else {
+        try {
+          terminateProcess()
+          cleanup()
+        } catch (error) {
+          reject(
+            toCommandError(error, 'COMMAND_STOP_FAILED', {
+              pid,
+              hasProcessHandle: false,
+              attemptedProcessGroupKill: process.platform !== 'win32'
+            })
+          )
+        }
       }
     })
   }

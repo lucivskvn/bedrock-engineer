@@ -1,4 +1,8 @@
 import { ToolInput, ToolResult } from './tools'
+import {
+  McpConnectionTestResult,
+  McpToolExecutionResult
+} from './mcp'
 
 // IPC通信の型定義を一元管理
 export interface IPCChannelDefinitions {
@@ -631,35 +635,19 @@ export interface IPCChannelDefinitions {
   }
   'mcp:executeTool': {
     params: [string, any, any[]] // toolName, input, mcpServers
-    result: {
-      found: boolean
-      success: boolean
-      name: string
-      error?: string
-      message?: string
-      result?: any
-    }
+    result: McpToolExecutionResult
   }
   'mcp:testConnection': {
     params: any // McpServerConfig
-    result: {
-      success: boolean
-      message: string
-      details?: {
-        toolCount?: number
-        toolNames?: string[]
-        error?: string
-        errorDetails?: string
-        startupTime?: number
-      }
-    }
+    result: McpConnectionTestResult
   }
   'mcp:testAllConnections': {
     params: any[] // McpServerConfig[]
     result: {
       success: boolean
-      results?: Record<string, any>
+      results?: Record<string, McpConnectionTestResult>
       error?: string
+      message?: string
     }
   }
   'mcp:cleanup': {

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Accordion } from 'flowbite-react'
+import { Accordion, AccordionContent, AccordionPanel, AccordionTitle } from 'flowbite-react'
 import { FaCheck } from 'react-icons/fa'
 import { ToolExecutionState } from '../hooks/useSpeakChat'
 
@@ -17,8 +17,8 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({ toolExecut
   return (
     <div className="mb-4">
       <Accordion className="w-full" collapseAll>
-        <Accordion.Panel>
-          <Accordion.Title>
+        <AccordionPanel>
+          <AccordionTitle>
             <div className="flex gap-4 items-center">
               <span className="rounded-md">
                 <FaCheck className="size-6 text-green-500" />
@@ -30,15 +30,15 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({ toolExecut
                 </span>
               </div>
             </div>
-          </Accordion.Title>
-          <Accordion.Content className="w-full">
+          </AccordionTitle>
+          <AccordionContent className="w-full">
             <div className="text-xs bg-white dark:bg-gray-800 p-2 rounded border">
               <pre className="whitespace-pre-wrap text-gray-700 dark:text-gray-300">
                 {JSON.stringify(lastResult.result, null, 2)}
               </pre>
             </div>
-          </Accordion.Content>
-        </Accordion.Panel>
+          </AccordionContent>
+        </AccordionPanel>
       </Accordion>
     </div>
   )

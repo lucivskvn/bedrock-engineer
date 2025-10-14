@@ -20,7 +20,9 @@ export default defineConfig({
       }
     },
     plugins: [
-      react(),
+      react({
+        jsxRuntime: 'automatic'
+      }),
       svgr({
         svgrOptions: {
           exportType: 'default',

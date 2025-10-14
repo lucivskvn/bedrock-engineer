@@ -13,6 +13,8 @@
     "composite": true,
     "jsx": "react-jsx",
     "baseUrl": ".",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
     "paths": {
       "@renderer/*": ["src/renderer/src/*"],
       "@/*": ["src/*"],

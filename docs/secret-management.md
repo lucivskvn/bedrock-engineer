@@ -43,3 +43,23 @@ Similarly, the `apiEndpoint` value is normalised with the same guardrails used
 by the main process. Endpoints that include credentials, path fragments, or
 unsafe schemes are rejected to ensure the renderer can only connect to trusted
 loopback or HTTPS origins.
+
+## Inspecting the encrypted store during development
+
+The upgrade to `electron-store` 11.x exposes an `openInEditor()` helper that
+launches the active configuration file in your default editor without breaking
+encryption at rest. When you need to inspect local state, import the shared
+store wrapper and call the helper from a development-only script or the Node
+REPL:
+
+```ts
+import { store } from '../preload/store'
+
+await store.openInEditor()
+```
+
+If the operating system refuses to launch the editor (for example when sandbox
+policies block the request), the preload layer raises a structured
+`StoreInspectorError` with static messaging and metadata containing the
+sanitised failure reason. This keeps log output compliant with the
+redaction policy while still surfacing actionable diagnostics.

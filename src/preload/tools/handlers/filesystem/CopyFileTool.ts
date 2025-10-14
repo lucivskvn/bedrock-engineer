@@ -7,7 +7,7 @@ import * as path from 'path'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
-import { ExecutionError } from '../../base/errors'
+import { createFileExecutionError, summarizeError } from './errorUtils'
 
 /**
  * Input type for CopyFileTool
@@ -107,15 +107,18 @@ export class CopyFileTool extends BaseTool<CopyFileInput, string> {
       this.logger.error(`Failed to copy file`, {
         source,
         destination,
-        error: error instanceof Error ? error.message : String(error)
+        error: summarizeError(error)
       })
 
-      throw new ExecutionError(
-        `Error copying file: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined,
-        { source, destination }
-      )
+      throw createFileExecutionError({
+        toolName: this.name,
+        reason: 'COPY_FILE_FAILED',
+        error,
+        metadata: {
+          source,
+          destination
+        }
+      })
     }
   }
 

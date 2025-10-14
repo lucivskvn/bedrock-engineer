@@ -243,7 +243,7 @@ export const useAgentForm = (initialAgent?: CustomAgent, onSave?: (agent: Custom
           setTempMcpTools([])
         }
       } catch (error) {
-        log.error('Failed to fetch MCP tools:', error)
+        log.error('Failed to fetch MCP tools', { error })
         setTempMcpTools([])
       } finally {
         setIsLoadingMcpTools(false)

@@ -60,7 +60,10 @@ export function useMcpServerState(
         toast.error(`${result.message}`)
       }
     } catch (error) {
-      log.error(`Error testing connection to ${serverName}:`, error)
+      log.error('Error testing MCP server connection', {
+        serverName,
+        error: error instanceof Error ? error.message : String(error)
+      })
       toast.error(`Error testing connection to ${serverName}`)
     } finally {
       setTestingConnection(null)
@@ -90,7 +93,9 @@ export function useMcpServerState(
       const totalTime = Date.now() - startTime
       toast.success(`Completed testing ${initialServers.length} servers in ${totalTime}ms`)
     } catch (error) {
-      log.error('Error testing all connections:', error)
+      log.error('Error testing all MCP connections', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       toast.error(`Failed to test all connections: ${error}`)
     } finally {
       setTestingAll(false)

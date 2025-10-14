@@ -6,6 +6,7 @@ import { BackgroundMessage } from './types'
 import { store } from '../../../../../preload/store'
 import { createCategoryLogger } from '../../../../../common/logger'
 import { ensureValidStorageKey } from '../../../../../common/security/pathGuards'
+import { createBackgroundAgentError } from './errors'
 
 const logger = createCategoryLogger('background-agent:chat-session')
 
@@ -49,11 +50,24 @@ export interface CreateSessionOptions {
  * BackgroundAgentのセッション永続化管理クラス
  * 既存のChatSessionManagerを参考に実装
  */
+type BackgroundSessionMetadataStoreState = {
+  metadata: Record<string, BackgroundSessionMetadata>
+}
+
+type BackgroundSessionMetadataStore = {
+  get<K extends keyof BackgroundSessionMetadataStoreState>(
+    key: K
+  ): BackgroundSessionMetadataStoreState[K]
+  set<K extends keyof BackgroundSessionMetadataStoreState>(
+    key: K,
+    value: BackgroundSessionMetadataStoreState[K]
+  ): void
+  store: BackgroundSessionMetadataStoreState
+}
+
 export class BackgroundChatSessionManager {
   private readonly sessionsDir: string
-  private metadataStore: Store<{
-    metadata: { [key: string]: BackgroundSessionMetadata }
-  }>
+  private metadataStore: BackgroundSessionMetadataStore
 
   constructor() {
     const userDataPath = store.get('userDataPath')
@@ -66,12 +80,12 @@ export class BackgroundChatSessionManager {
     fs.mkdirSync(this.sessionsDir, { recursive: true })
 
     // メタデータ用のストアを初期化
-    this.metadataStore = new Store({
+    this.metadataStore = new Store<BackgroundSessionMetadataStoreState>({
       name: 'background-agent-sessions-meta',
       defaults: {
-        metadata: {} as { [key: string]: BackgroundSessionMetadata }
+        metadata: {}
       }
-    })
+    }) as unknown as BackgroundSessionMetadataStore
 
     // 初回起動時、既存のセッションからメタデータを生成
     this.initializeMetadata()
@@ -230,13 +244,24 @@ export class BackgroundChatSessionManager {
     // 全ての試行が失敗した場合はエラーを投げる
     logger.error('Failed to write background session file after all retries', {
       sessionId,
-      error: lastError?.message,
       filePath,
-      maxRetries
+      maxRetries,
+      causeMessage: lastError instanceof Error ? lastError.message : String(lastError ?? '')
     })
-    throw new Error(
-      `Failed to write session file after ${maxRetries} attempts: ${lastError?.message}`
-    )
+
+    const metadata: Record<string, unknown> = {
+      sessionId,
+      filePath,
+      attemptCount: maxRetries
+    }
+
+    if (lastError instanceof Error) {
+      metadata.causeMessage = lastError.message
+    } else if (lastError) {
+      metadata.causeMessage = String(lastError)
+    }
+
+    throw createBackgroundAgentError('background_session_write_failed', metadata)
   }
 
   /**
@@ -352,25 +377,39 @@ export class BackgroundChatSessionManager {
         await this.createSession(safeSessionId)
         session = this.readSessionFile(safeSessionId)
         if (!session) {
-          const error = new Error(`Failed to create session for message: ${safeSessionId}`)
+          const error = createBackgroundAgentError('background_session_create_failed', {
+            sessionId: safeSessionId,
+            messageId: message.id
+          })
           logger.error('Failed to create session for message', {
             sessionId: safeSessionId,
             messageId: message.id,
-            error: error.message
+            errorCode: error.code,
+            errorMetadata: error.metadata
           })
           throw error
-        }
-      } catch (error: any) {
-        logger.error('Error creating session for message', {
+      }
+    } catch (error: any) {
+      const structuredError = createBackgroundAgentError(
+        'background_session_create_failed',
+        {
           sessionId: safeSessionId,
           messageId: message.id,
-          error: error.message
-        })
-        throw new Error(`Failed to create session for message: ${error.message}`)
-      }
-    }
+          causeMessage: error instanceof Error ? error.message : String(error)
+        }
+      )
 
-    // メッセージを追加
+      logger.error('Error creating session for message', {
+        sessionId: safeSessionId,
+        messageId: message.id,
+        errorCode: structuredError.code,
+        errorMetadata: structuredError.metadata
+      })
+      throw structuredError
+    }
+  }
+
+  // メッセージを追加
     session.messages.push(message)
     session.updatedAt = Date.now()
 
@@ -386,17 +425,28 @@ export class BackgroundChatSessionManager {
         totalMessages: session.messages.length
       })
     } catch (error: any) {
+      const structuredError = createBackgroundAgentError(
+        'background_session_message_persist_failed',
+        {
+          sessionId: safeSessionId,
+          messageId: message.id,
+          role: message.role,
+          causeMessage: error instanceof Error ? error.message : String(error)
+        }
+      )
+
       logger.error('Failed to save message to session', {
         sessionId: safeSessionId,
         messageId: message.id,
         role: message.role,
-        error: error.message
+        errorCode: structuredError.code,
+        errorMetadata: structuredError.metadata
       })
 
       // メッセージ追加に失敗した場合は、メモリ上のセッションからもメッセージを削除
       session.messages.pop()
 
-      throw new Error(`Failed to save message to session: ${error.message}`)
+      throw structuredError
     }
   }
 

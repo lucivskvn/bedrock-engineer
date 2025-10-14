@@ -26,7 +26,7 @@ export const GenerateImageSettingForm: React.FC = () => {
             setGenerateImageModel(models[0].id)
           }
         } catch (error) {
-          log.error('Failed to fetch image generation models:', error)
+          log.error('Failed to fetch image generation models', { error })
           setAvailableModels([])
         }
       }
@@ -60,7 +60,7 @@ export const GenerateImageSettingForm: React.FC = () => {
       {/* 設定フォーム */}
       <div className="flex flex-col gap-2 p-4 border border-gray-200 dark:border-gray-700 rounded-md mb-6 w-full">
         <div className="mb-4 w-full">
-          <Label htmlFor="generateImageModel" value={t('Image Generation Model')} />
+          <Label htmlFor="generateImageModel">{t('Image Generation Model')}</Label>
           {sortedModels.length > 0 ? (
             <Select
               id="generateImageModel"

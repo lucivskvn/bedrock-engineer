@@ -425,6 +425,59 @@ system: >+
   logger.setLevel(logging.INFO)
 
 
+  def _format_log_summary(message: str, **metadata: Any) -> str:
+      """Render a stable log message with redacted metadata."""
+
+      sanitized = {key: value for key, value in metadata.items() if value not in (None, {}, [], ())}
+
+      if not sanitized:
+          return message
+
+      return f"{message} {json.dumps(sanitized, ensure_ascii=False)}"
+
+
+  def _summarize_mapping(payload: Dict[str, Any]) -> Dict[str, Any]:
+      """Return a structural summary for mapping inputs without leaking raw values."""
+
+      if not isinstance(payload, dict):
+          return {
+              "type": payload.__class__.__name__,
+          }
+
+      keys = sorted(str(key) for key in payload.keys())
+
+      summary: Dict[str, Any] = {
+          "key_count": len(keys),
+          "keys": keys,
+      }
+
+      if payload:
+          summary["has_nested_values"] = any(isinstance(value, (dict, list)) for value in payload.values())
+
+      return summary
+
+
+  def _summarize_exception(error: Exception) -> Dict[str, Any]:
+      """Capture exception metadata without persisting the raw message."""
+
+      message = str(error).strip()
+      summary: Dict[str, Any] = {
+          "type": error.__class__.__name__,
+          "has_message": bool(message),
+      }
+
+      if message:
+          summary["message_length"] = len(message)
+
+      if getattr(error, "__cause__", None) is not None:
+          summary["has_cause"] = True
+
+      if hasattr(error, "code") and error.code is not None:
+          summary["code_type"] = error.code.__class__.__name__
+
+      return summary
+
+
   # 環境変数
 
   ENV_NAME = os.environ.get('ENV_NAME', 'dev')
@@ -472,7 +525,12 @@ system: >+
           Returns:
               処理結果
           """
-          logger.info(f"Processing input: {json.dumps(input_data)}")
+          logger.info(
+              _format_log_summary(
+                  "Processing input",
+                  input_summary=_summarize_mapping(input_data),
+              )
+          )
 
           # 処理タイプに基づいて適切なメソッドを呼び出す
           process_type = input_data.get('process_type', 'analyze_requirement')
@@ -489,7 +547,12 @@ system: >+
               else:
                   raise ValueError(f"Unknown process type: {process_type}")
           except Exception as e:
-              logger.error(f"Error in process: {str(e)}")
+              logger.error(
+                  _format_log_summary(
+                      "Error in process",
+                      error=_summarize_exception(e),
+                  )
+              )
               return {
                   "status": "failed",
                   "error": str(e)
@@ -575,7 +638,12 @@ system: >+
                   "s3_key": s3_key
               }
           except Exception as e:
-              logger.error(f"Error in analyze_requirement: {str(e)}")
+              logger.error(
+                  _format_log_summary(
+                      "Error in analyze_requirement",
+                      error=_summarize_exception(e),
+                  )
+              )
               return {
                   "status": "failed",
                   "error": str(e)
@@ -614,7 +682,12 @@ system: >+
                   )
                   analysis = analysis_data.get('analysis', '')
               except Exception as e:
-                  logger.warning(f"Failed to load analysis: {str(e)}")
+                  logger.warning(
+                      _format_log_summary(
+                          "Failed to load analysis",
+                          error=_summarize_exception(e),
+                      )
+                  )
 
           # LLMにユーザーストーリーの作成を依頼
           messages = [
@@ -817,7 +890,12 @@ system: >+
                   )
                   user_stories = stories_data.get('user_stories', '')
               except Exception as e:
-                  logger.warning(f"Failed to load user stories: {str(e)}")
+                  logger.warning(
+                      _format_log_summary(
+                          "Failed to load user stories",
+                          error=_summarize_exception(e),
+                      )
+                  )
 
           if competitive_analysis_id:
               try:
@@ -831,7 +909,12 @@ system: >+
                   )
                   competitive_analysis = analysis_data.get('competitive_analysis', '')
               except Exception as e:
-                  logger.warning(f"Failed to load competitive analysis: {str(e)}")
+                  logger.warning(
+                      _format_log_summary(
+                          "Failed to load competitive analysis",
+                          error=_summarize_exception(e),
+                      )
+                  )
 
           # LLMに製品要件書の作成を依頼
           messages = [
@@ -931,7 +1014,12 @@ system: >+
           処理結果
       """
       try:
-          logger.info(f"Received event: {json.dumps(event)}")
+          logger.info(
+              _format_log_summary(
+                  "Received event",
+                  event_summary=_summarize_mapping(event),
+              )
+          )
 
           # Bedrock Agent呼び出しの場合
           if 'actionGroup' in event and 'function' in event:
@@ -1007,8 +1095,13 @@ system: >+
               # 結果を直接返す
               return result
 
-      except Exception as e:
-          logger.error(f"Error: {str(e)}")
+          except Exception as e:
+              logger.error(
+                  _format_log_summary(
+                      "Error",
+                      error=_summarize_exception(e),
+                  )
+              )
 
           # Bedrock Agent呼び出しの場合のエラーレスポンス
           if 'actionGroup' in event and 'function' in event:

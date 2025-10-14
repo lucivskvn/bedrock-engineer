@@ -58,7 +58,7 @@ export const SettingPage: React.FC = () => {
     if (selectedModel) {
       updateLLM(selectedModel)
     } else {
-      log.error(t('Invalid model'))
+      log.error('Attempted to select unknown model', { modelId })
     }
   }
 

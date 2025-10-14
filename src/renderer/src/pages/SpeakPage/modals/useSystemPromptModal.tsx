@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import MD from '@renderer/components/Markdown/MD'
-import { Modal } from 'flowbite-react'
+import { Modal, ModalBody, ModalFooter, ModalHeader } from 'flowbite-react'
 import { useTranslation } from 'react-i18next'
 
 interface SystemPromptModalProps {
@@ -52,8 +52,8 @@ const SystemPromptModal = React.memo(
 
     return (
       <Modal dismissible show={isOpen} onClose={onClose} size="7xl">
-        <Modal.Header>SYSTEM PROMPT</Modal.Header>
-        <Modal.Body className="dark:text-white">
+        <ModalHeader>SYSTEM PROMPT</ModalHeader>
+        <ModalBody className="dark:text-white">
           {isConnected ? (
             <div>
               <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
@@ -74,9 +74,9 @@ const SystemPromptModal = React.memo(
               </p>
             </div>
           )}
-        </Modal.Body>
+        </ModalBody>
         {!isConnected && (
-          <Modal.Footer>
+          <ModalFooter>
             <div className="flex justify-end space-x-2">
               <button
                 onClick={onClose}
@@ -91,7 +91,7 @@ const SystemPromptModal = React.memo(
                 {t('Save')}
               </button>
             </div>
-          </Modal.Footer>
+          </ModalFooter>
         )}
       </Modal>
     )

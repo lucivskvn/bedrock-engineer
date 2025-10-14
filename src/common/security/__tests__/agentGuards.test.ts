@@ -4,6 +4,8 @@ import path from 'node:path'
 import { mkdtempSync } from 'node:fs'
 import { readAgentFileSafely, MAX_AGENT_FILE_BYTES } from '../agentGuards'
 
+jest.setTimeout(15000)
+
 const tmpRoot = path.join(os.tmpdir(), 'agent-guards-test-')
 
 function createTempDir(): string {

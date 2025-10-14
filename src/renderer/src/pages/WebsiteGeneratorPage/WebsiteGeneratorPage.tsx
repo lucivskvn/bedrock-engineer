@@ -232,7 +232,9 @@ function WebsiteGeneratorPageContents(props: WebsiteGeneratorPageContentsProps) 
       initChat()
       runSandpack()
     } catch (error) {
-      console.error('Error during refresh:', error)
+      log.error('Error during refresh', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       // リフレッシュに失敗しても、基本的な状態はリセットする
       setUserInput('')
       setShowContinueDevelopmentButton(false)

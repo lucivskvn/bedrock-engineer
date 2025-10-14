@@ -1,4 +1,4 @@
-import { Modal } from 'flowbite-react'
+import { Modal, ModalBody, ModalFooter, ModalHeader } from 'flowbite-react'
 import React from 'react'
 import { useState } from 'react'
 import { useSettings } from '@renderer/contexts/SettingsContext'
@@ -49,8 +49,8 @@ const IgnoreFileModal = React.memo(({ isOpen, onClose }: IgnoreFileModalProps) =
 
   return (
     <Modal dismissible show={isOpen} onClose={onClose} size="4xl">
-      <Modal.Header>{t('ignoreFiles.title')}</Modal.Header>
-      <Modal.Body>
+      <ModalHeader>{t('ignoreFiles.title')}</ModalHeader>
+      <ModalBody>
         <p className="text-gray-700 text-sm pb-2 dark:text-white">{t('ignoreFiles.description')}</p>
         <textarea
           className={`block w-full p-4 text-sm text-gray-900 border border-gray-300 rounded-lg bg-gray-50 mt-2 dark:bg-gray-800 dark:text-white`}
@@ -60,8 +60,8 @@ const IgnoreFileModal = React.memo(({ isOpen, onClose }: IgnoreFileModalProps) =
           required
           rows={10}
         />
-      </Modal.Body>
-      <Modal.Footer>
+      </ModalBody>
+      <ModalFooter>
         <div className="flex justify-end w-full">
           <button
             onClick={handleSave}
@@ -70,7 +70,7 @@ const IgnoreFileModal = React.memo(({ isOpen, onClose }: IgnoreFileModalProps) =
             {t('ignoreFiles.save')}
           </button>
         </div>
-      </Modal.Footer>
+      </ModalFooter>
     </Modal>
   )
 })

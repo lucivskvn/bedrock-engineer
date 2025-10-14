@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react'
+import { rendererLogger as log } from '@renderer/lib/logger'
 import { useSettings } from './SettingsContext'
 import { CustomAgent, OrganizationConfig } from '@/types/agent-chat'
 
@@ -66,13 +67,15 @@ export const AgentDirectoryProvider: React.FC<{ children: React.ReactNode }> = (
       try {
         const organization = organizations.find((org) => org.id === orgId)
         if (!organization) {
-          console.error(`Organization not found: ${orgId}`)
+          log.error('Organization not found', { organizationId: orgId })
           return
         }
 
         const { agents, error } = await window.file.loadOrganizationAgents(organization)
         if (error) {
-          console.error('Error loading organization agents:', error)
+          log.error('Error loading organization agents', {
+            error: typeof error === 'string' ? error : String(error)
+          })
           return
         }
 
@@ -81,7 +84,9 @@ export const AgentDirectoryProvider: React.FC<{ children: React.ReactNode }> = (
           [orgId]: agents
         }))
       } catch (error) {
-        console.error('Failed to load organization agents:', error)
+        log.error('Failed to load organization agents', {
+          error: error instanceof Error ? error.message : String(error)
+        })
       } finally {
         setIsLoadingOrganizationAgents(false)
       }

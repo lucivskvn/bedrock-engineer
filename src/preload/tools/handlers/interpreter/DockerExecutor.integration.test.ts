@@ -37,7 +37,7 @@ describe('DockerExecutor Integration Tests', () => {
 
     if (!dockerAvailable) {
       console.warn('⚠️  Docker is not available. Integration tests will be skipped.')
-      console.warn(`Docker check error: ${dockerCheck.error}`)
+      console.warn('Docker check error', { error: dockerCheck.error })
     }
   })
 
@@ -60,7 +60,7 @@ describe('DockerExecutor Integration Tests', () => {
         await fs.rm(tempWorkspace, { recursive: true, force: true })
       }
     } catch (error) {
-      console.warn('Warning: Failed to clean up test resources:', error)
+      console.warn('Warning: Failed to clean up test resources', { error })
     }
   })
 
@@ -527,7 +527,7 @@ print("Multiple file processing completed successfully!")
     }
   })
 
-  test.only('should handle mixed file types with different operations', async () => {
+  test('should handle mixed file types with different operations', async () => {
     if (!dockerAvailable) {
       console.log('⏭️  Skipping test: Docker not available')
       return

@@ -25,7 +25,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
     try {
       await onStartRecording()
     } catch (error) {
-      log.error('Failed to start recording:', error)
+      log.error('Failed to start recording', { error })
     }
   }
 

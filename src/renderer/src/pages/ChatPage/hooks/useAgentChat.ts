@@ -171,9 +171,9 @@ export const useAgentChat = (
         if (isMcpTool(toolName)) {
           // MCPサーバーが設定されていない場合は除外
           if (!hasMcpServers) {
-            log.warn(
-              `MCP tool "${toolName}" is enabled but no MCP servers are configured. Tool will be disabled.`
-            )
+            log.warn('MCP tool disabled due to missing server configuration', {
+              toolName
+            })
             return false
           }
         }
@@ -650,7 +650,7 @@ export const useAgentChat = (
               )
               metadata.sessionCost = sessionCost
             } catch (error) {
-              log.error('Error calculating cost:', error)
+              log.error('Error calculating cost', { error })
             }
           }
 
@@ -703,7 +703,7 @@ export const useAgentChat = (
             }
           }
         } else {
-          log.error('unexpected json:', json)
+          log.error('unexpected json', { error: json })
         }
       }
 
@@ -854,7 +854,7 @@ export const useAgentChat = (
                   })
                 }
               } catch (guardrailError) {
-                log.error('Error applying guardrail to tool result:', guardrailError)
+                log.error('Error applying guardrail to tool result', { error: guardrailError })
                 // ガードレールエラー時は元のツール結果を使用し続ける
               }
             }
@@ -1040,7 +1040,7 @@ export const useAgentChat = (
         })
       }
     } catch (error: any) {
-      log.error('Error in handleSubmit:', error)
+      log.error('Error in handleSubmit', { error })
       toast.error(error.message || 'An error occurred')
     } finally {
       setLoading(false)
@@ -1093,7 +1093,7 @@ export const useAgentChat = (
         await updateSessionTitle(currentSessionId, newTitle)
       }
     } catch (error) {
-      log.error('Error generating title for current session:', error)
+      log.error('Error generating title for current session', { error })
     }
   }, [currentSessionId, modelId, t, enableHistory, getSession, updateSessionTitle])
 

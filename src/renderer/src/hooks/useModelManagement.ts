@@ -85,7 +85,7 @@ export const useModelManagement = ({
         setAvailableInferenceProfiles(profiles)
         return profiles
       } catch (error) {
-        log.error('Failed to fetch inference profiles:', error)
+        log.error('Failed to fetch inference profiles', { error })
         setAvailableInferenceProfiles([])
         return []
       } finally {
@@ -118,11 +118,11 @@ export const useModelManagement = ({
         const finalModels = [...enhancedModels, ...profileModels]
         setAvailableModels(finalModels)
         return finalModels
-      } catch (profileError) {
-        log.warn(
-          'Failed to fetch inference profiles, falling back to standard models only:',
-          profileError
-        )
+        } catch (profileError) {
+          log.warn(
+            'Failed to fetch inference profiles, falling back to standard models only',
+            { error: profileError }
+          )
         // Fallback to standard models only if inference profiles fail
         setAvailableModels(enhancedModels)
         return enhancedModels
@@ -295,7 +295,7 @@ export const useModelManagement = ({
         const modelError =
           error instanceof Error ? error : new Error('Unknown error occurred while fetching models')
 
-        log.error('Failed to fetch models:', modelError)
+        log.error('Failed to fetch models', { error: modelError })
         setModelError(modelError)
         throw modelError
       } finally {

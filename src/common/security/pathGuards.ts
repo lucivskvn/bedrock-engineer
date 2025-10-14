@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { createStructuredError } from '../errors'
+
 const RESERVED_FILENAMES = new Set([
   'con',
   'prn',
@@ -27,6 +29,24 @@ const RESERVED_FILENAMES = new Set([
 ])
 
 const STORAGE_KEY_PATTERN = /^[A-Za-z0-9_-]+$/
+
+type StorageKeyErrorCode =
+  | 'storage_key_invalid_type'
+  | 'storage_key_empty'
+  | 'storage_key_missing_suffix'
+  | 'storage_key_exceeds_length'
+  | 'storage_key_invalid_characters'
+
+const createStorageKeyError = (
+  code: StorageKeyErrorCode,
+  metadata: Record<string, unknown>
+) =>
+  createStructuredError({
+    name: 'StorageKeyValidationError',
+    message: 'Storage key validation failed',
+    code,
+    metadata
+  })
 
 function resolveRealPathIfPossible(target: string): string | null {
   const segments: string[] = []
@@ -67,27 +87,39 @@ export function ensureValidStorageKey(
   }: { label?: string; prefix?: string; maxLength?: number } = {}
 ): string {
   if (typeof rawKey !== 'string') {
-    throw new Error(`${label} must be a string`)
+    throw createStorageKeyError('storage_key_invalid_type', {
+      label,
+      receivedType: typeof rawKey
+    })
   }
 
   const trimmed = rawKey.trim()
   if (trimmed.length === 0) {
-    throw new Error(`${label} must not be empty`)
+    throw createStorageKeyError('storage_key_empty', { label })
   }
 
   const normalized = prefix && !trimmed.startsWith(prefix) ? `${prefix}${trimmed}` : trimmed
   const suffix = prefix ? normalized.slice(prefix.length) : normalized
 
   if (suffix.length === 0) {
-    throw new Error(`${label} must contain characters after the prefix`)
+    throw createStorageKeyError('storage_key_missing_suffix', {
+      label,
+      prefix: prefix ?? null
+    })
   }
 
   if (suffix.length > maxLength) {
-    throw new Error(`${label} is too long`)
+    throw createStorageKeyError('storage_key_exceeds_length', {
+      label,
+      maxLength
+    })
   }
 
   if (!STORAGE_KEY_PATTERN.test(suffix)) {
-    throw new Error(`${label} contains unsupported characters`)
+    throw createStorageKeyError('storage_key_invalid_characters', {
+      label,
+      allowedPattern: STORAGE_KEY_PATTERN.source
+    })
   }
 
   return normalized

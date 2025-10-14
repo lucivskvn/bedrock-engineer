@@ -36,6 +36,7 @@ import {
 } from './network-utils'
 import { createHardenedServer } from './server-hardening'
 import { toCallConverseApiProps, toRetrieveAndGenerateInput } from './payload-normalizers'
+import { describeError, sendApiErrorResponse, createApiError } from './api-error-response'
 
 // Create category logger for API
 const apiLogger = createCategoryLogger('api:express')
@@ -105,18 +106,34 @@ function resolveRequestClientIp(req: Request): string {
   return normalized ?? 'unknown'
 }
 
+function resolveAudioProcessingReason(error: unknown): string {
+  if (!(error instanceof Error) || typeof error.message !== 'string') {
+    return 'unknown'
+  }
+
+  switch (error.message) {
+    case 'Invalid base64 audio payload':
+      return 'invalid_base64'
+    case 'Unsupported audio payload type':
+      return 'unsupported_payload'
+    case 'Empty audio payload':
+      return 'empty_payload'
+    case 'Audio payload too large':
+      return 'payload_too_large'
+    default:
+      return 'stream_audio_failed'
+  }
+}
+
 // Error handling middleware
 const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
+  const referenceId = sendApiErrorResponse(res, 'internal_server_error')
+
   apiLogger.error('Express error', {
+    referenceId,
     path: req.path,
     method: req.method,
-    error: err instanceof Error ? err.stack : String(err)
-  })
-
-  res.status(500).json({
-    error: {
-      message: err instanceof Error ? err.message : String(err)
-    }
+    error: describeError(err)
   })
 }
 
@@ -174,11 +191,11 @@ const maxHeadersCount = parsePositiveIntEnv('API_MAX_HEADERS_COUNT', 200, {
 })
 
 const rateLimitExceededHandler: RequestHandler = (_req, res) => {
-  res.setHeader('Retry-After', Math.ceil(rateLimitWindowMs / 1000).toString())
-  res.status(429).json({
-    error: {
-      message: 'Too many requests'
-    }
+  const retryAfterSeconds = Math.ceil(rateLimitWindowMs / 1000)
+  res.setHeader('Retry-After', retryAfterSeconds.toString())
+  sendApiErrorResponse(res, 'rate_limit_exceeded', {
+    status: 429,
+    metadata: { retryAfterSeconds }
   })
 }
 
@@ -372,7 +389,7 @@ io.use(async (socket, next) => {
   } catch (error) {
     apiLogger.warn('Socket connection rate limit exceeded', {
       socketId: socket.id,
-      error: error instanceof Error ? error.message : String(error)
+      error: describeError(error)
     })
     next(new Error('Too many connection attempts'))
     return
@@ -428,10 +445,9 @@ api.use((req, res, next) => {
       method: req.method,
       reason: metadataResult.reason
     })
-    res.status(403).json({
-      error: {
-        message: 'Request blocked by browser metadata policy'
-      }
+    sendApiErrorResponse(res, 'metadata_policy_blocked', {
+      status: 403,
+      metadata: { reason: metadataResult.reason }
     })
     return
   }
@@ -446,10 +462,8 @@ api.use((req, res, next) => {
       path: req.path,
       method: req.method
     })
-    res.status(400).json({
-      error: {
-        message: 'Invalid request payload'
-      }
+    sendApiErrorResponse(res, 'prototype_pollution_detected', {
+      status: 400
     })
     return
   }
@@ -483,11 +497,8 @@ const requireApiKey: RequestHandler = (async (req, res, next) => {
     const token = await getApiAuthToken()
     if (!token) {
       apiLogger.error('API auth token is not configured')
-      return res.status(500).json({
-        error: {
-          message: 'Server authentication is not configured'
-        }
-      })
+      sendApiErrorResponse(res, 'server_auth_not_configured', { status: 500 })
+      return
     }
 
     const providedToken =
@@ -503,11 +514,8 @@ const requireApiKey: RequestHandler = (async (req, res, next) => {
         method: req.method,
         origin: req.headers.origin
       })
-      return res.status(401).json({
-        error: {
-          message: 'Unauthorized'
-        }
-      })
+      sendApiErrorResponse(res, 'unauthorized_request', { status: 401 })
+      return
     }
 
     return next()
@@ -551,15 +559,19 @@ api.post(
   wrap(async (req: ConverseStreamRequest, res) => {
     const validationResult = validateConversePayload(req.body)
     if (!validationResult.success) {
+      const flattened = validationResult.error.flatten()
       apiLogger.warn('Rejected converse/stream request with invalid payload', {
-        issues: validationResult.error.flatten()
+        fieldErrorCount: Object.values(flattened.fieldErrors).reduce(
+          (total, issues) => total + (issues?.length ?? 0),
+          0
+        ),
+        formErrorCount: flattened.formErrors.length
       })
-      return res.status(400).json({
-        error: {
-          message: 'Invalid request payload',
-          details: validationResult.error.flatten()
-        }
+      sendApiErrorResponse(res, 'invalid_request_payload', {
+        status: 400,
+        metadata: { issues: flattened }
       })
+      return
     }
 
     const safePayload = toCallConverseApiProps(validationResult.data)
@@ -580,21 +592,31 @@ api.post(
         res.write(JSON.stringify(item) + '\n')
       }
     } catch (error: any) {
-      bedrockLogger.error('Stream conversation error', {
-        errorName: error.name,
-        message: error.message,
-        stack: error.stack,
-        modelId: req.body.modelId
-      })
-
+      const errorDescription = describeError(error)
       if (error.name === 'ValidationException') {
-        return res.status(400).send({
-          ...error,
-          message: error.message
+        sendApiErrorResponse(res, 'invalid_request_payload', {
+          status: 400,
+          metadata: {
+            provider: 'bedrock',
+            error: errorDescription
+          }
         })
+        bedrockLogger.warn('Stream conversation validation failed', {
+          modelId: req.body.modelId,
+          error: errorDescription
+        })
+        return
       }
 
-      return res.status(500).send(error)
+      const referenceId = sendApiErrorResponse(res, 'internal_server_error', {
+        metadata: { operation: 'converseStream' }
+      })
+      bedrockLogger.error('Stream conversation failed', {
+        referenceId,
+        error: errorDescription,
+        modelId: req.body.modelId
+      })
+      return
     }
 
     return res.end()
@@ -608,15 +630,19 @@ api.post(
   wrap(async (req: ConverseRequest, res) => {
     const validationResult = validateConversePayload(req.body)
     if (!validationResult.success) {
+      const flattened = validationResult.error.flatten()
       apiLogger.warn('Rejected converse request with invalid payload', {
-        issues: validationResult.error.flatten()
+        fieldErrorCount: Object.values(flattened.fieldErrors).reduce(
+          (total, issues) => total + (issues?.length ?? 0),
+          0
+        ),
+        formErrorCount: flattened.formErrors.length
       })
-      return res.status(400).json({
-        error: {
-          message: 'Invalid request payload',
-          details: validationResult.error.flatten()
-        }
+      sendApiErrorResponse(res, 'invalid_request_payload', {
+        status: 400,
+        metadata: { issues: flattened }
       })
+      return
     }
 
     const safePayload = toCallConverseApiProps(validationResult.data)
@@ -628,13 +654,16 @@ api.post(
       const result = await bedrockService.converse(safePayload)
       return res.json(result)
     } catch (error: any) {
-      bedrockLogger.error('Conversation error', {
-        errorName: error.name,
-        message: error.message,
-        stack: error.stack,
+      const errorDescription = describeError(error)
+      const referenceId = sendApiErrorResponse(res, 'internal_server_error', {
+        metadata: { operation: 'converse' }
+      })
+      bedrockLogger.error('Conversation failed', {
+        referenceId,
+        error: errorDescription,
         modelId: req.body.modelId
       })
-      return res.status(500).send(error)
+      return
     }
   })
 )
@@ -646,15 +675,19 @@ api.post(
   wrap(async (req: RetrieveAndGenerateCommandInputRequest, res) => {
     const validationResult = validateRetrieveAndGeneratePayload(req.body)
     if (!validationResult.success) {
+      const flattened = validationResult.error.flatten()
       apiLogger.warn('Rejected retrieveAndGenerate request with invalid payload', {
-        issues: validationResult.error.flatten()
+        fieldErrorCount: Object.values(flattened.fieldErrors).reduce(
+          (total, issues) => total + (issues?.length ?? 0),
+          0
+        ),
+        formErrorCount: flattened.formErrors.length
       })
-      return res.status(400).json({
-        error: {
-          message: 'Invalid request payload',
-          details: validationResult.error.flatten()
-        }
+      sendApiErrorResponse(res, 'invalid_request_payload', {
+        status: 400,
+        metadata: { issues: flattened }
       })
+      return
     }
 
     const bedrockService = await getBedrockService()
@@ -664,21 +697,33 @@ api.post(
       const result = await bedrockService.retrieveAndGenerate(safeInput)
       return res.json(result)
     } catch (error: any) {
-      bedrockLogger.error('RetrieveAndGenerate error', {
-        errorName: error.name,
-        message: error.message,
-        stack: error.stack,
-        // Preserve knowledge base identifier for diagnostics when provided by the client
-        knowledgeBaseId: (req.body as any).knowledgeBaseId || 'unknown'
-      })
-
+      const knowledgeBaseId = (req.body as any).knowledgeBaseId || 'unknown'
+      const errorDescription = describeError(error)
       if (error.name === 'ResourceNotFoundException') {
-        return res.status(404).send({
-          ...error,
-          message: error.message
+        sendApiErrorResponse(res, 'invalid_request_payload', {
+          status: 404,
+          metadata: {
+            provider: 'bedrock',
+            error: errorDescription,
+            knowledgeBaseId
+          }
         })
+        bedrockLogger.warn('RetrieveAndGenerate resource not found', {
+          knowledgeBaseId,
+          error: errorDescription
+        })
+        return
       }
-      return res.status(500).send(error)
+
+      const referenceId = sendApiErrorResponse(res, 'internal_server_error', {
+        metadata: { operation: 'retrieveAndGenerate', knowledgeBaseId }
+      })
+      bedrockLogger.error('RetrieveAndGenerate failed', {
+        referenceId,
+        error: errorDescription,
+        knowledgeBaseId
+      })
+      return
     }
   })
 )
@@ -692,12 +737,14 @@ api.get(
       const result = await bedrockService.listModels()
       return res.json(result)
     } catch (error: any) {
-      bedrockLogger.error('ListModels error', {
-        errorName: error.name,
-        message: error.message,
-        stack: error.stack
+      const referenceId = sendApiErrorResponse(res, 'internal_server_error', {
+        metadata: { operation: 'listModels' }
       })
-      return res.status(500).send(error)
+      bedrockLogger.error('ListModels error', {
+        referenceId,
+        error: describeError(error)
+      })
+      return
     }
   })
 )
@@ -710,25 +757,18 @@ api.get(
     try {
       const regionValidation = validateRegionParam(req.query.region)
       if (!regionValidation.success) {
-        return res.status(400).json({
-          error: {
-            message: 'Invalid region parameter'
-          }
-        })
+        sendApiErrorResponse(res, 'invalid_region_parameter', { status: 400 })
+        return
       }
       const result = await checkNovaSonicRegionSupport(regionValidation.data)
       return res.json(result)
     } catch (error: any) {
+      const referenceId = sendApiErrorResponse(res, 'nova_sonic_region_check_failed')
       apiLogger.error('Nova Sonic region check error', {
-        errorName: error.name,
-        message: error.message,
-        stack: error.stack
+        referenceId,
+        error: describeError(error)
       })
-      return res.status(500).send({
-        error: {
-          message: error instanceof Error ? error.message : String(error)
-        }
-      })
+      return
     }
   })
 )
@@ -741,25 +781,18 @@ api.get(
     try {
       const regionValidation = validateRegionParam(req.query.region)
       if (!regionValidation.success) {
-        return res.status(400).json({
-          error: {
-            message: 'Invalid region parameter'
-          }
-        })
+        sendApiErrorResponse(res, 'invalid_region_parameter', { status: 400 })
+        return
       }
       const result = await testBedrockConnectivity(regionValidation.data)
       return res.json(result)
     } catch (error: any) {
+      const referenceId = sendApiErrorResponse(res, 'bedrock_connectivity_test_failed')
       apiLogger.error('Bedrock connectivity test error', {
-        errorName: error.name,
-        message: error.message,
-        stack: error.stack
+        referenceId,
+        error: describeError(error)
       })
-      return res.status(500).send({
-        error: {
-          message: error instanceof Error ? error.message : String(error)
-        }
-      })
+      return
     }
   })
 )
@@ -814,14 +847,19 @@ io.on('connection', (socket) => {
           sessionState.initialized = true
           await sonicClient.initiateSession(sessionId)
         } catch (error) {
+          const errorDescription = describeError(error)
           bedrockLogger.error('Error initiating session', {
             sessionId,
-            error: error instanceof Error ? error.message : String(error)
+            error: errorDescription
           })
-          socket.emit('error', {
-            message: 'Failed to initialize AWS streaming session',
-            details: error instanceof Error ? error.message : String(error)
-          })
+          socket.emit(
+            'error',
+            createApiError('socket_stream_initialization_failed', {
+              reason: 'initiate_session_failed',
+              sessionId,
+              error: errorDescription
+            })
+          )
         }
       }
     }
@@ -867,11 +905,14 @@ io.on('connection', (socket) => {
       } catch (error) {
         bedrockLogger.warn('Audio input rate limit exceeded', {
           socketId: socket.id,
-          error: error instanceof Error ? error.message : String(error)
+          error: describeError(error)
         })
-        socket.emit('error', {
-          message: 'Audio input rate limit exceeded'
-        })
+        socket.emit(
+          'error',
+          createApiError('socket_audio_rate_limit_exceeded', {
+            socketId: socket.id
+          })
+        )
         return
       }
 
@@ -903,13 +944,19 @@ io.on('connection', (socket) => {
           await session.streamAudio(audioBuffer)
         })
       } catch (error) {
+        const errorDescription = describeError(error)
+        const reason = resolveAudioProcessingReason(error)
         bedrockLogger.error('Error processing audio', {
-          error: error instanceof Error ? error.message : String(error)
+          reason,
+          error: errorDescription
         })
-        socket.emit('error', {
-          message: 'Error processing audio',
-          details: error instanceof Error ? error.message : String(error)
-        })
+        socket.emit(
+          'error',
+          createApiError('socket_audio_processing_failed', {
+            reason,
+            error: errorDescription
+          })
+        )
       }
     })
 
@@ -919,13 +966,17 @@ io.on('connection', (socket) => {
         sessionState.promptStartSent = true
         await checkAndInitializeSession()
       } catch (error) {
+        const errorDescription = describeError(error)
         bedrockLogger.error('Error processing prompt start', {
-          error: error instanceof Error ? error.message : String(error)
+          error: errorDescription
         })
-        socket.emit('error', {
-          message: 'Error processing prompt start',
-          details: error instanceof Error ? error.message : String(error)
-        })
+        socket.emit(
+          'error',
+          createApiError('socket_prompt_processing_failed', {
+            reason: 'prompt_start_failed',
+            error: errorDescription
+          })
+        )
       }
     })
 
@@ -935,13 +986,17 @@ io.on('connection', (socket) => {
         sessionState.systemPromptSent = true
         await checkAndInitializeSession()
       } catch (error) {
+        const errorDescription = describeError(error)
         bedrockLogger.error('Error processing system prompt', {
-          error: error instanceof Error ? error.message : String(error)
+          error: errorDescription
         })
-        socket.emit('error', {
-          message: 'Error processing system prompt',
-          details: error instanceof Error ? error.message : String(error)
-        })
+        socket.emit(
+          'error',
+          createApiError('socket_system_prompt_failed', {
+            reason: 'system_prompt_failed',
+            error: errorDescription
+          })
+        )
       }
     })
 
@@ -951,13 +1006,17 @@ io.on('connection', (socket) => {
         sessionState.audioStartSent = true
         await checkAndInitializeSession()
       } catch (error) {
+        const errorDescription = describeError(error)
         bedrockLogger.error('Error processing audio start', {
-          error: error instanceof Error ? error.message : String(error)
+          error: errorDescription
         })
-        socket.emit('error', {
-          message: 'Error processing audio start',
-          details: error instanceof Error ? error.message : String(error)
-        })
+        socket.emit(
+          'error',
+          createApiError('socket_audio_start_failed', {
+            reason: 'audio_start_failed',
+            error: errorDescription
+          })
+        )
       }
     })
 
@@ -971,13 +1030,17 @@ io.on('connection', (socket) => {
             .then(() => session.close())
         ])
       } catch (error) {
+        const errorDescription = describeError(error)
         bedrockLogger.error('Error processing streaming end events', {
-          error: error instanceof Error ? error.message : String(error)
+          error: errorDescription
         })
-        socket.emit('error', {
-          message: 'Error processing streaming end events',
-          details: error instanceof Error ? error.message : String(error)
-        })
+        socket.emit(
+          'error',
+          createApiError('socket_stream_end_failed', {
+            reason: 'stream_cleanup_failed',
+            error: errorDescription
+          })
+        )
       }
     })
 
@@ -1000,16 +1063,17 @@ io.on('connection', (socket) => {
 
           await cleanupPromise
         } catch (error) {
+          const errorDescription = describeError(error)
           bedrockLogger.error('Error cleaning up session after disconnect', {
             sessionId: socket.id,
-            error: error instanceof Error ? error.message : String(error)
+            error: errorDescription
           })
           try {
             sonicClient.forceCloseSession(sessionId)
           } catch (e) {
             bedrockLogger.error('Failed force close for session', {
               sessionId,
-              error: e instanceof Error ? e.message : String(e)
+              error: describeError(e)
             })
           }
         } finally {
@@ -1021,22 +1085,25 @@ io.on('connection', (socket) => {
       }
     })
     } catch (error) {
+      const errorDescription = describeError(error)
       bedrockLogger.error('Error creating session', {
-        error: error instanceof Error ? error.message : String(error)
+        error: errorDescription
       })
-      socket.emit('error', {
-        message: 'Failed to initialize session',
-        details: error instanceof Error ? error.message : String(error)
-      })
+      socket.emit(
+        'error',
+        createApiError('socket_session_initialization_failed', {
+          reason: 'create_stream_session_failed',
+          error: errorDescription
+        })
+      )
       socket.disconnect()
     }
   })().catch((error) => {
+    const errorDescription = describeError(error)
     bedrockLogger.error('Unhandled error setting up socket connection', {
-      error: error instanceof Error ? error.message : String(error)
+      error: errorDescription
     })
-    socket.emit('error', {
-      message: 'Internal server error'
-    })
+    socket.emit('error', createApiError('socket_internal_error', { error: errorDescription }))
     socket.disconnect(true)
   })
 })

@@ -264,9 +264,8 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
           requiresInput: result.requiresInput
         })
       } else {
-        const errorMsg = 'Invalid input format'
-        this.logger.warn(errorMsg, { input: JSON.stringify(input) })
-        throw new Error(errorMsg)
+        this.logger.warn('Invalid input format', { input: JSON.stringify(input) })
+        throw new Error('Invalid input format')
       }
 
       this.logger.info('Command execution completed', {
@@ -278,7 +277,7 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
       return {
         success: true,
         name: 'executeCommand',
-        message: `Command executed: ${JSON.stringify(input)}`,
+        message: 'Command executed successfully.',
         result: {
           stdout: result.stdout,
           stderr: result.stderr,
@@ -305,10 +304,13 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
       }
 
       throw new ExecutionError(
-        error instanceof Error ? error.message : 'Unknown error occurred',
+        'Command execution failed.',
         this.name,
         error instanceof Error ? error : undefined,
-        { input }
+        {
+          input,
+          detailMessage: error instanceof Error ? error.message : String(error)
+        }
       )
     }
   }

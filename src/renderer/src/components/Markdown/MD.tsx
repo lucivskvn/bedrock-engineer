@@ -48,14 +48,11 @@ const MD = (props: MDProps) => {
   }, [])
 
   return (
-    <Markdown
-      className={style.reactMarkDown}
-      remarkPlugins={[[remarkGfm, { singleTilde: false }], [remarkMath]]}
-      rehypePlugins={[rehypeKatex]}
-      components={components}
-    >
-      {props.children}
-    </Markdown>
+    <div className={style.reactMarkDown}>
+      <Markdown remarkPlugins={[[remarkGfm, { singleTilde: false }], [remarkMath]]} rehypePlugins={[rehypeKatex]} components={components}>
+        {props.children}
+      </Markdown>
+    </div>
   )
 }
 

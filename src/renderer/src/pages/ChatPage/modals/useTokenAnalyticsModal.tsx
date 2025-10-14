@@ -15,7 +15,7 @@ import {
   LineElement,
   Title
 } from 'chart.js'
-import { Modal } from 'flowbite-react'
+import { Modal, ModalBody, ModalHeader } from 'flowbite-react'
 import { PricingCalculator } from '@common/models/pricing'
 
 // Chart.jsコンポーネントを登録
@@ -705,10 +705,10 @@ export const TokenAnalyticsModal: React.FC<TokenAnalyticsModalProps> = ({
   return (
     <Modal show={isOpen} onClose={onClose} size="6xl" dismissible className="dark:bg-gray-900">
       <div className="border-[0.5px] border-white dark:border-gray-100 rounded-lg shadow-xl dark:shadow-gray-900/80">
-        <Modal.Header className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
+        <ModalHeader className="border-b border-gray-200 dark:border-gray-700/50 dark:bg-gray-900 rounded-t-lg">
           <h2 className="text-xl font-bold dark:text-white">{t('Token Usage Analytics')}</h2>
-        </Modal.Header>
-        <Modal.Body className="max-h-[80vh] overflow-y-auto dark:bg-gray-900 rounded-b-lg">
+        </ModalHeader>
+        <ModalBody className="max-h-[80vh] overflow-y-auto dark:bg-gray-900 rounded-b-lg">
           {/* セッション全体の統計 */}
           <div className="mb-6 p-4 bg-gray-100 dark:bg-gray-700/80 rounded-lg border border-transparent dark:border-gray-600 shadow-sm">
             <h3 className="text-lg font-semibold mb-2 dark:text-white">{t('Session Summary')}</h3>
@@ -988,7 +988,7 @@ export const TokenAnalyticsModal: React.FC<TokenAnalyticsModalProps> = ({
               )}
             </p>
           </div>
-        </Modal.Body>
+        </ModalBody>
       </div>
     </Modal>
   )

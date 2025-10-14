@@ -731,7 +731,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return []
     } catch (error) {
-      log.error('Failed to fetch MCP tools:', error)
+      log.error('Failed to fetch MCP tools', { error })
       return []
     }
   }, [])
@@ -779,14 +779,14 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const { agents, error } = await window.file.readSharedAgents()
       if (error) {
-        log.error('Error loading shared agents:', error)
+        log.error('Error loading shared agents', { error })
       } else {
         setSharedAgents(agents || [])
         // store にも保存して、プリロードプロセスからアクセスできるようにする
         window.store.set('sharedAgents', agents || [])
       }
     } catch (error) {
-      log.error('Failed to load shared agents:', error)
+      log.error('Failed to load shared agents', { error })
     }
   }
 
@@ -802,12 +802,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setIsDirectoryAgentLoading(true)
       const { agents, error } = await window.file.readDirectoryAgents()
       if (error) {
-        log.error('Error loading directory agents:', error)
+        log.error('Error loading directory agents', { error })
       } else {
         setDirectoryAgents(agents || [])
       }
     } catch (error) {
-      log.error('Failed to load directory agents:', error)
+      log.error('Failed to load directory agents', { error })
     } finally {
       setIsDirectoryAgentLoading(false)
     }
@@ -837,7 +837,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             newCustomAgent.mcpTools = mcpTools.map((tool: Tool) => ({ ...tool, enabled: true }))
           }
         } catch (error) {
-          log.error(`Failed to fetch MCP tools for agent ${newCustomAgent.name}:`, error)
+          log.error('Failed to fetch MCP tools for agent', {
+            agentName: newCustomAgent.name,
+            error: error instanceof Error ? error.message : String(error)
+          })
         }
       }
 
@@ -848,7 +851,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       return true
     } catch (error) {
-      log.error('Error adding directory agent to custom agents:', error)
+      log.error('Error adding directory agent to custom agents', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       return false
     }
   }
@@ -875,7 +880,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       } catch (error) {
         if (isMounted) {
-          log.error('Failed to initialize models:', error)
+          log.error('Failed to initialize models', { error })
         }
       }
     }
@@ -1138,7 +1143,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // エージェント切り替え時に既存のカメラプレビューウィンドウを閉じる
     if (window.api?.camera?.hidePreviewWindow) {
       window.api.camera.hidePreviewWindow().catch((error) => {
-        log.warn('Failed to hide camera preview window during agent switch:', error)
+        log.warn('Failed to hide camera preview window during agent switch', { error })
       })
     }
 
@@ -1206,9 +1211,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const hasMcpTools = currentAgent.mcpTools && currentAgent.mcpTools.length > 0
 
       if (!hasMcpTools) {
-        log.debug(
-          `Fetching MCP tools for agent: ${currentAgent.name} (${currentAgent.mcpServers.length} servers)`
-        )
+        log.debug('Fetching MCP tools for agent', {
+          agentName: currentAgent.name,
+          serverCount: currentAgent.mcpServers.length
+        })
 
         // 非同期で実行
         const fetchAndSetMcpTools = async () => {
@@ -1237,19 +1243,24 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               }
             }
           } else {
-            log.debug(`No MCP tools found for agent: ${currentAgent.name}`)
+            log.debug('No MCP tools found for agent', {
+              agentName: currentAgent.name
+            })
           }
         }
 
         fetchAndSetMcpTools()
       } else {
-        log.debug(
-          `Agent ${currentAgent.name} already has ${currentAgent.mcpTools?.length} MCP tools`
-        )
+        log.debug('Agent already has MCP tools', {
+          agentName: currentAgent.name,
+          toolCount: currentAgent.mcpTools?.length ?? 0
+        })
       }
     } else if (currentAgent) {
       // 現在のエージェントにMCPサーバー設定がない場合
-      log.debug(`Agent ${currentAgent.name} has no MCP servers configured`)
+      log.debug('Agent has no MCP servers configured', {
+        agentName: currentAgent.name
+      })
     }
   }, [currentAgent, fetchMcpTools, updateAgentMcpTools, sharedAgents, directoryAgents])
 
@@ -1454,7 +1465,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         setSystemPrompt(fullPrompt)
       } catch (error) {
-        log.error('Failed to load system prompt:', error)
+        log.error('Failed to load system prompt', { error })
         setSystemPrompt('')
       }
     }

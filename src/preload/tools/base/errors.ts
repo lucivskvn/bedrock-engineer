@@ -81,7 +81,7 @@ export class ExecutionError extends ToolError {
  */
 export class ToolNotFoundError extends ToolError {
   constructor(toolName: string) {
-    super(`Tool not found: ${toolName}`, ToolErrorType.NOT_FOUND, {
+    super('Tool not found.', ToolErrorType.NOT_FOUND, {
       toolName
     })
     this.name = 'ToolNotFoundError'
@@ -92,10 +92,11 @@ export class ToolNotFoundError extends ToolError {
  * Error thrown when permission is denied
  */
 export class PermissionDeniedError extends ToolError {
-  constructor(message: string, toolName: string, operation?: string) {
-    super(message, ToolErrorType.PERMISSION_DENIED, {
+  constructor(detailMessage: string | undefined, toolName: string, operation?: string) {
+    super('Tool permission denied.', ToolErrorType.PERMISSION_DENIED, {
       toolName,
-      operation
+      operation,
+      detailMessage
     })
     this.name = 'PermissionDeniedError'
   }
@@ -106,9 +107,10 @@ export class PermissionDeniedError extends ToolError {
  */
 export class RateLimitError extends ToolError {
   constructor(message: string, toolName: string, suggestedAlternatives?: string[]) {
-    super(message, ToolErrorType.RATE_LIMIT, {
+    super('Tool rate limit exceeded.', ToolErrorType.RATE_LIMIT, {
       toolName,
-      suggestedAlternatives
+      suggestedAlternatives,
+      detailMessage: message
     })
     this.name = 'RateLimitError'
   }
@@ -142,16 +144,16 @@ export function wrapError(error: unknown, toolName: string): ToolError {
       return new RateLimitError(error.message, toolName)
     }
 
-    return new ExecutionError(error.message, toolName, error)
+    return new ExecutionError('Tool execution failed.', toolName, error, {
+      causeName: error.name,
+      causeMessage: error.message || undefined
+    })
   }
 
   // Handle non-Error objects
-  return new ExecutionError(
-    typeof error === 'string' ? error : 'Unknown error occurred',
-    toolName,
-    undefined,
-    { originalError: error }
-  )
+  return new ExecutionError('Tool execution failed.', toolName, undefined, {
+    originalError: error
+  })
 }
 
 /**
