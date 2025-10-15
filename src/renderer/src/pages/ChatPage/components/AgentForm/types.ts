@@ -4,7 +4,8 @@ import {
   ToolState,
   AgentCategory,
   FlowConfig,
-  EnvironmentContextSettings
+  EnvironmentContextSettings,
+  AgentIcon
 } from '@/types/agent-chat'
 import { CommandConfig } from '../../modals/useToolSettingModal'
 import { BedrockAgent } from '@/types/agent'
@@ -18,7 +19,7 @@ export interface AgentFormProps {
 export interface BasicSectionProps {
   name: string
   description: string
-  icon?: string
+  icon?: AgentIcon
   iconColor?: string
   onChange: (
     field: 'name' | 'description' | 'icon' | 'iconColor',

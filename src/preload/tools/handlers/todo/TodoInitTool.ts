@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { BaseTool, zodToJsonSchemaBody } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
+import { ExecutionError } from '../../base/errors'
 import { TodoInitInput } from './types'
 import { api } from '../../../api'
 
@@ -147,16 +148,21 @@ When uncertain, deploy this tool. Proactive task management demonstrates diligen
           message: result.message
         }
       } else {
-        throw new Error(result.error || 'Failed to initialize todo list')
+        throw new ExecutionError('Failed to initialize todo list.', this.name, undefined, {
+          sessionId,
+          detailMessage: result.error || undefined
+        })
       }
     } catch (error) {
+      const detailMessage = error instanceof Error ? error.message : String(error)
+
       this.logger.error('Failed to initialize todo list', {
-        error: error instanceof Error ? error.message : String(error)
+        error: detailMessage
       })
 
-      throw new Error(
-        `Failed to initialize todo list: ${error instanceof Error ? error.message : String(error)}`
-      )
+      throw new ExecutionError('Failed to initialize todo list.', this.name, error instanceof Error ? error : undefined, {
+        detailMessage
+      })
     }
   }
 

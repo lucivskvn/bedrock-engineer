@@ -4,11 +4,11 @@ export interface AwsRegion {
   bedrockSupported: boolean
 }
 
-// Amazon Bedrock がサポートされているリージョン
-// 参考: https://docs.aws.amazon.com/general/latest/gr/bedrock.html
-// 更新日: 2025/5/23
+// Regions where Amazon Bedrock is available.
+// Reference: https://docs.aws.amazon.com/general/latest/gr/bedrock.html
+// Last verified: YYYY-MM-DD (update when AWS adds or removes support).
 export const AWS_REGIONS: AwsRegion[] = [
-  // North America - Bedrock対応
+  // North America - Bedrock supported
   {
     id: 'us-east-1',
     name: 'US East (N. Virginia)',
@@ -29,7 +29,7 @@ export const AWS_REGIONS: AwsRegion[] = [
     name: 'Canada (Central)',
     bedrockSupported: true
   },
-  // Asia Pacific - Bedrock対応
+  // Asia Pacific - Bedrock supported
   {
     id: 'ap-south-1',
     name: 'Asia Pacific (Mumbai)',
@@ -65,7 +65,7 @@ export const AWS_REGIONS: AwsRegion[] = [
     name: 'Asia Pacific (Sydney)',
     bedrockSupported: true
   },
-  // Europe - Bedrock対応
+  // Europe - Bedrock supported
   {
     id: 'eu-central-1',
     name: 'Europe (Frankfurt)',
@@ -106,13 +106,13 @@ export const AWS_REGIONS: AwsRegion[] = [
     name: 'Europe (Spain)',
     bedrockSupported: true
   },
-  // South America - Bedrock対応
+  // South America - Bedrock supported
   {
     id: 'sa-east-1',
     name: 'South America (São Paulo)',
     bedrockSupported: true
   },
-  // その他の主要なリージョン（Bedrock非対応）
+  // Additional major regions where Bedrock is not yet available
   {
     id: 'us-west-1',
     name: 'US West (N. California)',

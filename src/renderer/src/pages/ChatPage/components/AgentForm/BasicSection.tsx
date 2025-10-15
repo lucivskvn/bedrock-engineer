@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BasicSectionProps } from './types'
-import { TbRobot } from 'react-icons/tb'
-import { AGENT_ICONS } from '@renderer/components/icons/AgentIcons'
+import { AGENT_ICONS, getIconByValue } from '@renderer/components/icons/AgentIcons'
 
 export const BasicSection: React.FC<BasicSectionProps> = ({
   name,
@@ -198,17 +197,10 @@ export const BasicSection: React.FC<BasicSectionProps> = ({
               border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800
               transition-colors w-10 h-10 bg-blue-50 dark:bg-blue-900/20"
               >
-                {icon ? (
-                  React.cloneElement(
-                    AGENT_ICONS.find((opt) => opt.value === icon)?.icon as React.ReactElement,
-                    {
-                      className: `w-5 h-5 ${!iconColor ? 'text-gray-700 dark:text-gray-300' : ''}`,
-                      style: iconColor ? { color: iconColor } : undefined
-                    }
-                  )
-                ) : (
-                  <TbRobot className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-                )}
+                {getIconByValue(icon, {
+                  className: `w-5 h-5 ${!iconColor ? 'text-gray-700 dark:text-gray-300' : ''}`,
+                  color: iconColor
+                })}
               </button>
 
               {showIconPicker && (
@@ -310,9 +302,7 @@ export const BasicSection: React.FC<BasicSectionProps> = ({
                                 title={option.label}
                               >
                                 <div className="w-6 h-6 flex items-center justify-center">
-                                  {React.cloneElement(option.icon as React.ReactElement, {
-                                    className: 'w-8 h-8'
-                                  })}
+                                  {getIconByValue(option.value, { className: 'w-8 h-8' })}
                                 </div>
                               </button>
                             ))}

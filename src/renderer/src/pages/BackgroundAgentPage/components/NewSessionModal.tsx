@@ -3,8 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { FiX } from 'react-icons/fi'
 import { ModelSelector } from '../../ChatPage/components/ModelSelector'
 import { Agent } from '@/types/agent-chat'
-import { TbRobot } from 'react-icons/tb'
-import { AGENT_ICONS } from '@renderer/components/icons/AgentIcons'
+import { getIconByValue } from '@renderer/components/icons/AgentIcons'
 import useSetting from '@renderer/hooks/useSetting'
 
 interface NewSessionModalProps {
@@ -104,20 +103,10 @@ export const NewSessionModal: React.FC<NewSessionModalProps> = ({
             {selectedAgent && (
               <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-md">
                 <div className="flex items-center gap-2 mb-2">
-                  {selectedAgent.icon ? (
-                    React.cloneElement(
-                      (AGENT_ICONS.find((opt) => opt.value === selectedAgent.icon)
-                        ?.icon as React.ReactElement) ?? AGENT_ICONS[0].icon,
-                      {
-                        className: 'w-4 h-4',
-                        style: selectedAgent.iconColor
-                          ? { color: selectedAgent.iconColor }
-                          : undefined
-                      }
-                    )
-                  ) : (
-                    <TbRobot className="w-4 h-4" />
-                  )}
+                  {getIconByValue(selectedAgent.icon, {
+                    className: 'w-4 h-4',
+                    color: selectedAgent.iconColor
+                  })}
                   <span className="font-medium text-sm text-gray-900 dark:text-white">
                     {selectedAgent.name}
                   </span>

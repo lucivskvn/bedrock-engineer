@@ -120,11 +120,18 @@ export class RateLimitError extends ToolError {
  * Error thrown for network-related issues
  */
 export class NetworkError extends ToolError {
-  constructor(message: string, toolName: string, url?: string, statusCode?: number) {
+  constructor(
+    message: string,
+    toolName: string,
+    url?: string,
+    statusCode?: number,
+    additionalData?: Record<string, unknown>
+  ) {
     super(message, ToolErrorType.NETWORK, {
       toolName,
       url,
-      statusCode
+      statusCode,
+      ...additionalData
     })
     this.name = 'NetworkError'
   }

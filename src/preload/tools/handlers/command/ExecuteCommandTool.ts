@@ -21,6 +21,7 @@ import {
   buildAllowedOutputDirectories,
   ensureDirectoryWithinAllowed
 } from '../../../../common/security/pathGuards'
+import { toFileToken } from '../../../../common/security/pathTokens'
 
 const ENV_KEY_PATTERN = /^[A-Z0-9_]+$/
 const DEFAULT_MAX_CONCURRENT = 2
@@ -207,10 +208,8 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
     const config = this.getCommandConfig(input)
 
     this.logger.debug('Executing command', {
-      input: JSON.stringify(input),
-      config: JSON.stringify({
-        allowedCommands: config.allowedCommands?.length || 0
-      })
+      input: sanitizeExecuteCommandInput(input),
+      allowedCommandCount: config.allowedCommands?.length || 0
     })
 
     try {
@@ -236,19 +235,17 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
         // Execute new command
         this.logger.info('Executing new command', {
           command: input.command,
-          cwd: input.cwd
+          cwd: toFileToken(input.cwd)
         })
 
         let resolvedCwd: string
         try {
           resolvedCwd = this.resolveWorkingDirectory(input.cwd)
         } catch (error) {
-          throw new ExecutionError(
-            error instanceof Error ? error.message : String(error),
-            this.name,
-            error instanceof Error ? error : undefined,
-            { input }
-          )
+          throw new ExecutionError('Failed to resolve working directory.', this.name, error instanceof Error ? error : undefined, {
+            input: sanitizeExecuteCommandInput(input),
+            detailMessage: error instanceof Error ? error.message : String(error)
+          })
         }
 
         result = await commandService.executeCommand({
@@ -264,8 +261,11 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
           requiresInput: result.requiresInput
         })
       } else {
-        this.logger.warn('Invalid input format', { input: JSON.stringify(input) })
-        throw new Error('Invalid input format')
+        const sanitizedInput = sanitizeExecuteCommandInput(input)
+        this.logger.warn('Invalid executeCommand input', { input: sanitizedInput })
+        throw new ExecutionError('Invalid executeCommand input.', this.name, undefined, {
+          input: sanitizedInput
+        })
       }
 
       this.logger.info('Command execution completed', {
@@ -290,16 +290,22 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
       }
     } catch (error) {
       this.logger.error('Error executing command', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        input: JSON.stringify(input)
+        detailMessage: error instanceof Error ? error.message : 'Unknown error',
+        input: sanitizeExecuteCommandInput(input)
       })
 
       // Check if it's a permission error
       if (error instanceof Error && error.message.includes('not allowed')) {
+        if ('command' in input) {
+          this.logger.warn('Command rejected by allowlist', {
+            command: input.command,
+            cwd: toFileToken(input.cwd)
+          })
+        }
         throw new PermissionDeniedError(
-          error.message,
+          'Command is not permitted.',
           this.name,
-          'command' in input ? input.command : 'stdin'
+          'command' in input ? 'execute' : 'stdin'
         )
       }
 
@@ -308,7 +314,7 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
         this.name,
         error instanceof Error ? error : undefined,
         {
-          input,
+          input: sanitizeExecuteCommandInput(input),
           detailMessage: error instanceof Error ? error.message : String(error)
         }
       )
@@ -440,5 +446,35 @@ export class ExecuteCommandTool extends BaseTool<ExecuteCommandInput, ExecuteCom
     }
 
     return input
+  }
+}
+
+function sanitizeExecuteCommandInput(input: ExecuteCommandInput): Record<string, unknown> {
+  const baseMetadata = {
+    type: input.type,
+    hasAgentContext: Boolean(input._agentId)
+  }
+
+  if ('command' in input && 'cwd' in input) {
+    return {
+      ...baseMetadata,
+      mode: 'execute',
+      command: input.command,
+      cwd: toFileToken(input.cwd)
+    }
+  }
+
+  if ('pid' in input && 'stdin' in input) {
+    return {
+      ...baseMetadata,
+      mode: 'stdin',
+      pid: input.pid,
+      stdinLength: input.stdin?.length ?? 0
+    }
+  }
+
+  return {
+    ...baseMetadata,
+    mode: 'unknown'
   }
 }

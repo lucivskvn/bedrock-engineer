@@ -5,6 +5,7 @@
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
+import { ExecutionError } from '../../base/errors'
 import { ToolResult } from '../../../../types/tools'
 
 /**
@@ -109,14 +110,18 @@ export class ThinkTool extends BaseTool<ThinkInput, ThinkResult> {
         }
       }
     } catch (error) {
+      const detailMessage = error instanceof Error ? error.message : String(error)
+      const truncatedThought = this.truncateForLogging(thought, 100)
+
       this.logger.error('Error in think tool', {
-        error: error instanceof Error ? error.message : String(error),
-        thought: this.truncateForLogging(thought, 100)
+        error: detailMessage,
+        thought: truncatedThought
       })
 
-      throw new Error(
-        `Error in think tool: ${error instanceof Error ? error.message : String(error)}`
-      )
+      throw new ExecutionError('Think tool execution failed.', this.name, error instanceof Error ? error : undefined, {
+        detailMessage,
+        truncatedThought
+      })
     }
   }
 

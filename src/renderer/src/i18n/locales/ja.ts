@@ -783,6 +783,7 @@ const BackgroundAgent = {
     taskDisabled: 'タスクを無効にしました',
     taskExecuted: 'タスクを実行しました',
     taskExecutionFailed: 'タスクの実行に失敗しました',
+    taskSkippedGeneric: 'タスクの実行をスキップしました',
     taskSkipped: 'タスクの実行をスキップしました（{{reason}}）',
     taskSkippedDuplicateExecution: 'タスクの実行をスキップしました（{{executionTime}}秒間実行中）',
     sessionContinued: 'セッションでの会話を継続しました'
@@ -959,6 +960,10 @@ const TodoModal = {
   'Last updated': '最終更新'
 }
 
+const Todo = {
+  'todo.fetchError': 'TODOリストの取得に失敗しました。'
+}
+
 const Common = {
   refresh: '更新',
   close: '閉じる',
@@ -1000,6 +1005,7 @@ const ja = {
   ...AgentFormTabs,
   ...planActMode.ja,
   ...TodoModal,
+  ...Todo,
   backgroundAgent: BackgroundAgent,
   ignoreSettings: IgnoreSettings,
   projectIgnore: ProjectIgnore,

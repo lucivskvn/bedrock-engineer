@@ -10,6 +10,7 @@ import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
 import { ExecutionError } from '../../base/errors'
 import { ToolResult } from '../../../../types/tools'
+import { toFileToken } from '../../../../common/security/pathTokens'
 
 /**
  * Input type for DownloadVideoTool
@@ -110,10 +111,13 @@ export class DownloadVideoTool extends BaseTool<DownloadVideoInput, DownloadVide
   protected async executeInternal(input: DownloadVideoInput): Promise<DownloadVideoResult> {
     const { invocationArn, localPath } = input
     const startTime = Date.now()
+    let finalLocalPath = localPath
+
+    const requestedLocalPathToken = localPath ? toFileToken(localPath) : undefined
 
     this.logger.debug('Starting video download', {
       invocationArn,
-      localPath
+      localPath: requestedLocalPathToken
     })
 
     try {
@@ -123,27 +127,21 @@ export class DownloadVideoTool extends BaseTool<DownloadVideoInput, DownloadVide
       })
 
       if (statusResponse.status !== 'Completed') {
-        throw new ExecutionError(
-          `Video generation is not completed yet. Current status: ${statusResponse.status}`,
-          this.name,
-          undefined,
-          {
-            invocationArn,
-            currentStatus: statusResponse.status
-          }
-        )
+        throw new ExecutionError('Video generation job has not completed.', this.name, undefined, {
+          invocationArn,
+          currentStatus: statusResponse.status
+        })
       }
 
       const s3Uri = statusResponse.outputDataConfig?.s3OutputDataConfig?.s3Uri + '/output.mp4'
       if (!s3Uri) {
         throw new ExecutionError('S3 location not found in job status', this.name, undefined, {
           invocationArn,
-          statusResponse
+          currentStatus: statusResponse.status
         })
       }
 
       // Determine final local path
-      let finalLocalPath = localPath
       if (!finalLocalPath) {
         // Get project path from store
         const projectPath = this.store.get('projectPath')
@@ -162,10 +160,12 @@ export class DownloadVideoTool extends BaseTool<DownloadVideoInput, DownloadVide
         finalLocalPath = `${finalLocalPath}.mp4`
       }
 
+      const finalLocalPathToken = toFileToken(finalLocalPath)
+
       this.logger.info('Downloading video from S3', {
         invocationArn,
         s3Uri,
-        localPath: finalLocalPath
+        localPath: finalLocalPathToken
       })
 
       // Download the video
@@ -181,15 +181,17 @@ export class DownloadVideoTool extends BaseTool<DownloadVideoInput, DownloadVide
         await fs.access(downloadResponse.downloadedPath)
         const stats = await fs.stat(downloadResponse.downloadedPath)
 
+        const downloadedPathToken = toFileToken(downloadResponse.downloadedPath)
+
         if (stats.size === 0) {
           this.logger.warn('Downloaded video file is empty', {
-            path: downloadResponse.downloadedPath
+            path: downloadedPathToken
           })
         }
 
         this.logger.info('Video downloaded successfully', {
           invocationArn,
-          downloadedPath: downloadResponse.downloadedPath,
+          downloadedPath: downloadedPathToken,
           fileSize: downloadResponse.fileSize,
           downloadTime
         })
@@ -197,7 +199,7 @@ export class DownloadVideoTool extends BaseTool<DownloadVideoInput, DownloadVide
         return {
           success: true,
           name: 'downloadVideo',
-          message: `Video downloaded successfully to ${downloadResponse.downloadedPath} (${Math.round((downloadResponse.fileSize / 1024 / 1024) * 100) / 100} MB)`,
+          message: 'Video downloaded successfully.',
           result: {
             downloadedPath: downloadResponse.downloadedPath,
             fileSize: downloadResponse.fileSize,
@@ -206,8 +208,10 @@ export class DownloadVideoTool extends BaseTool<DownloadVideoInput, DownloadVide
           }
         }
       } catch (verifyError) {
+        const downloadedPathToken = toFileToken(downloadResponse.downloadedPath)
+
         this.logger.warn('Failed to verify downloaded video', {
-          path: downloadResponse.downloadedPath,
+          path: downloadedPathToken,
           error: verifyError instanceof Error ? verifyError.message : String(verifyError)
         })
 
@@ -215,7 +219,7 @@ export class DownloadVideoTool extends BaseTool<DownloadVideoInput, DownloadVide
         return {
           success: true,
           name: 'downloadVideo',
-          message: `Video downloaded to ${downloadResponse.downloadedPath} but file verification failed`,
+          message: 'Video downloaded successfully but verification failed.',
           result: {
             downloadedPath: downloadResponse.downloadedPath,
             fileSize: downloadResponse.fileSize,
@@ -225,21 +229,18 @@ export class DownloadVideoTool extends BaseTool<DownloadVideoInput, DownloadVide
         }
       }
     } catch (error) {
+      const finalLocalPathToken = finalLocalPath ? toFileToken(finalLocalPath) : requestedLocalPathToken
       this.logger.error('Error downloading video', {
         error: error instanceof Error ? error.message : String(error),
         invocationArn,
-        localPath
+        localPath: finalLocalPathToken
       })
 
-      throw new ExecutionError(
-        `Error downloading video: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined,
-        {
-          invocationArn,
-          localPath
-        }
-      )
+      throw new ExecutionError('Error downloading video.', this.name, error instanceof Error ? error : undefined, {
+        invocationArn,
+        localPath: finalLocalPathToken,
+        detailMessage: error instanceof Error ? error.message : String(error)
+      })
     }
   }
 
@@ -256,7 +257,8 @@ export class DownloadVideoTool extends BaseTool<DownloadVideoInput, DownloadVide
   protected sanitizeInputForLogging(input: DownloadVideoInput): any {
     return {
       ...input,
-      invocationArn: input.invocationArn ? '***provided***' : '***not provided***'
+      invocationArn: input.invocationArn ? '***provided***' : '***not provided***',
+      localPath: input.localPath ? toFileToken(input.localPath) : undefined
     }
   }
 }

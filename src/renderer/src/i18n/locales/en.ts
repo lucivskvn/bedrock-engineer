@@ -762,6 +762,7 @@ const BackgroundAgent = {
     taskDisabled: 'Task disabled',
     taskExecuted: 'Task executed successfully',
     taskExecutionFailed: 'Task execution failed',
+    taskSkippedGeneric: 'Task execution skipped',
     taskSkipped: 'Task execution skipped ({{reason}})',
     taskSkippedDuplicateExecution:
       'Task execution skipped (already running for {{executionTime}}s)',
@@ -939,6 +940,10 @@ const TodoModal = {
   'Last updated': 'Last updated'
 }
 
+const Todo = {
+  'todo.fetchError': 'Failed to fetch TODO list.'
+}
+
 const Common = {
   refresh: 'Refresh',
   close: 'Close',
@@ -980,6 +985,7 @@ const en = {
   ...AgentFormTabs,
   ...planActMode.en,
   ...TodoModal,
+  ...Todo,
   backgroundAgent: BackgroundAgent,
   ignoreSettings: IgnoreSettings,
   projectIgnore: ProjectIgnore,

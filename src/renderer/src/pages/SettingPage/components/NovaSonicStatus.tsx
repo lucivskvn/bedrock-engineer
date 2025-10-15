@@ -1,4 +1,5 @@
-import { rendererLogger as log } from '@renderer/lib/logger';
+import { getNovaSonicSupportedRegions, NOVA_SONIC_REGION_CHECK_ERROR } from '@common/sonic/regions'
+import { rendererLogger as log } from '@renderer/lib/logger'
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BsCheckCircle, BsXCircle, BsArrowClockwise, BsExclamationCircle } from 'react-icons/bs'
@@ -19,12 +20,15 @@ export const NovaSonicStatus: React.FC<NovaSonicStatusProps> = ({ currentRegion 
       const result = await checkNovaSonicRegionSupport(currentRegion)
       setRegionCheck(result)
     } catch (error) {
-      log.error('Failed to check Nova Sonic region support', { error })
+      log.error('Failed to check Nova Sonic region support.', {
+        error,
+        metadata: { currentRegion }
+      })
       setRegionCheck({
         isSupported: false,
         currentRegion,
-        supportedRegions: ['us-east-1', 'us-west-2', 'ap-northeast-1', 'eu-north-1'],
-        error: 'Failed to check region support'
+        supportedRegions: getNovaSonicSupportedRegions(),
+        error: NOVA_SONIC_REGION_CHECK_ERROR
       })
     } finally {
       setLoading(false)

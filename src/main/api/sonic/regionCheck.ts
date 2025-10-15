@@ -1,21 +1,22 @@
-import { isNovaSonicSupportedRegion, getNovaSonicSupportedRegions } from './constants'
+import {
+  DEFAULT_NOVA_SONIC_REGION,
+  getNovaSonicSupportedRegions,
+  isNovaSonicSupportedRegion,
+  NOVA_SONIC_CONNECTIVITY_ERROR,
+  NOVA_SONIC_REGION_CHECK_ERROR,
+  NOVA_SONIC_REGION_UNAVAILABLE_MESSAGE,
+  type ConnectivityTestResult,
+  type RegionCheckResult
+} from '../../../common/sonic/regions'
 import { store } from '../../../preload/store'
 import { log } from '../../../common/logger'
-
-export interface RegionCheckResult {
-  isSupported: boolean
-  currentRegion: string
-  supportedRegions: readonly string[]
-  error?: string
-}
 
 /**
  * Check if Nova Sonic is available in the current AWS region
  */
 export async function checkNovaSonicRegionSupport(region?: string): Promise<RegionCheckResult> {
+  const currentRegion = region || store.get('aws')?.region || DEFAULT_NOVA_SONIC_REGION
   try {
-    // Get the current region from store or parameter
-    const currentRegion = region || store.get('aws')?.region || 'us-east-1'
     const supportedRegions = getNovaSonicSupportedRegions()
 
     // Quick check against known supported regions
@@ -27,15 +28,18 @@ export async function checkNovaSonicRegionSupport(region?: string): Promise<Regi
       supportedRegions,
       error: isSupported
         ? undefined
-        : `Nova Sonic is not available in ${currentRegion}. Please switch to a supported region.`
+        : NOVA_SONIC_REGION_UNAVAILABLE_MESSAGE
     }
   } catch (error) {
-    const currentRegion = region || store.get('aws')?.region || 'us-east-1'
+    log.error('Failed to check Nova Sonic region support.', {
+      error,
+      metadata: { currentRegion }
+    })
     return {
       isSupported: false,
       currentRegion,
       supportedRegions: getNovaSonicSupportedRegions(),
-      error: `Failed to check region support: ${error instanceof Error ? error.message : String(error)}`
+      error: NOVA_SONIC_REGION_CHECK_ERROR
     }
   }
 }
@@ -44,32 +48,33 @@ export async function checkNovaSonicRegionSupport(region?: string): Promise<Regi
  * Test Bedrock connectivity in the current region
  * This performs a lightweight test to verify service availability
  */
-export async function testBedrockConnectivity(region?: string): Promise<{
-  success: boolean
-  error?: string
-}> {
+export async function testBedrockConnectivity(region?: string): Promise<ConnectivityTestResult> {
+  const currentRegion = region || store.get('aws')?.region || DEFAULT_NOVA_SONIC_REGION
   try {
-    const currentRegion = region || store.get('aws')?.region || 'us-east-1'
     const awsConfig = store.get('aws')
 
     if (!awsConfig?.accessKeyId || !awsConfig?.secretAccessKey) {
       return {
         success: false,
-        error: 'AWS credentials not configured'
+        error: 'AWS credentials are not configured.'
       }
     }
 
     // For now, we just validate that credentials exist and region is specified
     // A more comprehensive test would require making an actual API call, but that might be expensive
     // and could fail due to network issues rather than configuration problems
-    log.debug('Testing connectivity for region', { currentRegion })
+    log.debug('Testing Nova Sonic connectivity.', { currentRegion })
     return {
       success: true
     }
   } catch (error) {
+    log.error('Failed to test Bedrock connectivity.', {
+      error,
+      metadata: { currentRegion }
+    })
     return {
       success: false,
-      error: `Bedrock connectivity test failed: ${error instanceof Error ? error.message : String(error)}`
+      error: NOVA_SONIC_CONNECTIVITY_ERROR
     }
   }
 }

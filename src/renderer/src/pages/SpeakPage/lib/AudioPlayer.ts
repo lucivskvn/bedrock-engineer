@@ -73,8 +73,15 @@ export class AudioPlayer {
         await this.audioContext.audioWorklet.addModule(workletUrl)
         log.debug('AudioPlayer: AudioWorklet module loaded successfully')
       } catch (error) {
-        log.error('AudioPlayer: Failed to load AudioWorklet module:', { error })
-        throw new Error(`Failed to load AudioWorklet module: ${error}`)
+        const errorName = error instanceof Error ? error.name : 'UnknownError'
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        log.error('AudioPlayer: Failed to load AudioWorklet module.', {
+          errorName,
+          errorMessage
+        })
+        throw new Error('Failed to load AudioWorklet module.', {
+          cause: { errorName, errorMessage }
+        })
       }
 
       this.workletNode = new AudioWorkletNode(this.audioContext, 'audio-player-processor')
@@ -101,7 +108,12 @@ export class AudioPlayer {
       this.initialized = true
       log.debug('AudioPlayer: Initialization completed successfully')
     } catch (error) {
-      log.error('AudioPlayer: Failed to initialize:', { error })
+      const errorName = error instanceof Error ? error.name : 'UnknownError'
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      log.error('AudioPlayer: Failed to initialize.', {
+        errorName,
+        errorMessage
+      })
       this.initialized = false
       throw error
     }

@@ -18,6 +18,7 @@ import { VoiceSelector } from './components/VoiceSelector'
 import { VoiceId } from './constants/voices'
 import { SampleTextCarousel } from './components/SampleTextCarousel'
 import { usePermissionHelpModal } from './components/PermissionHelpModal'
+import { getNovaSonicSupportedRegions, NOVA_SONIC_REGION_CHECK_ERROR } from '@common/sonic/regions'
 import { RegionWarningBanner } from './components/RegionWarningBanner'
 import { checkNovaSonicRegionSupport, type RegionCheckResult } from '@renderer/lib/api/novaSonic'
 import { getTrustedApiEndpoint } from '@renderer/lib/security/apiEndpoint'
@@ -529,12 +530,15 @@ export const SpeakPage: React.FC = () => {
           setShowRegionWarning(false)
         }
       } catch (error) {
-        log.error('Failed to check region support', { error })
+        log.error('Failed to check Nova Sonic region support.', {
+          error,
+          metadata: { requestedRegion: 'unspecified' }
+        })
         setRegionCheck({
           isSupported: false,
           currentRegion: 'unknown',
-          supportedRegions: ['us-east-1', 'us-west-2'],
-          error: 'Failed to check region support'
+          supportedRegions: getNovaSonicSupportedRegions(),
+          error: NOVA_SONIC_REGION_CHECK_ERROR
         })
       } finally {
         setRegionCheckLoading(false)

@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { CustomAgent } from '@/types/agent-chat'
 import { BsCheck2Circle } from 'react-icons/bs'
 import { RiCloseLine } from 'react-icons/ri'
-import { TbRobot } from 'react-icons/tb'
 import { HiClipboardCopy } from 'react-icons/hi'
 import { getIconByValue } from '@renderer/components/icons/AgentIcons'
 
@@ -82,9 +81,10 @@ export const AgentDetailModal: React.FC<AgentDetailModalProps> = ({
           <div className="flex mb-6 items-center">
             <div className="w-12 h-12 rounded-full flex items-center justify-center mr-4 bg-blue-100 dark:bg-blue-900/40">
               {agent.icon ? (
-                getIconByValue(agent.icon, agent.iconColor || '#3B82F6') || (
-                  <TbRobot className="w-6 h-6" style={{ color: agent.iconColor || '#3B82F6' }} />
-                )
+                getIconByValue(agent.icon, {
+                  className: 'w-6 h-6',
+                  color: agent.iconColor || '#3B82F6'
+                })
               ) : (
                 <span className="text-2xl" style={{ color: agent.iconColor || '#3B82F6' }}>
                   👤

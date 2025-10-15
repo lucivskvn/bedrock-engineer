@@ -287,7 +287,11 @@ export const cameraHandlers = {
       }
 
       let successCount = 0
-      const errors: string[] = []
+      const windowErrors: Array<{
+        deviceId: string
+        errorName: string
+        errorMessage: string
+      }> = []
 
       // 各カメラのプレビューウィンドウを作成
       for (let i = 0; i < availableCameraIds.length; i++) {
@@ -315,12 +319,17 @@ export const cameraHandlers = {
             size: options.size || 'medium'
           })
         } catch (windowError) {
-          const errorMessage =
-            windowError instanceof Error ? windowError.message : String(windowError)
-          errors.push(`Camera ${deviceId}: ${errorMessage}`)
+          const errorName = windowError instanceof Error ? windowError.name : 'UnknownError'
+          const errorMessage = windowError instanceof Error ? windowError.message : String(windowError)
+          windowErrors.push({
+            deviceId,
+            errorName,
+            errorMessage
+          })
           log.error('Failed to create preview window for camera', {
             deviceId,
-            error: errorMessage
+            errorName,
+            errorMessage
           })
         }
       }
@@ -329,33 +338,45 @@ export const cameraHandlers = {
         requested: requestedCameraIds.length,
         available: availableCameraIds.length,
         successful: successCount,
-        errors: errors.length,
+        errors: windowErrors.length,
         layout,
         size: options.size || 'medium',
         opacity
       })
 
       if (successCount === 0) {
+        log.error('Failed to create camera preview windows', {
+          requested: requestedCameraIds.length,
+          attempted: availableCameraIds.length,
+          errors: windowErrors.map(({ deviceId, errorName, errorMessage }) => ({
+            deviceId,
+            errorName,
+            errorMessage
+          }))
+        })
         return {
           success: false,
-          message: `Failed to create any preview windows. Errors: ${errors.join('; ')}`
+          message: 'Failed to create camera preview windows.'
         }
       }
 
       const message =
         successCount === availableCameraIds.length
-          ? `${successCount} preview window(s) created successfully`
-          : `${successCount} of ${availableCameraIds.length} preview window(s) created (${errors.length} failed)`
+          ? 'Camera preview windows created successfully.'
+          : 'Camera preview windows created with partial failures.'
 
       return {
         success: true,
         message
       }
     } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError'
+      const errorMessage = error instanceof Error ? error.message : String(error)
       log.error('Failed to show camera preview windows', {
-        error: error instanceof Error ? error.message : String(error)
+        errorName,
+        errorMessage
       })
-      return { success: false, message: error instanceof Error ? error.message : String(error) }
+      return { success: false, message: 'Failed to show camera preview windows.' }
     }
   },
 
@@ -384,10 +405,13 @@ export const cameraHandlers = {
           closedCount > 0 ? `${closedCount} preview window(s) closed` : 'No preview windows active'
       }
     } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError'
+      const errorMessage = error instanceof Error ? error.message : String(error)
       log.error('Failed to hide camera preview windows', {
-        error: error instanceof Error ? error.message : String(error)
+        errorName,
+        errorMessage
       })
-      return { success: false, message: error instanceof Error ? error.message : String(error) }
+      return { success: false, message: 'Failed to hide camera preview windows.' }
     }
   },
 
@@ -403,9 +427,10 @@ export const cameraHandlers = {
 
       const window = cameraPreviewWindows.get(deviceId)
       if (!window || window.isDestroyed()) {
+        log.warn('Camera preview window not available', { deviceId })
         return {
           success: false,
-          message: `Preview window for device ${deviceId} not found or already closed`
+          message: 'Camera preview window not available.'
         }
       }
 
@@ -418,11 +443,14 @@ export const cameraHandlers = {
         message: `Preview window for device ${deviceId} closed successfully`
       }
     } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError'
+      const errorMessage = error instanceof Error ? error.message : String(error)
       log.error('Failed to close camera preview window', {
         deviceId,
-        error: error instanceof Error ? error.message : String(error)
+        errorName,
+        errorMessage
       })
-      return { success: false, message: error instanceof Error ? error.message : String(error) }
+      return { success: false, message: 'Failed to close camera preview window.' }
     }
   },
 
@@ -468,9 +496,12 @@ export const cameraHandlers = {
 
             updatedCount++
           } catch (windowError) {
+            const errorName = windowError instanceof Error ? windowError.name : 'UnknownError'
+            const errorMessage = windowError instanceof Error ? windowError.message : String(windowError)
             log.error('Failed to update settings for preview window', {
               deviceId,
-              error: windowError instanceof Error ? windowError.message : String(windowError)
+              errorName,
+              errorMessage
             })
           }
         }
@@ -482,10 +513,13 @@ export const cameraHandlers = {
         message: `${updatedCount} preview window(s) updated`
       }
     } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError'
+      const errorMessage = error instanceof Error ? error.message : String(error)
       log.error('Failed to update camera preview settings', {
-        error: error instanceof Error ? error.message : String(error)
+        errorName,
+        errorMessage
       })
-      return { success: false, message: error instanceof Error ? error.message : String(error) }
+      return { success: false, message: 'Failed to update camera preview settings.' }
     }
   },
 

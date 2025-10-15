@@ -9,8 +9,10 @@ export interface RecognizeImageResponse {
   result: {
     images: Array<{
       path: string
+      sanitizedPath?: string
       description: string
       success: boolean
+      errorDetails?: Record<string, unknown>
     }>
     modelUsed: string
   }
@@ -32,44 +34,60 @@ export const RecognizeImageResult: React.FC<{ response: RecognizeImageResponse }
 
   // 単一の画像表示コンポーネント
   const renderSingleImageView = (
-    image: { path: string; description: string; success: boolean },
+    image: {
+      path: string
+      sanitizedPath?: string
+      description: string
+      success: boolean
+      errorDetails?: Record<string, unknown>
+    },
     index: number
-  ) => (
-    <div
-      key={`image-${index}`}
-      className="flex flex-col md:flex-row gap-4 bg-gray-800 text-white dark:bg-gray-900 dark:text-gray-100 p-4 rounded-lg overflow-hidden shadow-sm border border-gray-700 dark:border-gray-800 mb-4"
-    >
-      {/* 左側：画像表示 */}
-      <div className="flex-shrink-0 md:w-1/3">
-        <LocalImage
-          src={image.path}
-          alt={'Analyzed image'}
-          className="aspect-auto h-[25vh] object-contain"
-        />
-        <div className="mt-2 text-xs text-gray-400 truncate" title={image.path}>
-          {image.path}
+  ) => {
+    const displayPath = image.sanitizedPath ?? image.path
+    const errorDetails = image.errorDetails ? JSON.stringify(image.errorDetails, null, 2) : null
+
+    return (
+      <div
+        key={`image-${index}`}
+        className="flex flex-col md:flex-row gap-4 bg-gray-800 text-white dark:bg-gray-900 dark:text-gray-100 p-4 rounded-lg overflow-hidden shadow-sm border border-gray-700 dark:border-gray-800 mb-4"
+      >
+        {/* 左側：画像表示 */}
+        <div className="flex-shrink-0 md:w-1/3">
+          <LocalImage
+            src={image.path}
+            alt={'Analyzed image'}
+            className="aspect-auto h-[25vh] object-contain"
+          />
+          <div className="mt-2 text-xs text-gray-400 truncate" title={displayPath}>
+            {displayPath}
+          </div>
+        </div>
+
+        {/* 右側：解析結果 */}
+        <div className="flex-1 h-[25vh] overflow-y-auto">
+          <h3 className="text-lg font-medium mb-2">
+            {!isSingleImage && `Image ${index + 1}: `}
+            {t('Image Analysis')}
+          </h3>
+
+          {!image.success ? (
+            <div className="bg-red-900/20 text-red-400 p-3 rounded-md">
+              <p className="whitespace-pre-wrap">Error analyzing this image: {image.description}</p>
+              {errorDetails && (
+                <pre className="mt-2 bg-red-950/40 text-xs text-red-200 p-2 rounded border border-red-900/50 overflow-x-auto">
+                  {errorDetails}
+                </pre>
+              )}
+            </div>
+          ) : (
+            <div className="bg-gray-900 dark:bg-gray-800 p-3 rounded-md">
+              <p className="text-gray-300 whitespace-pre-wrap">{image.description}</p>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* 右側：解析結果 */}
-      <div className="flex-1 h-[25vh] overflow-y-auto">
-        <h3 className="text-lg font-medium mb-2">
-          {!isSingleImage && `Image ${index + 1}: `}
-          {t('Image Analysis')}
-        </h3>
-
-        {!image.success ? (
-          <div className="bg-red-900/20 text-red-400 p-3 rounded-md">
-            <p className="whitespace-pre-wrap">Error analyzing this image: {image.description}</p>
-          </div>
-        ) : (
-          <div className="bg-gray-900 dark:bg-gray-800 p-3 rounded-md">
-            <p className="text-gray-300 whitespace-pre-wrap">{image.description}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="w-full">

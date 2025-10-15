@@ -63,8 +63,10 @@ export class ImageRecognitionService {
       modelId = 'amazon.nova-lite-v1:0'
     } = props
 
+    const sanitizedPath = this.sanitizeImagePath(imagePath)
+
     imageLogger.debug('Recognizing image', {
-      imagePath,
+      fileName: sanitizedPath,
       modelId,
       hasCustomPrompt: !!prompt
     })
@@ -89,7 +91,7 @@ export class ImageRecognitionService {
       const mediaType = mimeTypes[ext] || 'application/octet-stream'
 
       // モデルタイプの判定とモデル別の処理の実行
-      const fileName = path.basename(imagePath)
+      const fileName = sanitizedPath
 
       if (this.isNovaModel(modelId)) {
         imageLogger.info('Using Nova model for image recognition', {
@@ -111,10 +113,16 @@ export class ImageRecognitionService {
         )
       }
     } catch (error: any) {
+      const errorDetails =
+        error instanceof Error && typeof error.cause === 'object' && error.cause !== null
+          ? (error.cause as Record<string, unknown>)
+          : undefined
+
       imageLogger.error('Error in image recognition', {
-        imagePath,
+        fileName: sanitizedPath,
         error: error instanceof Error ? error.message : String(error),
-        modelId
+        modelId,
+        ...(errorDetails ? { errorDetails } : {})
       })
 
       throw error
@@ -139,9 +147,13 @@ export class ImageRecognitionService {
 
     ensurePathWithinAllowedDirectories(imagePath, allowedDirectories)
 
+    const sanitizedPath = this.sanitizeImagePath(imagePath)
+
     // ファイル存在確認
     if (!fs.existsSync(imagePath)) {
-      throw new Error(`Image file not found: ${imagePath}`)
+      throw this.createValidationError('Image file not found', {
+        fileName: sanitizedPath
+      })
     }
 
     // 画像形式の確認
@@ -149,19 +161,38 @@ export class ImageRecognitionService {
     const supportedFormats = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 
     if (!supportedFormats.includes(ext)) {
-      throw new Error(`Unsupported image format: ${ext}`)
+      throw this.createValidationError('Unsupported image format', {
+        fileName: sanitizedPath,
+        extension: ext
+      })
     }
 
     // ファイルサイズの確認
     const stats = fs.statSync(imagePath)
     if (!stats.isFile()) {
-      throw new Error(`Image path must reference a file: ${imagePath}`)
+      throw this.createValidationError('Image path must reference a file', {
+        fileName: sanitizedPath,
+        nodeType: stats.isDirectory() ? 'directory' : 'other'
+      })
     }
     const maxSize = 3.75 * 1024 * 1024 // 3.75MB (Claude/Novaの共通制限)
 
     if (stats.size > maxSize) {
-      throw new Error(`Image file too large: ${stats.size} bytes (max: ${maxSize} bytes)`)
+      throw this.createValidationError('Image file exceeds size limit', {
+        fileName: sanitizedPath,
+        size: stats.size,
+        maxSize
+      })
     }
+  }
+
+  private sanitizeImagePath(imagePath: string): string {
+    const baseName = path.basename(imagePath)
+    return baseName && baseName.trim().length > 0 ? baseName : '[unknown-image]'
+  }
+
+  private createValidationError(message: string, metadata: Record<string, unknown>): Error {
+    return new Error(message, { cause: metadata })
   }
 
   /**

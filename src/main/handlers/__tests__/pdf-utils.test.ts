@@ -1,10 +1,10 @@
-jest.mock('pdf-parse', () => ({
+jest.mock('../pdf/parser', () => ({
   PDFParse: class {
     constructor() {}
   }
 }))
 
-import type { PDFParse } from 'pdf-parse'
+import type { PDFParse } from '../pdf/parser'
 
 import {
   createPdfError,
@@ -106,7 +106,11 @@ describe('pdf utils', () => {
       expect(structured.metadata).toMatchObject({
         reason: 'parser_initialization_failed',
         remediation: 'Reinstall dependencies with npm ci to refresh pdf-parse >=2.2.16.',
-        parserExportType: 'function'
+        parserExportType: 'function',
+        errorSummary: {
+          name: 'TypeError',
+          message: 'parser export mismatch'
+        }
       })
     }
   })

@@ -6,9 +6,14 @@ import { promisify } from 'util'
 import { log } from '../../common/logger'
 import { store } from '../../preload/store'
 import { buildAllowedOutputDirectories, resolveSafeOutputPath } from '../security/path-utils'
+import { toFileToken } from '../../common/security/pathTokens'
 
 const writeFile = promisify(fs.writeFile)
 const stat = promisify(fs.stat)
+
+function hasErrorCause(error: unknown): error is Error & { cause?: unknown } {
+  return error instanceof Error && 'cause' in error && (error as { cause?: unknown }).cause !== undefined
+}
 
 function getAllowedCaptureDirectories(): string[] {
   const projectPathValue = store.get('projectPath')
@@ -102,8 +107,12 @@ export const screenHandlers = {
         )
 
         if (!targetWindow) {
-          const availableWindows = windowSources.map((s) => s.name).join(', ')
-          throw new Error(`Target window not found. Available windows: ${availableWindows}`)
+          throw new Error('Requested capture window was not found.', {
+            cause: {
+              target: options.windowTarget,
+              availableWindowCount: windowSources.length
+            }
+          })
         }
 
         image = targetWindow.thumbnail
@@ -155,7 +164,7 @@ export const screenHandlers = {
       const size = image.getSize()
 
       log.info('Screenshot captured successfully', {
-        path: outputPath,
+        fileName: toFileToken(outputPath),
         width: size.width,
         height: size.height,
         format,
@@ -177,7 +186,16 @@ export const screenHandlers = {
       log.error('Failed to capture screen', {
         error: error instanceof Error ? error.message : String(error)
       })
-      throw error
+
+      if (hasErrorCause(error)) {
+        throw error
+      }
+
+      throw new Error('Failed to capture screen.', {
+        cause: {
+          reason: error instanceof Error ? error.message : String(error)
+        }
+      })
     }
   },
 

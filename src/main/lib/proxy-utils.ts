@@ -2,7 +2,31 @@ import { ProxyConfiguration, AWSCredentials } from '../api/bedrock/types'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { NodeHttpHandler } from '@smithy/node-http-handler'
 import { log } from '../../common/logger'
-import fetch from 'node-fetch'
+
+type NodeFetchResponse = {
+  ok: boolean
+  status: number
+}
+
+type NodeFetch = (input: string, init?: Record<string, unknown>) => Promise<NodeFetchResponse & Record<string, unknown>>
+
+let resolvedFetch: NodeFetch | null = null
+
+async function getNodeFetch(): Promise<NodeFetch> {
+  if (!resolvedFetch) {
+    // eslint-disable-next-line no-restricted-syntax -- node-fetch v3 is ESM-only
+    const module = await import('node-fetch')
+    const candidate = (module as { default?: unknown }).default ?? module
+
+    if (typeof candidate !== 'function') {
+      throw new TypeError('node-fetch default export is not a function')
+    }
+
+    resolvedFetch = candidate as NodeFetch
+  }
+
+  return resolvedFetch
+}
 
 /**
  * プロキシURLを解析してProxyConfiguration形式に変換
@@ -55,8 +79,9 @@ export async function testProxyConnection(
     }
 
     const agent = new HttpsProxyAgent(proxyUrl.href)
+    const fetchFn = await getNodeFetch()
 
-    const response = await fetch(testUrl, {
+    const response: NodeFetchResponse = await fetchFn(testUrl, {
       agent,
       method: 'GET'
     } as any)

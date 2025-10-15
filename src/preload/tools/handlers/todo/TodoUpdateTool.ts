@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { BaseTool, zodToJsonSchemaBody } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
+import { ExecutionError } from '../../base/errors'
 import { TodoUpdateInput } from './types'
 import { api } from '../../../api'
 
@@ -167,19 +168,24 @@ If your update request is invalid, an error will be returned with the current to
           name: this.name,
           success: true,
           result: result.updatedList,
-          message: `Updated ${updates.length} task${updates.length > 1 ? 's' : ''} successfully`
+          message: 'Todo tasks updated successfully.'
         }
       } else {
-        throw new Error(result.error || 'Failed to update todo tasks')
+        throw new ExecutionError('Failed to update todo tasks.', this.name, undefined, {
+          sessionId,
+          detailMessage: result.error || undefined
+        })
       }
     } catch (error) {
+      const detailMessage = error instanceof Error ? error.message : String(error)
+
       this.logger.error('Failed to update todo tasks', {
-        error: error instanceof Error ? error.message : String(error)
+        error: detailMessage
       })
 
-      throw new Error(
-        `Failed to update todo tasks: ${error instanceof Error ? error.message : String(error)}`
-      )
+      throw new ExecutionError('Failed to update todo tasks.', this.name, error instanceof Error ? error : undefined, {
+        detailMessage
+      })
     }
   }
 

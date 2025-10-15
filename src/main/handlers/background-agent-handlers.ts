@@ -568,7 +568,9 @@ export const backgroundAgentHandlers = {
       const success = scheduler.updateTask(params.taskId, config)
 
       if (!success) {
-        throw new Error(`Failed to update task: ${params.taskId}`)
+        throw new Error('Failed to update background task.', {
+          cause: { taskId: params.taskId }
+        })
       }
 
       logger.info('Task updated successfully', {
@@ -603,7 +605,9 @@ export const backgroundAgentHandlers = {
       const task = scheduler.getTask(params.taskId)
 
       if (!task) {
-        throw new Error(`Task not found: ${params.taskId}`)
+        throw new Error('Background task was not found.', {
+          cause: { taskId: params.taskId }
+        })
       }
 
       const config = {

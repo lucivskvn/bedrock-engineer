@@ -1,4 +1,5 @@
 import { rendererLogger as log } from '@renderer/lib/logger';
+import { extractErrorMetadata } from '@renderer/lib/logging/errorMetadata'
 import React, { useCallback, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FaClock, FaCheckCircle, FaTimesCircle, FaSpinner, FaTimes, FaSync } from 'react-icons/fa'
@@ -110,6 +111,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({
 
 // Custom hook for todo modal with real-time updates
 export const useTodoModal = (messages?: any[], currentSessionId?: string) => {
+  const { t } = useTranslation()
   const [show, setShow] = useState(false)
   const [todoList, setTodoList] = useState<TodoList | null>(null)
   const [loading, setLoading] = useState(false)
@@ -129,13 +131,17 @@ export const useTodoModal = (messages?: any[], currentSessionId?: string) => {
       const data = await window.api.todo.getTodoList({ sessionId: currentSessionId })
       setTodoList(data)
     } catch (err) {
-      log.error('Failed to fetch TODO list', { error: err })
-      setError(err instanceof Error ? err.message : 'Failed to fetch TODO list')
+      const metadata = extractErrorMetadata(err)
+      log.error('Failed to fetch TODO list', {
+        ...metadata,
+        sessionId: currentSessionId
+      })
+      setError(t('todo.fetchError', 'Failed to fetch TODO list.'))
       setTodoList(null)
     } finally {
       setLoading(false)
     }
-  }, [currentSessionId])
+  }, [currentSessionId, t])
 
   // Auto-refresh when messages change (indicating tool execution) or session changes
   // Only if there are messages in the chat

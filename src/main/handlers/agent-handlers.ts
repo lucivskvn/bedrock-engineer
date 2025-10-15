@@ -59,7 +59,9 @@ async function loadSharedAgents(): Promise<{ agents: CustomAgent[]; error: strin
         } else if (file.endsWith('.yml') || file.endsWith('.yaml')) {
           agent = parseYaml<CustomAgent>(content)
         } else {
-          throw new Error(`Unsupported file format: ${file}`)
+          throw new Error('Unsupported shared agent file format.', {
+            cause: { fileName: file }
+          })
         }
 
         // Make sure each loaded agent has a unique ID to prevent React key conflicts

@@ -34,8 +34,92 @@ import {
   buildAllowedOutputDirectories,
   ensurePathWithinAllowedDirectories
 } from '../../../security/path-utils'
+import { toFileToken } from '../../../../common/security/pathTokens'
 
 const MAX_INPUT_IMAGE_BYTES = 10 * 1024 * 1024
+
+const MOVIE_ERROR_MESSAGES = {
+  input_image_not_regular_file: 'Input image must be a regular file.',
+  input_image_too_large: 'Input image exceeds maximum allowed size.',
+  request_prompt_missing: 'Prompt is required and cannot be empty.',
+  request_prompt_too_long: 'Prompt must be 4000 characters or less.',
+  request_duration_invalid: 'Requested duration is not supported.',
+  request_s3_uri_missing: 'S3 URI is required for video generation.',
+  request_s3_scheme_invalid: 'S3 URI must start with s3://.',
+  request_seed_out_of_range: 'Seed must be between 0 and 2147483646.',
+  text_video_image_limit: 'TEXT_VIDEO mode supports only a single input image.',
+  input_image_format_invalid: 'Input image format is not supported.',
+  prompt_image_mismatch: 'Number of prompts must match number of input images.',
+  prompt_missing_for_image: 'Image prompt text cannot be empty.',
+  prompt_too_long_for_image: 'Image prompt text must be 4000 characters or less.',
+  prompts_require_images: 'Prompts can only be used together with input images.',
+  detect_image_format_failed: 'Unable to determine image format.',
+  read_image_failed: 'Failed to read input image.',
+  s3_uri_invalid: 'S3 URI format is invalid.',
+  s3_upload_failed: 'Failed to upload image to S3.',
+  shots_images_required: 'Input images are required for building shots array.',
+  start_video_no_invocation: 'Failed to start video generation: No invocation ARN returned.',
+  start_video_failed: 'Failed to start video generation.',
+  fallback_failed: 'Video generation fallback attempt failed.',
+  invalid_request_parameters: 'Invalid request parameters provided.',
+  video_generation_failed: 'Video generation failed.',
+  video_generation_timeout: 'Video generation timed out.'
+} as const
+
+type MovieErrorCode = keyof typeof MOVIE_ERROR_MESSAGES
+
+function createMovieError(code: MovieErrorCode, metadata: Record<string, unknown> = {}): Error {
+  return new Error(MOVIE_ERROR_MESSAGES[code], {
+    cause: {
+      code,
+      ...metadata
+    }
+  })
+}
+
+function sanitizeErrorMessage(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  if (typeof error === 'string') {
+    return error
+  }
+
+  return undefined
+}
+
+function hasErrorCause(error: unknown): error is Error & { cause?: unknown } {
+  return error instanceof Error && 'cause' in error && (error as { cause?: unknown }).cause !== undefined
+}
+
+function toS3UriToken(uri?: string): string | undefined {
+  if (!uri) {
+    return undefined
+  }
+
+  const match = uri.match(/^s3:\/\/([^/]+)/)
+  return match ? `[s3://${match[1]}]` : '[s3-uri]'
+}
+
+function summarizeNovaReelRequest(request: NovaReelRequest): Record<string, unknown> {
+  return {
+    taskType: request.taskType,
+    hasTextToVideoImages:
+      'textToVideoParams' in request && Array.isArray(request.textToVideoParams?.images)
+        ? request.textToVideoParams.images.length > 0
+        : undefined,
+    shotCount:
+      'multiShotManualParams' in request && request.multiShotManualParams
+        ? request.multiShotManualParams.shots?.length || 0
+        : undefined,
+    videoGenerationConfig: {
+      durationSeconds: request.videoGenerationConfig?.durationSeconds,
+      fps: request.videoGenerationConfig?.fps,
+      dimension: request.videoGenerationConfig?.dimension
+    }
+  }
+}
 
 export class VideoService {
   private runtimeClient: BedrockRuntimeClient
@@ -117,10 +201,16 @@ export class VideoService {
     const safePath = this.resolveImagePath(imagePath)
     const stats = await fs.stat(safePath)
     if (!stats.isFile()) {
-      throw new Error(`Input image must be a regular file: ${safePath}`)
+      throw createMovieError('input_image_not_regular_file', {
+        fileName: toFileToken(safePath)
+      })
     }
     if (stats.size > MAX_INPUT_IMAGE_BYTES) {
-      throw new Error('Input image exceeds maximum allowed size')
+      throw createMovieError('input_image_too_large', {
+        fileName: toFileToken(safePath),
+        fileSize: stats.size,
+        maxBytes: MAX_INPUT_IMAGE_BYTES
+      })
     }
 
     const buffer = await fs.readFile(safePath)
@@ -129,36 +219,44 @@ export class VideoService {
 
   private validateRequest(request: GenerateMovieRequest): void {
     if (!request.prompt || request.prompt.length === 0) {
-      throw new Error('Prompt is required and cannot be empty')
+      throw createMovieError('request_prompt_missing')
     }
 
     if (request.prompt.length > 4000) {
-      throw new Error('Prompt must be 4000 characters or less')
+      throw createMovieError('request_prompt_too_long', {
+        promptLength: request.prompt.length
+      })
     }
 
     if (!isValidDuration(request.durationSeconds)) {
-      throw new Error(
-        `Duration must be 6 seconds (TEXT_VIDEO) or a multiple of 6 between 12-120 seconds (MULTI_SHOT_AUTOMATED). Valid values: 6, 12, 18, 24, 30, 36, 42, 48, 54, 60, 66, 72, 78, 84, 90, 96, 102, 108, 114, 120`
-      )
+      throw createMovieError('request_duration_invalid', {
+        requestedDuration: request.durationSeconds
+      })
     }
 
     if (!request.s3Uri) {
-      throw new Error('S3 URI is required for video generation')
+      throw createMovieError('request_s3_uri_missing')
     }
 
     if (!request.s3Uri.startsWith('s3://')) {
-      throw new Error('S3 URI must start with s3://')
+      throw createMovieError('request_s3_scheme_invalid', {
+        s3UriToken: toS3UriToken(request.s3Uri)
+      })
     }
 
     if (request.seed !== undefined && (request.seed < 0 || request.seed > 2147483646)) {
-      throw new Error('Seed must be between 0 and 2147483646')
+      throw createMovieError('request_seed_out_of_range', {
+        seed: request.seed
+      })
     }
 
     // Validate input images
     if (request.inputImages && request.inputImages.length > 0) {
       // For TEXT_VIDEO (6 seconds), only allow single image
       if (request.durationSeconds === 6 && request.inputImages.length > 1) {
-        throw new Error('TEXT_VIDEO mode (6 seconds) supports only a single input image')
+        throw createMovieError('text_video_image_limit', {
+          imageCount: request.inputImages.length
+        })
       }
 
       // Validate each image file
@@ -166,24 +264,34 @@ export class VideoService {
         const imagePath = request.inputImages[i]
         const ext = imagePath.toLowerCase().split('.').pop()
         if (!ext || !['png', 'jpg', 'jpeg'].includes(ext)) {
-          throw new Error(`Image ${i + 1} must be PNG or JPEG format: ${imagePath}`)
+          throw createMovieError('input_image_format_invalid', {
+            imageIndex: i,
+            fileName: toFileToken(imagePath),
+            extension: ext || '[unknown]'
+          })
         }
       }
 
       // Validate prompts if provided
       if (request.prompts) {
         if (request.prompts.length !== request.inputImages.length) {
-          throw new Error(
-            `Number of prompts (${request.prompts.length}) must match number of images (${request.inputImages.length})`
-          )
+          throw createMovieError('prompt_image_mismatch', {
+            imageCount: request.inputImages.length,
+            promptCount: request.prompts.length
+          })
         }
 
         request.prompts.forEach((prompt, index) => {
           if (!prompt || prompt.trim().length === 0) {
-            throw new Error(`Prompt ${index + 1} cannot be empty`)
+            throw createMovieError('prompt_missing_for_image', {
+              imageIndex: index
+            })
           }
           if (prompt.length > 4000) {
-            throw new Error(`Prompt ${index + 1} must be 4000 characters or less`)
+            throw createMovieError('prompt_too_long_for_image', {
+              imageIndex: index,
+              promptLength: prompt.length
+            })
           }
         })
       }
@@ -191,7 +299,7 @@ export class VideoService {
 
     // If prompts provided without images, that's an error
     if (request.prompts && !request.inputImages) {
-      throw new Error('Prompts can only be used together with input images')
+      throw createMovieError('prompts_require_images')
     }
   }
 
@@ -203,7 +311,10 @@ export class VideoService {
     const ext = safePath.toLowerCase().split('.').pop()
     if (ext === 'png') return 'png'
     if (ext === 'jpg' || ext === 'jpeg') return 'jpeg'
-    throw new Error(`Unsupported image format: ${ext}`)
+    throw createMovieError('input_image_format_invalid', {
+      fileName: toFileToken(safePath),
+      extension: ext || '[unknown]'
+    })
   }
 
   /**
@@ -214,7 +325,14 @@ export class VideoService {
       const { buffer } = await this.readSafeImageBuffer(imagePath)
       return buffer.toString('base64')
     } catch (error) {
-      throw new Error(`Failed to read image file ${imagePath}: ${error}`)
+      if (hasErrorCause(error)) {
+        throw error
+      }
+
+      throw createMovieError('read_image_failed', {
+        fileName: toFileToken(imagePath),
+        reason: sanitizeErrorMessage(error)
+      })
     }
   }
 
@@ -226,7 +344,9 @@ export class VideoService {
       // Parse S3 base URI to get bucket
       const s3Match = s3BaseUri.match(/^s3:\/\/([^/]+)/)
       if (!s3Match) {
-        throw new Error(`Invalid S3 URI format: ${s3BaseUri}`)
+        throw createMovieError('s3_uri_invalid', {
+          s3UriToken: toS3UriToken(s3BaseUri)
+        })
       }
 
       const bucket = s3Match[1]
@@ -251,7 +371,15 @@ export class VideoService {
 
       return `s3://${bucket}/${s3Key}`
     } catch (error) {
-      throw new Error(`Failed to upload image to S3: ${error}`)
+      if (hasErrorCause(error)) {
+        throw error
+      }
+
+      throw createMovieError('s3_upload_failed', {
+        fileName: toFileToken(imagePath),
+        s3UriToken: toS3UriToken(s3BaseUri),
+        reason: sanitizeErrorMessage(error)
+      })
     }
   }
 
@@ -260,7 +388,7 @@ export class VideoService {
    */
   private async buildShotsArray(request: GenerateMovieRequest): Promise<Shot[]> {
     if (!request.inputImages || request.inputImages.length === 0) {
-      throw new Error('Input images are required for building shots array')
+      throw createMovieError('shots_images_required')
     }
 
     const shots: Shot[] = []
@@ -405,9 +533,7 @@ export class VideoService {
 
     try {
       // Add detailed logging for debugging
-      log.debug('Nova Reel request structure', {
-        request: novaReelRequest
-      })
+      log.debug('Prepared Nova Reel request', summarizeNovaReelRequest(novaReelRequest))
       log.debug('Using Nova Reel model for region', {
         modelId,
         region: this.region
@@ -424,17 +550,15 @@ export class VideoService {
       })
 
       log.debug('Prepared AWS command payload', {
-        command: {
-          modelId,
-          modelInput: novaReelRequest,
-          outputDataConfig: { s3OutputDataConfig: { s3Uri: request.s3Uri } }
-        }
+        modelId,
+        hasOutputUri: !!request.s3Uri,
+        requestSummary: summarizeNovaReelRequest(novaReelRequest)
       })
 
       const response = await this.runtimeClient.send(command)
 
       if (!response.invocationArn) {
-        throw new Error('Failed to start video generation: No invocation ARN returned')
+        throw createMovieError('start_video_no_invocation')
       }
 
       return {
@@ -452,7 +576,10 @@ export class VideoService {
         }
       }
     } catch (error: any) {
-      log.error('Failed to start video generation', { error })
+      log.error('Failed to start video generation', {
+        errorMessage: sanitizeErrorMessage(error),
+        errorName: error instanceof Error ? error.name : undefined
+      })
 
       // If MULTI_SHOT_MANUAL fails with validation error, try fallback to MULTI_SHOT_AUTOMATED
       if (
@@ -477,9 +604,7 @@ export class VideoService {
             }
           }
 
-          log.debug('Fallback Request:', {
-            request: JSON.stringify(fallbackRequest, null, 2)
-          })
+          log.debug('Prepared fallback Nova Reel request', summarizeNovaReelRequest(fallbackRequest))
 
           const fallbackCommand = new StartAsyncInvokeCommand({
             modelId,
@@ -494,7 +619,7 @@ export class VideoService {
           const response = await this.runtimeClient.send(fallbackCommand)
 
           if (!response.invocationArn) {
-            throw new Error('Failed to start video generation: No invocation ARN returned')
+            throw createMovieError('start_video_no_invocation')
           }
 
           log.debug('Fallback succeeded! Note: Images were not used due to API limitations.')
@@ -514,10 +639,14 @@ export class VideoService {
             }
           }
         } catch (fallbackError) {
-          log.error('Fallback also failed:', { error: fallbackError })
-          throw new Error(
-            `Both MULTI_SHOT_MANUAL and fallback failed. Original error: ${error.message}. Fallback error: ${fallbackError}`
-          )
+          log.error('Fallback also failed', {
+            originalError: sanitizeErrorMessage(error),
+            fallbackError: sanitizeErrorMessage(fallbackError)
+          })
+          throw createMovieError('fallback_failed', {
+            originalError: sanitizeErrorMessage(error),
+            fallbackError: sanitizeErrorMessage(fallbackError)
+          })
         }
       }
 
@@ -525,7 +654,9 @@ export class VideoService {
         throw new Error('AWS authentication failed. Please check your credentials and permissions.')
       }
       if (error.name === 'ValidationException') {
-        throw new Error(`Invalid request parameters: ${error.message}`)
+        throw createMovieError('invalid_request_parameters', {
+          errorMessage: sanitizeErrorMessage(error)
+        })
       }
       if (error.name === 'AccessDeniedException') {
         throw new Error('Access denied. Please ensure you have permissions for Bedrock and S3.')
@@ -534,7 +665,14 @@ export class VideoService {
         throw new Error('Request was throttled. Please try again later.')
       }
 
-      throw error
+      if (hasErrorCause(error)) {
+        throw error
+      }
+
+      throw createMovieError('start_video_failed', {
+        errorMessage: sanitizeErrorMessage(error),
+        errorName: error instanceof Error ? error.name : undefined
+      })
     }
   }
 
@@ -569,7 +707,9 @@ export class VideoService {
       // Parse S3 URI (s3://bucket/key)
       const s3Match = s3Uri.match(/^s3:\/\/([^/]+)\/(.+)$/)
       if (!s3Match) {
-        throw new Error(`Invalid S3 URI format: ${s3Uri}`)
+        throw createMovieError('s3_uri_invalid', {
+          s3UriToken: toS3UriToken(s3Uri)
+        })
       }
 
       const [, bucket, key] = s3Match
@@ -628,14 +768,19 @@ export class VideoService {
       }
 
       if (status.status === 'Failed') {
-        throw new Error(`Video generation failed: ${status.failureMessage || 'Unknown error'}`)
+        throw createMovieError('video_generation_failed', {
+          status: status.status,
+          failureMessage: status.failureMessage
+        })
       }
 
       // Wait before next poll
       await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
 
-    throw new Error(`Video generation timed out after ${maxWaitTime / 1000} seconds`)
+    throw createMovieError('video_generation_timeout', {
+      maxWaitTimeMs: maxWaitTime
+    })
   }
 
   async generateVideo(request: GenerateMovieRequest): Promise<GeneratedMovie> {

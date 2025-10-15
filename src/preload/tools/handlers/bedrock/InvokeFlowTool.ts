@@ -6,6 +6,7 @@ import { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { ipc } from '../../../ipc-client'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
+import { ExecutionError } from '../../base/errors'
 import { ToolResult } from '../../../../types/tools'
 
 /**
@@ -274,24 +275,23 @@ export class InvokeFlowTool extends BaseTool<InvokeFlowInput, InvokeFlowResult> 
         result: response
       }
     } catch (error: any) {
-      // Safe substring operation with null check for error logging
       const flowIdForLog =
         flowIdentifier && flowIdentifier.length > 8
           ? flowIdentifier.substring(0, 8) + '...'
           : flowIdentifier || 'unknown'
+      const detailMessage = error instanceof Error ? error.message : String(error)
 
       this.logger.error('Error invoking Bedrock Flow', {
-        error: error instanceof Error ? error.message : String(error),
+        error: detailMessage,
         flowIdentifier: flowIdForLog,
         flowAliasIdentifier
       })
 
-      throw `Error invokeFlow: ${JSON.stringify({
-        success: false,
-        name: 'invokeFlow',
-        error: 'Failed to invoke Bedrock Flow',
-        message: error.message || String(error)
-      })}`
+      throw new ExecutionError('Failed to invoke Bedrock Flow.', this.name, error instanceof Error ? error : undefined, {
+        flowIdentifier: flowIdForLog,
+        flowAliasIdentifier,
+        detailMessage
+      })
     }
   }
 

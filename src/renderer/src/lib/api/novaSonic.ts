@@ -1,5 +1,16 @@
-import { rendererLogger as log } from '@renderer/lib/logger';
-import { getTrustedApiEndpoint } from '@renderer/lib/security/apiEndpoint';
+import {
+  getNovaSonicSupportedRegions,
+  NOVA_SONIC_CONNECTIVITY_ERROR,
+  NOVA_SONIC_REGION_CHECK_ERROR,
+  NOVA_SONIC_REGION_UNAVAILABLE_MESSAGE,
+  type ConnectivityTestResult,
+  type RegionCheckResult
+} from '@common/sonic/regions'
+import { rendererLogger as log } from '@renderer/lib/logger'
+import { getTrustedApiEndpoint } from '@renderer/lib/security/apiEndpoint'
+
+export type { ConnectivityTestResult, RegionCheckResult }
+
 const getAuthHeaders = () => {
   const apiAuthToken = window.store.get('apiAuthToken') as string | undefined
   if (apiAuthToken && apiAuthToken.length > 0) {
@@ -9,18 +20,6 @@ const getAuthHeaders = () => {
 }
 
 const getApiEndpoint = () => getTrustedApiEndpoint()
-
-export interface RegionCheckResult {
-  isSupported: boolean
-  currentRegion: string
-  supportedRegions: readonly string[]
-  error?: string
-}
-
-export interface ConnectivityTestResult {
-  success: boolean
-  error?: string
-}
 
 /**
  * Check if Nova Sonic is supported in the current or specified region
@@ -38,17 +37,41 @@ export async function checkNovaSonicRegionSupport(region?: string): Promise<Regi
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: { message: 'Unknown error' } }))
-      throw new Error(errorData.error?.message || `HTTP ${response.status}`)
+      const errorMessage =
+        typeof errorData.error?.message === 'string' ? errorData.error.message : undefined
+      throw new Error(NOVA_SONIC_REGION_CHECK_ERROR, {
+        cause: {
+          status: response.status,
+          errorMessage
+        }
+      })
     }
 
-    return await response.json()
+    const result = (await response.json()) as RegionCheckResult
+    if (!result.isSupported && !result.error) {
+      return {
+        ...result,
+        error: NOVA_SONIC_REGION_UNAVAILABLE_MESSAGE
+      }
+    }
+    return result
   } catch (error) {
-    log.error('Failed to check Nova Sonic region support', { error })
+    const cause = error instanceof Error && typeof error.cause === 'object' ? error.cause : undefined
+    const metadata: Record<string, unknown> = {
+      requestedRegion: region ?? 'unspecified'
+    }
+    if (cause) {
+      Object.assign(metadata, cause as Record<string, unknown>)
+    }
+    log.error('Failed to check Nova Sonic region support.', {
+      error,
+      metadata
+    })
     return {
       isSupported: false,
       currentRegion: region || 'unknown',
-      supportedRegions: ['us-east-1', 'us-west-2'],
-      error: `Failed to check region support: ${error instanceof Error ? error.message : String(error)}`
+      supportedRegions: getNovaSonicSupportedRegions(),
+      error: NOVA_SONIC_REGION_CHECK_ERROR
     }
   }
 }
@@ -69,15 +92,32 @@ export async function testBedrockConnectivity(region?: string): Promise<Connecti
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: { message: 'Unknown error' } }))
-      throw new Error(errorData.error?.message || `HTTP ${response.status}`)
+      const errorMessage =
+        typeof errorData.error?.message === 'string' ? errorData.error.message : undefined
+      throw new Error(NOVA_SONIC_CONNECTIVITY_ERROR, {
+        cause: {
+          status: response.status,
+          errorMessage
+        }
+      })
     }
 
     return await response.json()
   } catch (error) {
-    log.error('Failed to test Bedrock connectivity', { error })
+    const cause = error instanceof Error && typeof error.cause === 'object' ? error.cause : undefined
+    const metadata: Record<string, unknown> = {
+      requestedRegion: region ?? 'unspecified'
+    }
+    if (cause) {
+      Object.assign(metadata, cause as Record<string, unknown>)
+    }
+    log.error('Failed to test Bedrock connectivity.', {
+      error,
+      metadata
+    })
     return {
       success: false,
-      error: `Connectivity test failed: ${error instanceof Error ? error.message : String(error)}`
+      error: NOVA_SONIC_CONNECTIVITY_ERROR
     }
   }
 }

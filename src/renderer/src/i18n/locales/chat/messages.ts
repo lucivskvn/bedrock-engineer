@@ -2,6 +2,9 @@ export const messages = {
   en: {
     'request error':
       'An error occurred while communicating with Bedrock. Please wait a moment and try again.',
+    'assistant error response':
+      'I was unable to generate a response due to an internal error. Please try again in a moment.',
+    'prompt required': 'Please enter a prompt before sending.',
     'system prompt': 'SYSTEM PROMPT',
     'agent description':
       'This AI agent understands software project structures and creates files and folders.',
@@ -53,6 +56,9 @@ export const messages = {
   ja: {
     'request error':
       'Bedrock との通信でエラーが発生しました。しばらく待ってからもう一度お試しください。',
+    'assistant error response':
+      '内部エラーにより応答を生成できませんでした。しばらくしてからもう一度お試しください。',
+    'prompt required': '送信する前にプロンプトを入力してください。',
     'system prompt': 'システムプロンプト',
     'agent description': 'ソフトウェアプロジェクトの構造を理解し、ファイルとフォルダーを作成します',
     'no project path': 'プロジェクトパスが設定されていません',

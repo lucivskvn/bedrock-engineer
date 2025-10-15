@@ -38,7 +38,8 @@ export function useMcpServerState(
   const testServerConnection = async (serverName: string, serverList = initialServers) => {
     const serverConfig = serverList.find((server) => server.name === serverName)
     if (!serverConfig) {
-      toast.error(`Server "${serverName}" not found`)
+      log.warn('MCP server configuration not found.', { serverName })
+      toast.error('Server configuration not found.')
       return
     }
 
@@ -60,11 +61,14 @@ export function useMcpServerState(
         toast.error(`${result.message}`)
       }
     } catch (error) {
-      log.error('Error testing MCP server connection', {
+      const errorName = error instanceof Error ? error.name : 'UnknownError'
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      log.error('Failed to test MCP server connection.', {
         serverName,
-        error: error instanceof Error ? error.message : String(error)
+        errorName,
+        errorMessage
       })
-      toast.error(`Error testing connection to ${serverName}`)
+      toast.error('Failed to test MCP server connection.')
     } finally {
       setTestingConnection(null)
     }
@@ -93,10 +97,13 @@ export function useMcpServerState(
       const totalTime = Date.now() - startTime
       toast.success(`Completed testing ${initialServers.length} servers in ${totalTime}ms`)
     } catch (error) {
-      log.error('Error testing all MCP connections', {
-        error: error instanceof Error ? error.message : String(error)
+      const errorName = error instanceof Error ? error.name : 'UnknownError'
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      log.error('Failed to test all MCP server connections.', {
+        errorName,
+        errorMessage
       })
-      toast.error(`Failed to test all connections: ${error}`)
+      toast.error('Failed to test all MCP connections.')
     } finally {
       setTestingAll(false)
     }

@@ -137,7 +137,9 @@ export const initMcpFromAgentConfig = async (mcpServers: McpServerConfig[] = [])
         mcpServers: mcpServers.reduce(
           (acc, server) => {
             if (!server.command) {
-              throw new Error(`MCP server "${server.name}" missing command`)
+              throw new Error('MCP server configuration is missing a command.', {
+                cause: { serverName: server.name }
+              })
             }
             acc[server.name] = {
               command: server.command,
