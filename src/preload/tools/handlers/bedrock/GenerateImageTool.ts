@@ -10,6 +10,7 @@ import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
 import { ExecutionError } from '../../base/errors'
 import { ToolResult } from '../../../../types/tools'
+import { toFileToken } from '../../../../common/security/pathTokens'
 
 // Default model for image generation
 const DEFAULT_IMAGE_MODEL = 'stability.sd3-5-large-v1:0'
@@ -181,6 +182,7 @@ export class GenerateImageTool extends BaseTool<GenerateImageInput, GenerateImag
    */
   protected async executeInternal(input: GenerateImageInput): Promise<GenerateImageResult> {
     const { prompt, outputPath, negativePrompt, aspect_ratio, seed, output_format = 'png' } = input
+    const outputPathToken = toFileToken(outputPath)
 
     // Determine model ID with priority: input > configured > default
     let modelId: string = input.modelId || ''
@@ -222,7 +224,7 @@ export class GenerateImageTool extends BaseTool<GenerateImageInput, GenerateImag
       }
 
       this.logger.debug('Image generated successfully, saving to disk', {
-        outputPath,
+        outputPath: outputPathToken,
         imageDataLength: response.images[0].length
       })
 
@@ -242,16 +244,20 @@ export class GenerateImageTool extends BaseTool<GenerateImageInput, GenerateImag
         await fs.access(outputPath)
         const stats = await fs.stat(outputPath)
         if (stats.size === 0) {
-          throw new Error('Generated image file is empty')
+          throw new ExecutionError('Generated image file is empty.', this.name, undefined, {
+            outputPath: outputPathToken
+          })
         }
       } catch (verifyError) {
-        throw new Error(
-          `Failed to verify saved image: ${verifyError instanceof Error ? verifyError.message : String(verifyError)}`
-        )
+        throw new ExecutionError('Failed to verify saved image.', this.name, verifyError instanceof Error ? verifyError : undefined, {
+          outputPath: outputPathToken,
+          detailMessage:
+            verifyError instanceof Error ? verifyError.message : String(verifyError)
+        })
       }
 
       this.logger.info('Image saved successfully', {
-        outputPath,
+        outputPath: outputPathToken,
         modelId,
         seed: response.seeds?.[0],
         aspect_ratio: aspect_ratio ?? '1:1'
@@ -260,7 +266,7 @@ export class GenerateImageTool extends BaseTool<GenerateImageInput, GenerateImag
       return {
         success: true,
         name: 'generateImage',
-        message: `Image generated successfully and saved to ${outputPath}`,
+        message: 'Image generated successfully and saved to disk.',
         result: {
           imagePath: outputPath,
           prompt,
@@ -271,22 +277,26 @@ export class GenerateImageTool extends BaseTool<GenerateImageInput, GenerateImag
         }
       }
     } catch (error) {
+      const detailMessage = error instanceof Error ? error.message : String(error)
+      const sanitizedPrompt = this.truncateForLogging(prompt, 100)
+
       this.logger.error('Error generating image', {
-        error: error instanceof Error ? error.message : String(error),
-        prompt: this.truncateForLogging(prompt, 100),
-        modelId
+        error: detailMessage,
+        prompt: sanitizedPrompt,
+        modelId,
+        outputPath: outputPathToken
       })
 
-      throw new ExecutionError(
-        `Error generating image: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined,
-        {
-          prompt: this.truncateForLogging(prompt, 100),
-          modelId,
-          outputPath
-        }
-      )
+      if (error instanceof ExecutionError) {
+        throw error
+      }
+
+      throw new ExecutionError('Error generating image.', this.name, error instanceof Error ? error : undefined, {
+        prompt: sanitizedPrompt,
+        modelId,
+        outputPath: outputPathToken,
+        detailMessage
+      })
     }
   }
 

@@ -122,7 +122,11 @@ export class TavilySearchTool extends BaseTool<TavilySearchInput, TavilySearchRe
   protected async executeInternal(input: TavilySearchInput): Promise<TavilySearchResult> {
     const { query, option } = input
 
-    this.logger.debug(`Executing Tavily search with query: ${query}`)
+    const truncatedQuery = this.truncateForLogging(query, 100)
+
+    this.logger.debug('Executing Tavily search.', {
+      query: truncatedQuery
+    })
 
     // Get API key from store
     const tavilyConfig = this.store.get('tavilySearch') as { apikey?: string } | undefined
@@ -131,16 +135,17 @@ export class TavilySearchTool extends BaseTool<TavilySearchInput, TavilySearchRe
     this.logger.debug('Tavily API key configuration check', {
       hasTavilyConfig: !!tavilyConfig,
       hasApiKey: !!apiKey,
-      apiKeyLength: apiKey ? apiKey.length : 0,
-      apiKeyPrefix: apiKey ? apiKey.substring(0, 8) + '...' : undefined
+      apiKeyLength: apiKey ? apiKey.length : 0
     })
 
     if (!apiKey) {
       this.logger.error('Tavily API key not configured', {
-        tavilyConfig,
-        query
+        hasTavilyConfig: !!tavilyConfig,
+        query: truncatedQuery
       })
-      throw new ExecutionError('Tavily API key not configured', this.name, undefined, { query })
+      throw new ExecutionError('Tavily API key not configured', this.name, undefined, {
+        query: truncatedQuery
+      })
     }
 
     try {
@@ -181,22 +186,24 @@ export class TavilySearchTool extends BaseTool<TavilySearchInput, TavilySearchRe
       const body = response.data
 
       if (response.status !== 200) {
+        const serializedBody =
+          typeof body === 'string' ? body : JSON.stringify(body ?? {}, null, 2)
+        const truncatedBody = this.truncateForLogging(serializedBody, 300)
+
         this.logger.error('Tavily API error', {
           statusCode: response.status,
-          query,
-          errorResponse: body
+          query: truncatedQuery,
+          errorResponse: truncatedBody
         })
 
-        throw new NetworkError(
-          `Tavily API error: ${response.status}`,
-          this.name,
-          'https://api.tavily.com/search',
-          response.status
-        )
+        throw new NetworkError('Tavily API error.', this.name, 'https://api.tavily.com/search', response.status, {
+          query: truncatedQuery,
+          errorResponse: truncatedBody
+        })
       }
 
       this.logger.info('Tavily search completed successfully', {
-        query,
+        query: truncatedQuery,
         resultCount: body.results?.length || 0,
         searchId: body.search_id,
         tokensUsed: body.tokens_used
@@ -205,7 +212,7 @@ export class TavilySearchTool extends BaseTool<TavilySearchInput, TavilySearchRe
       return {
         success: true,
         name: 'tavilySearch',
-        message: `Searched using Tavily. Query: ${query}`,
+        message: 'Tavily search completed.',
         result: body
       }
     } catch (error) {
@@ -213,17 +220,17 @@ export class TavilySearchTool extends BaseTool<TavilySearchInput, TavilySearchRe
         throw error
       }
 
+      const errorMessage = error instanceof Error ? error.message : String(error)
+
       this.logger.error('Error performing Tavily search', {
-        error: error instanceof Error ? error.message : String(error),
-        query
+        error: errorMessage,
+        query: truncatedQuery
       })
 
-      throw new ExecutionError(
-        `Error searching: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined,
-        { query }
-      )
+      throw new ExecutionError('Failed to search Tavily.', this.name, error instanceof Error ? error : undefined, {
+        errorMessage,
+        query: truncatedQuery
+      })
     }
   }
 

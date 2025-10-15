@@ -63,10 +63,10 @@ export const en = {
     editActionAriaLabel: 'Edit organization {{name}}',
     deleteActionAriaLabel: 'Delete organization {{name}}',
     toast: {
-      organizationAdded: '"{{name}}" has been added',
-      organizationUpdated: '"{{name}}" has been updated',
-      organizationDeleted: '"{{name}}" has been deleted',
-      organizationError: 'Error occurred: {{error}}'
+      organizationAdded: 'Organization added successfully.',
+      organizationUpdated: 'Organization updated successfully.',
+      organizationDeleted: 'Organization deleted successfully.',
+      organizationError: 'Failed to update organization settings.'
     }
   },
 

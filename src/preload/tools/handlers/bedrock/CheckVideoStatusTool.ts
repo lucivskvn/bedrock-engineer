@@ -156,19 +156,16 @@ export class CheckVideoStatusTool extends BaseTool<CheckVideoStatusInput, CheckV
         }
       }
     } catch (error) {
+      const detailMessage = error instanceof Error ? error.message : String(error)
       this.logger.error('Error checking video status', {
-        error: error instanceof Error ? error.message : String(error),
+        detailMessage,
         invocationArn
       })
 
-      throw new ExecutionError(
-        `Error checking video status: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined,
-        {
-          invocationArn
-        }
-      )
+      throw new ExecutionError('Failed to check video status.', this.name, error instanceof Error ? error : undefined, {
+        invocationArn,
+        detailMessage
+      })
     }
   }
 

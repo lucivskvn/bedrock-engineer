@@ -3,11 +3,12 @@
  */
 
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
+import { DEFAULT_RECOGNIZE_IMAGE_MODEL_ID } from '../../../../common/models/defaults'
+import { ToolResult } from '../../../../types/tools'
+import { api } from '../../../api'
+import { ipc } from '../../../ipc-client'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
-import { ToolResult } from '../../../../types/tools'
-import { ipc } from '../../../ipc-client'
-import { api } from '../../../api'
 
 /**
  * Input type for CameraCaptureTool
@@ -99,9 +100,15 @@ class CameraStreamManager {
 
       return { stream, deviceInfo }
     } catch (error) {
-      throw new Error(
-        `Failed to access camera: ${error instanceof Error ? error.message : String(error)}`
-      )
+      if (error instanceof Error) {
+        throw new Error('Camera access failed', { cause: error })
+      }
+
+      throw new Error('Camera access failed', {
+        cause: {
+          detail: typeof error === 'string' ? error : JSON.stringify(error)
+        }
+      })
     }
   }
 
@@ -178,7 +185,11 @@ class CameraStreamManager {
       }
 
       video.onerror = (error) => {
-        reject(new Error(`Video loading error: ${error}`))
+        reject(
+          new Error('Video loading error', {
+            cause: error instanceof Error ? error : new Error(String(error))
+          })
+        )
       }
 
       // Timeout after 10 seconds
@@ -375,8 +386,7 @@ export class CameraCaptureTool extends BaseTool<CameraCaptureInput, CameraCaptur
         try {
           // Get the configured model ID from store (using recognizeImageTool setting)
           const recognizeImageSetting = this.store.get('recognizeImageTool')
-          const modelId =
-            recognizeImageSetting?.modelId || 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+          const modelId = recognizeImageSetting?.modelId || DEFAULT_RECOGNIZE_IMAGE_MODEL_ID
 
           const recognitionResult = await ipc('bedrock:recognizeImage', {
             imagePaths: [saveResult.filePath],
@@ -400,11 +410,18 @@ export class CameraCaptureTool extends BaseTool<CameraCaptureInput, CameraCaptur
             })
           }
         } catch (recognitionError) {
+          const errorName =
+            recognitionError instanceof Error ? recognitionError.name : 'UnknownError'
+          const errorCode =
+            recognitionError instanceof Error &&
+            'code' in recognitionError &&
+            typeof (recognitionError as NodeJS.ErrnoException).code === 'string'
+              ? (recognitionError as NodeJS.ErrnoException).code
+              : undefined
+
           this.logger.warn('Image recognition failed, but camera capture succeeded', {
-            error:
-              recognitionError instanceof Error
-                ? recognitionError.message
-                : String(recognitionError)
+            errorName,
+            ...(errorCode ? { errorCode } : {})
           })
 
           // Add warning to message but don't fail the entire operation
@@ -418,14 +435,15 @@ export class CameraCaptureTool extends BaseTool<CameraCaptureInput, CameraCaptur
         error: error instanceof Error ? error.message : String(error)
       })
 
-      throw new Error(
-        JSON.stringify({
-          success: false,
-          name: 'cameraCapture',
-          error: 'Camera capture failed',
-          message: error instanceof Error ? error.message : String(error)
-        })
-      )
+      if (error instanceof Error) {
+        throw error
+      }
+
+      throw new Error('Camera capture failed', {
+        cause: {
+          detail: typeof error === 'string' ? error : JSON.stringify(error)
+        }
+      })
     } finally {
       // Always cleanup camera resources
       cameraManager.cleanup()

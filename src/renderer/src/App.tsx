@@ -125,7 +125,7 @@ const styles: any = {
   badge: (base) => ({ ...base, color: 'gray', backgroundColor: 'white' })
 }
 
-function App(): JSX.Element {
+function App(): React.ReactElement {
   const { t } = useTranslation()
 
   const steps: StepType[] = [

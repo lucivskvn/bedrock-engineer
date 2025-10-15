@@ -7,6 +7,7 @@ import { ipc } from '../../../ipc-client'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult, FetchWebsiteOptions } from '../../base/types'
 import { ExecutionError, NetworkError } from '../../base/errors'
+import { toFileToken } from '../../../../common/security/pathTokens'
 import {
   filterByLineRange,
   getLineRangeInfo,
@@ -20,6 +21,21 @@ interface FetchWebsiteInput {
   type: 'fetchWebsite'
   url: string
   options?: FetchWebsiteOptions
+}
+
+interface SaveWebsiteContentResult {
+  success: boolean
+  filePath?: string
+  error?: string
+}
+
+type SaveVariant = 'original' | 'cleaned'
+
+interface SaveTask {
+  variant: SaveVariant
+  format: 'html' | 'txt'
+  contentLength: number
+  promise: Promise<SaveWebsiteContentResult>
 }
 
 /**
@@ -158,22 +174,31 @@ export class FetchWebsiteTool extends BaseTool<FetchWebsiteInput, string> {
   protected async executeInternal(input: FetchWebsiteInput): Promise<string> {
     const { url, options } = input
     const { cleaning, lines, saveToFile, ...requestOptions } = options || {}
+    const sanitizedInput = this.sanitizeInputForLogging(input) as Partial<FetchWebsiteInput>
+    const sanitizedUrl =
+      typeof sanitizedInput === 'object' && sanitizedInput !== null && typeof sanitizedInput.url === 'string'
+        ? sanitizedInput.url
+        : this.sanitizeUrlForMetadata(url)
+    const sanitizedOptions =
+      typeof sanitizedInput === 'object' && sanitizedInput !== null ? sanitizedInput.options : undefined
+    const sanitizedDirectoryToken = saveToFile?.directory ? toFileToken(saveToFile.directory) : undefined
 
-    this.logger.debug(`Fetching website: ${url}`, {
-      options: JSON.stringify({
-        method: requestOptions.method || 'GET',
-        cleaning,
-        hasLineRange: !!lines
-      })
+    this.logger.debug('Fetching website content.', {
+      url: sanitizedUrl,
+      method: requestOptions.method || 'GET',
+      cleaning: Boolean(cleaning),
+      hasLineRange: Boolean(lines),
+      hasSaveRequest: Boolean(saveToFile)
     })
 
     try {
       // Fetch content using type-safe IPC
-      this.logger.info(`Fetching content from: ${url}`)
+      this.logger.info('Sending website fetch request.', { url: sanitizedUrl })
 
       const response = await ipc('fetch-website', [url, requestOptions])
 
-      this.logger.debug(`Website fetch successful: ${url}`, {
+      this.logger.debug('Website fetch succeeded.', {
+        url: sanitizedUrl,
         statusCode: response.status,
         contentLength:
           typeof response.data === 'string'
@@ -191,7 +216,8 @@ export class FetchWebsiteTool extends BaseTool<FetchWebsiteInput, string> {
       if (cleaning) {
         cleanedContent = this.extractMainContent(originalContent)
         processedContent = cleanedContent
-        this.logger.debug(`Content cleaned`, {
+        this.logger.debug('Website content cleaned.', {
+          url: sanitizedUrl,
           originalLength: originalContent.length,
           cleanedLength: cleanedContent.length
         })
@@ -201,7 +227,8 @@ export class FetchWebsiteTool extends BaseTool<FetchWebsiteInput, string> {
       if (this.shouldTruncateContent(processedContent)) {
         const originalLength = processedContent.length
         processedContent = this.truncateContentMiddleOut(processedContent)
-        this.logger.warn(`Content truncated due to token limit`, {
+        this.logger.warn('Website content truncated due to token limit.', {
+          url: sanitizedUrl,
           originalLength,
           truncatedLength: processedContent.length,
           maxTokensLimit: this.getMaxTokensLimit(),
@@ -211,54 +238,104 @@ export class FetchWebsiteTool extends BaseTool<FetchWebsiteInput, string> {
 
       // Handle file saving if requested
       const saveResults: string[] = []
+      const failureSummaries: string[] = []
       if (saveToFile) {
         try {
-          const savePromises: Promise<any>[] = []
+          const saveTasks: SaveTask[] = []
 
           if (
             saveToFile.format === 'original' ||
             saveToFile.format === 'both' ||
             !saveToFile.format
           ) {
-            savePromises.push(
-              ipc('save-website-content', {
+            saveTasks.push({
+              variant: 'original',
+              format: 'html',
+              contentLength: originalContent.length,
+              promise: ipc('save-website-content', {
                 content: originalContent,
                 url,
                 filename: saveToFile.filename,
                 directory: saveToFile.directory,
                 format: 'html'
               })
-            )
+            })
           }
 
           if (saveToFile.format === 'cleaned' || saveToFile.format === 'both') {
             const contentToSave = cleanedContent || this.extractMainContent(originalContent)
-            savePromises.push(
-              ipc('save-website-content', {
+            saveTasks.push({
+              variant: 'cleaned',
+              format: 'txt',
+              contentLength: contentToSave.length,
+              promise: ipc('save-website-content', {
                 content: contentToSave,
                 url,
                 filename: saveToFile.filename ? `${saveToFile.filename}_cleaned` : undefined,
                 directory: saveToFile.directory,
                 format: 'txt'
               })
-            )
+            })
           }
 
-          const results = await Promise.all(savePromises)
+          if (saveTasks.length > 0) {
+            this.logger.info('Saving fetched website content.', {
+              url: sanitizedUrl,
+              directory: sanitizedDirectoryToken,
+              variants: saveTasks.map((task) => task.variant)
+            })
 
-          for (const result of results) {
-            if (result.success) {
-              saveResults.push(`✓ File saved successfully: ${result.filePath}`)
-              this.logger.info('File saved successfully', { filePath: result.filePath })
-            } else {
-              saveResults.push(`✗ Failed to save file: ${result.error}`)
-              this.logger.error('File save failed', { error: result.error })
-            }
+            const results = await Promise.all(saveTasks.map((task) => task.promise))
+
+            results.forEach((result, index) => {
+              const task = saveTasks[index]
+              const fileToken = result.filePath ? toFileToken(result.filePath) : undefined
+              const variantLabel = this.getSaveVariantLabel(task.variant)
+
+              if (result.success) {
+                saveResults.push(
+                  fileToken
+                    ? `✓ Saved ${variantLabel}: ${fileToken}`
+                    : `✓ Saved ${variantLabel}.`
+                )
+                this.logger.info('Website content saved.', {
+                  url: sanitizedUrl,
+                  variant: task.variant,
+                  format: task.format,
+                  filePath: fileToken,
+                  directory: sanitizedDirectoryToken,
+                  contentLength: task.contentLength
+                })
+              } else {
+                const errorMessage =
+                  typeof result.error === 'string'
+                    ? this.truncateForLogging(result.error, 200)
+                    : undefined
+                saveResults.push('✗ Failed to save website content.')
+                failureSummaries.push(`  • Variant: ${variantLabel}`)
+                this.logger.error('Failed to save website content.', {
+                  url: sanitizedUrl,
+                  variant: task.variant,
+                  format: task.format,
+                  directory: sanitizedDirectoryToken,
+                  errorMessage
+                })
+              }
+            })
           }
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          saveResults.push(`✗ File save error: ${errorMessage}`)
-          this.logger.error('File save error', { error: errorMessage })
+          const errorName = error instanceof Error ? error.name : 'UnknownError'
+          const errorMessage = this.truncateForLogging(
+            error instanceof Error ? error.message : String(error),
+            200
+          )
+          saveResults.push('✗ Failed to save website content.')
+          this.logger.error('Failed to save website content (exception).', {
+            url: sanitizedUrl,
+            directory: sanitizedDirectoryToken,
+            errorName,
+            errorMessage
+          })
         }
       }
 
@@ -272,11 +349,15 @@ export class FetchWebsiteTool extends BaseTool<FetchWebsiteInput, string> {
 
       // Add save results to header if any
       if (saveResults.length > 0) {
-        header += `\nSave Results:\n${saveResults.join('\n')}\n\n`
+        header += `\nSave Results:\n${saveResults.join('\n')}\n`
+        if (failureSummaries.length > 0) {
+          header += `${failureSummaries.join('\n')}\n`
+        }
+        header += '\n'
       }
 
       this.logger.info('Website content retrieved successfully', {
-        url,
+        url: sanitizedUrl,
         totalLines,
         hasLineRange: !!lines,
         contentLength: filteredContent.length,
@@ -285,22 +366,42 @@ export class FetchWebsiteTool extends BaseTool<FetchWebsiteInput, string> {
 
       return header + filteredContent
     } catch (error) {
-      this.logger.error('Error fetching website', {
-        url,
-        error: error instanceof Error ? error.message : String(error),
-        options: JSON.stringify(options)
+      const errorName = error instanceof Error ? error.name : 'UnknownError'
+      const rawErrorMessage = error instanceof Error ? error.message : String(error)
+      const errorMessage = this.truncateForLogging(rawErrorMessage, 200)
+
+      this.logger.error('Failed to fetch website content.', {
+        url: sanitizedUrl,
+        errorName,
+        errorMessage,
+        options: sanitizedOptions
       })
 
-      if (error instanceof Error && error.message.includes('net::')) {
-        throw new NetworkError(`Network error fetching website: ${error.message}`, this.name, url)
+      if (rawErrorMessage.includes('net::')) {
+        throw new NetworkError('Network error fetching website.', this.name, sanitizedUrl, undefined, {
+          errorName,
+          errorMessage
+        })
       }
 
-      throw new ExecutionError(
-        `Error fetching website: ${error instanceof Error ? error.message : String(error)}`,
-        this.name,
-        error instanceof Error ? error : undefined,
-        { url }
-      )
+      throw new ExecutionError('Failed to fetch website content.', this.name, error instanceof Error ? error : undefined, {
+        url: sanitizedUrl,
+        errorName,
+        errorMessage
+      })
+    }
+  }
+
+  private getSaveVariantLabel(variant: SaveVariant): string {
+    return variant === 'cleaned' ? 'cleaned text content' : 'original HTML content'
+  }
+
+  private sanitizeUrlForMetadata(url: string): string {
+    try {
+      const parsed = new URL(url)
+      return `${parsed.protocol}//${parsed.host}${parsed.pathname}`
+    } catch {
+      return '[INVALID URL]'
     }
   }
 

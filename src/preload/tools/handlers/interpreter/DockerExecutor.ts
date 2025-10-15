@@ -433,18 +433,33 @@ export class DockerExecutor {
         if (code === 0) {
           resolve()
         } else {
-          reject(new Error(`Failed to remove image ${imageName}`))
+          reject(
+            new Error('Docker image removal failed', {
+              cause: {
+                imageName,
+                exitCode: code
+              }
+            })
+          )
         }
       })
 
       dockerProcess.on('error', (error) => {
-        reject(error)
+        reject(
+          new Error('Docker image removal process error', {
+            cause: error instanceof Error ? error : new Error(String(error))
+          })
+        )
       })
 
       // Timeout after 30 seconds
       setTimeout(() => {
         dockerProcess.kill()
-        reject(new Error(`Image removal timed out: ${imageName}`))
+        reject(
+          new Error('Docker image removal timed out', {
+            cause: { imageName }
+          })
+        )
       }, 30000)
     })
   }

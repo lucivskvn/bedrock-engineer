@@ -8,6 +8,7 @@ import { createNovaSonicClient } from './bedrock/client'
 import { store, storeReady } from '../../preload/store'
 import { getBedrockService } from './bedrock-service-registry'
 import { createCategoryLogger } from '../../common/logger'
+import { DEFAULT_NOVA_SONIC_REGION } from '../../common/sonic/regions'
 import { Server } from 'socket.io'
 import { SonicToolExecutor } from './sonic/tool-executor'
 import { checkNovaSonicRegionSupport, testBedrockConnectivity } from './sonic/regionCheck'
@@ -805,7 +806,7 @@ io.on('connection', (socket) => {
     const awsConfig = store.get('aws')
 
     const sonicClient = createNovaSonicClient({
-      region: awsConfig?.region || 'us-east-1',
+      region: awsConfig?.region || DEFAULT_NOVA_SONIC_REGION,
       accessKeyId: awsConfig?.accessKeyId || '',
       secretAccessKey: awsConfig?.secretAccessKey || '',
       sessionToken: awsConfig?.sessionToken,

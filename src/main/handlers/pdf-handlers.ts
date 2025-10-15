@@ -7,7 +7,7 @@ import type { Stats } from 'fs'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import os from 'os'
-import type { PDFParse } from 'pdf-parse'
+import type { PDFParse } from './pdf/parser'
 
 import { log } from '../../common/logger'
 import { store } from '../../preload/store'

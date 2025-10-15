@@ -10,7 +10,6 @@ import { store, storeReady } from '../preload/store'
 import { resolveProxyConfig, convertToElectronProxyConfig } from './lib/proxy-utils'
 import { isUrlAllowed, getAllowedHosts } from './lib/url-utils'
 import { randomBytes } from 'crypto'
-import fixPath from 'fix-path'
 import {
   initLoggerConfig,
   initLogger,
@@ -56,13 +55,19 @@ import { isLoopbackHostname, normalizeHttpOrigin } from '../common/security/urlG
 
 app.enableSandbox()
 
-try {
-  fixPath()
-} catch (error) {
-  log.error('Failed to initialize fix-path module', {
-    error: error instanceof Error ? error.message : String(error)
-  })
+async function initializeFixPath() {
+  try {
+    // eslint-disable-next-line no-restricted-syntax -- fix-path exposes only an ESM entry point
+    const { default: fixPath } = await import('fix-path')
+    fixPath()
+  } catch (error) {
+    log.error('Failed to initialize fix-path module', {
+      error: error instanceof Error ? error.message : String(error)
+    })
+  }
 }
+
+void initializeFixPath()
 
 // No need to track project path anymore as we always read from disk
 Store.initRenderer()

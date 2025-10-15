@@ -4,7 +4,7 @@ import { getIconByValue } from '@renderer/components/icons/AgentIcons'
 import { AgentIcon as AgentIconType } from '@/types/agent-chat'
 
 interface AgentIconProps {
-  agent: { icon?: string; iconColor?: string; name: string } | null
+  agent: { icon?: AgentIconType; iconColor?: string; name: string } | null
   size?: 'sm' | 'md'
 }
 
@@ -16,7 +16,10 @@ export const AgentIcon: React.FC<AgentIconProps> = ({ agent, size = 'sm' }) => {
   }
 
   // 既存のAgentIconsコンポーネントを使用
-  const iconElement = getIconByValue(agent.icon as AgentIconType, agent.iconColor)
+  const iconElement = getIconByValue(agent.icon, {
+    className: `${iconSize} flex-shrink-0`,
+    color: agent.iconColor
+  })
 
   return (
     <div className={`${iconSize} flex items-center justify-center flex-shrink-0`}>

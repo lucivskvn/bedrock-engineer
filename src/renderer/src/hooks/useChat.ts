@@ -4,6 +4,7 @@ import { streamChatCompletion } from '@renderer/lib/api'
 import { useCallback, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useTranslation } from 'react-i18next'
+import { extractErrorMetadata, truncateForLogging } from '@renderer/lib/logging/errorMetadata'
 
 type UseChatProps = {
   systemPrompt: string
@@ -18,35 +19,38 @@ export const useChat = (props: UseChatProps) => {
 
   const handleSubmit = useCallback(
     async (input: string, messages) => {
-      if (!input) {
-        alert('Please enter a prompt')
+      const normalizedInput = input.trim()
+      if (!normalizedInput) {
+        toast.error(t('prompt required'))
         return
       }
 
-      const msgs = [...messages, { role: 'user', content: [{ text: input }] }]
-      setMessages(msgs)
+      const userMessage = { role: 'user', content: [{ text: normalizedInput }] }
+      const initialMessages = [...messages, userMessage]
+      setMessages(initialMessages)
 
       setLoading(true)
 
-      const generator = streamChatCompletion({
-        messages: msgs,
-        modelId: props.modelId,
-        system: [
-          {
-            text: props.systemPrompt
-          }
-        ]
-      })
+      let accumulatedResponse = ''
 
-      let s = ''
       try {
+        const generator = streamChatCompletion({
+          messages: initialMessages,
+          modelId: props.modelId,
+          system: [
+            {
+              text: props.systemPrompt
+            }
+          ]
+        })
+
         for await (const json of generator) {
           if (json.contentBlockDelta) {
             const text = json.contentBlockDelta.delta?.text
             if (text) {
-              s = s + text
-              setMessages([...msgs, { role: 'assistant', content: [{ text: s }] }])
-              setLatestText(s)
+              accumulatedResponse += text
+              setMessages([...initialMessages, { role: 'assistant', content: [{ text: accumulatedResponse }] }])
+              setLatestText(accumulatedResponse)
             }
           }
 
@@ -55,20 +59,39 @@ export const useChat = (props: UseChatProps) => {
             setStopReason(json.messageStop.stopReason)
           }
         }
-      } catch (error: any) {
-        log.error('useChat error', { error })
+      } catch (error: unknown) {
+        const metadata = extractErrorMetadata(error)
+        log.error('Chat streaming failed', {
+          ...metadata,
+          modelId: props.modelId,
+          userMessagePreview: truncateForLogging(normalizedInput, 100),
+          systemPromptPreview: truncateForLogging(props.systemPrompt, 100)
+        })
         toast.error(t('request error'))
-        const msgsToset = [...msgs, { role: 'assistant', content: [{ text: error.message }] }]
-        setMessages(msgsToset)
+        setLatestText('')
+        setStopReason(undefined)
+        setMessages([
+          ...initialMessages,
+          {
+            role: 'assistant',
+            content: [
+              {
+                text: t('assistant error response')
+              }
+            ]
+          }
+        ])
+        return
+      } finally {
         setLoading(false)
       }
 
-      setLoading(false)
-
-      const msgsToset = [...msgs, { role: 'assistant', content: [{ text: s }] }]
-      setMessages(msgsToset)
+      setMessages([
+        ...initialMessages,
+        { role: 'assistant', content: [{ text: accumulatedResponse }] }
+      ])
     },
-    [props.modelId, props.systemPrompt, messages]
+    [props.modelId, props.systemPrompt, t]
   )
 
   const initChat = () => {

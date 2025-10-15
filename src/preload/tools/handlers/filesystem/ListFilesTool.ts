@@ -259,16 +259,28 @@ export class ListFilesTool extends BaseTool<ListFilesInput, string> {
 
       return result
     } catch (error) {
+      const detailMessage = error instanceof Error ? error.message : String(error)
+      const sanitizedDirPath = path.isAbsolute(dirPath)
+        ? path.relative(process.cwd(), dirPath) || path.basename(dirPath)
+        : dirPath
+
       this.logger.error('Error building file tree', {
-        dirPath,
-        error: error instanceof Error ? error.message : String(error),
+        dirPath: sanitizedDirPath,
+        error: detailMessage,
         depth,
         maxDepth
       })
 
-      throw new Error(
-        `Error building file tree: ${error instanceof Error ? error.message : String(error)}`
-      )
+      throw createFileExecutionError({
+        toolName: this.name,
+        reason: 'BUILD_FILE_TREE_FAILED',
+        error,
+        metadata: {
+          dirPath: sanitizedDirPath,
+          depth,
+          maxDepth
+        }
+      })
     }
   }
 

@@ -43,25 +43,40 @@ MacOS に最適化されていますが、Windows, Linux OS でもビルドし�
 > これらの値は **設定 → 詳細設定 → コマンド実行** から、または暗号化ストアの `commandMaxConcurrentProcesses`、`commandMaxStdinBytes`、`commandPassthroughEnvKeys`、`commandSearchPaths` キーを編集して調整できます。
 
 > **2025年10月のログ更新** — 警告・エラーログのメタデータから動的な値が自動的にマスクされるようになりました。メッセージ本文は固定文言のままにし、必要なコンテキストはメタデータ（`[USER_ID]` のようなプレースホルダーを含む）として渡してください。詳しくは [Logging Hygiene and Redaction Policy](./docs/logging.md) を参照してください。
+> - ツールのハンドラーは固定文言の例外を投げるために `ExecutionError`（または `createFileExecutionError` などのヘルパー）を利用し、実行時の識別子は `cause` やメタデータ側へ移してください。
+> - メインプロセスでファイルを扱うハンドラーは `toFileToken(path)` でユーザーパスをトークン化してからログ／例外に渡し、ファイル名が生の文字列で記録されないようにしてください。
+> - 画像／動画生成ツールでも `outputPath` を `toFileToken` でトークン化してからログや `ExecutionError` に渡すよう統一しました。`DownloadVideo` など保存先を扱うツールでも同じ手順を踏み、ユーザーディレクトリがログに露出しないようにしてください。
+> - FetchWebsite ツールで保存するコンテンツも `toFileToken` でパスをトークン化し、成功／失敗メッセージは固定の文言を維持したまま、`errorName` や切り詰めた `errorMessage`、ディレクトリトークンなどの診断情報をメタデータ側に記録してください。
+> - レンダラーのトースト通知（`toast.success` / `toast.error`）は固定文言のままにし、サーバー名や所要時間、失敗理由などの動的情報はログのメタデータに記録してください。
+> - Tavily 検索ではログとレスポンスのメッセージを固定文言に保ち、100 文字以内に切り詰めたクエリだけをメタデータへ記録してください。Tavily 設定オブジェクト全体をログへ出力せず、成功時は必ず `'Tavily search completed.'` を返して機密性の高いクエリ内容がメッセージ本文に残らないようにします。
+> - `ExecuteCommandTool` ではエラーメッセージを `'Failed to resolve working directory.'` や `'Command execution failed.'` など固定文字列に保ちつつ、サニタイズした入力メタデータをログ／例外に添付してください。作業ディレクトリを扱う際は必ず `toFileToken` でトークン化します。
+> - 画像認識系フロー（RecognizeImage／ScreenCapture／CameraCapture）はフォールバックの推論モデルを `DEFAULT_RECOGNIZE_IMAGE_MODEL_ID` から取得し、失敗時は常に `'Failed to analyze this image.'` を返しつつ、`errorName` や `errorCode`、トークン化済みパスなどの診断情報をメタデータ側で提供してください。
 
 #### 2025年10月のメンテナンスノート
 
-- ESLint は Flat Config に対応した `typescript-eslint` バンドルを使用するようになりました。`npm run lint` を実行する前に `npm ci`（または `npm install`）を実行して依存関係を更新してください。ラッパースクリプトは workspace 直下とネストした `node_modules` の両方からバンドル本体・parser・plugin を解決し、いずれかが欠けている場合は再インストールを促すメッセージを出して終了します。
+- ESLint は Flat Config に対応した `typescript-eslint` バンドルを使用するようになりました。メタパッケージに加えて parser・plugin も devDependencies に直接追加したため、`npm run lint` 実行前に `npm ci`（または `npm install`）を実行してツール一式を更新してください。ラッパースクリプトは workspace 直下とネストした `node_modules` の両方から三つのパッケージを解決し、欠けている場合は再インストールを促すメッセージを出して終了します。
+- レンダラーは **React 19.x / React DOM 19.x** を採用しています。コンポーネントの戻り値に型を付ける場合は `type { ReactElement }` をインポートするか `React.ReactElement` を使用し、`@types/react` が提供していたグローバル `JSX` 名前空間には依存しないでください。
 - TypeScript のツールチェーンは TypeScript 5.9.x と `@types/node@22.18.x` を対象としています。5.9 の新機能や Node 22 の型が見つからないというコンパイラエラーが出た場合は、一度 `node_modules` を削除してから `npm ci` を再実行してください。
 - TypeScript の型チェックコマンドは `scripts/run-tsc.mjs` を経由して実行されます。`typescript` の存在に加え、指定した tsconfig が `extends` で参照する設定ファイルと `references.path` で指定したプロジェクト参照がすべて解決できるか事前に検証し、欠けている場合は静的なリカバリーメッセージを表示して終了します。警告が表示された際は `npm ci`（または不足している設定ファイルや参照先の復元）を実行してから再試行してください。
 - 共有 tsconfig プリセットを `@electron-toolkit/tsconfig@2.0.0` に更新し、レンダラー向けには bundler 方式のモジュール解決を、メイン／preload 向けには `moduleResolution: nodenext` を有効化しました。独自の `tsconfig.*` を運用している場合は、新しい `moduleDetection: "force"` やモジュール解決の設定を取り込んで、ESM 専用パッケージの import が TypeScript 5.9 でも正しく解決されるようにしてください。
+- メインプロセスや preload で利用する ESM 専用パッケージ（`fix-path` や `get-port`、`node-fetch` など）は、`await import(...)` を使った遅延読み込みに統一しました。`src/main` や `src/preload` に新しい依存関係を追加する場合も同じラッパーパターンを採用し、TypeScript が CommonJS の `require` に変換しないようにしてください。
+- Tailwind CSS は **v4.1** へ移行しました。ユーティリティクラスはこれまで通り `className` で宣言しつつ、`tailwind.config.js` はアニメーションやカラーパレットなどのトークン定義に集中させてください。内部的には Lightning CSS ベースの新しいコンパイラが PostCSS パイプラインを置き換えています。
 - フロントエンドのビルドツールチェーンを PostCSS 8.5.x、Autoprefixer 10.4.21、Prettier 3.6.x に更新しました。Tailwind ビルドや `npm run format` を実行する前に `npm ci` を実行し、ローカルのツールを最新化してください。
 - レンダラーのビルドは Vite 7 系と `@vitejs/plugin-react` 5 系に移行しました。`npm run dev` 実行前に `npm ci` で依存関係を更新し、Flowbite React 0.12 のサブコンポーネント（`ModalHeader`、`DropdownItem`、`AccordionPanel` など）は `Modal.Header` 形式ではなく名前付きエクスポートを直接インポートしてください。旧来の `flowbite-compat` 互換レイヤーは削除されています。
 - Flowbite React 0.12 では `Label` は子要素で文言を描画し、`TextInput` の `helperText` プロパティが `HelperText` コンポーネントに置き換わりました。フォームを編集する際は `GenerateVideoSettingForm` や `useOrganizationModal` の実装を参考にし、ライト／ダーク両テーマでの表示崩れを避けてください。
+- DOMPurify 3.3.0 は公式の型定義を同梱しています。ローカル環境で `@types/dompurify` を参照している場合は削除し、警告を解消してください。
 - Flowbite のドロップダウンをカスタマイズする際は、必ず `label`／`aria-label` に説明的な文言を設定し、トリガー要素に `type="button"` を指定してください。項目内でアイコンボタンなどのアクションを提供する場合は `as="div"` を指定し、選択状態を表す `role="menuitemradio"`／`aria-checked` を付与したうえで `:hover` と `:focus-within` の両方でアイコンが表示されるようにし、キーボード操作でも入れ子の `<button>` を経由せずに制御できるようにします。
 - Markdown レンダラーは `react-markdown@10.x` に更新され、コンポーネントに直接 `className` を渡せなくなりました。`components/Markdown/MD.tsx` や `CodeRenderer.tsx` のようにラッパー要素でスタイルを適用してください。
 - 多言語対応は `i18next@25.x` と `react-i18next@16.x` に移行しました。`src/renderer/src/i18n/config.ts` の `resolveInitialLanguage()` を利用して初期言語を決定しているため、新しいエントリポイントや設定保存処理を追加する際もこのヘルパーを使い、未対応ロケールは英語にフォールバックするようにしてください。
 - 組み込み API のレート制限層と Markdown レンダラーは `rate-limiter-flexible@8.1.x` と `remark-gfm@4.0.x` に依存します。Electron バンドル外でこれらの連携を拡張する場合は互換バージョンを利用してください。
-- Electron のビルドツールチェーンは `electron-builder` 26.x / `electron-vite` 4.x / `electron-store` 11.x へ更新しました。最新の変更を取得したら `npm ci` を実行してツール群を再同期し、設定ストアを拡張する際は廃止した `src/types/electron-store.d.ts` の代わりに公式の `ElectronStore.Options` 型を利用してください。
+- Electron のビルドツールチェーンは `electron-builder` 26.x / `electron-updater` 6.7.x / `electron-vite` 4.x / `electron-store` 11.x へ更新しました。最新の変更を取得したら `npm ci` を実行してツール群を再同期し、設定ストアを拡張する際は廃止した `src/types/electron-store.d.ts` の代わりに公式の `ElectronStore.Options` 型を利用してください。
 - 新しく `logger.error` や `logger.warn` を追加する際は、メインメッセージは固定の文言とし、ID やパス、URL などの動的な情報は構造化メタデータに含めて、リリース間でログの安定性を保ってください。運用ルールとテスト手順は [Logging Hygiene and Redaction Policy](./docs/logging.md) にまとめています。
+- ツールやサービスの例外は `Error#cause` にサニタイズ済みメタデータを格納するようになりました。`'Screen capture permission denied'` や `'Image file not found'` といった固定文言で例外を投げ、ファイル名やプロバイダーからの理由などの動的情報は `cause` オブジェクトに保存してログ側で参照してください。
 - Preload / Renderer のコードでは `console.error` や `console.warn` を直接使わず、必ず共有ロガー（`preloadLogger`、`rendererLogger`、`window.logger`）経由で出力してください。これによりメタデータがメインプロセスへ渡る前にサニタイズされます。
 - MCP 関連の IPC ハンドラーも共有ロガー経由で固定メッセージを出力するようになりました。ハンドラーを追加・更新する際は、ツール名やサーバー数などの実行時情報をメタデータ側に分離してください。
 - リアルタイム処理（レンダラーのソケットブリッジ、Speak ページのオーディオワークレット、Nova ストリーミングクライアントなど）でも接続 ID や実行時間、ツール識別子はメタデータ側にのみ載せ、メッセージ本文は常に同じ文言を使ってください。高速なイベントループでも生のペイロードがログへ流出しません。
+- Nova Sonic の双方向ストリーミングクライアントも、セッション管理やツール実行に失敗した際のメッセージが静的になりました。再試行やレンダラー通知を調査する場合は `error.cause` 内の `sessionId` や `causeName`、`causeMessage`、`reason` を参照し、メッセージ文字列のパースに頼らないでください。
+- Nova Sonic のリージョン確認／接続性エンドポイントは `src/common/sonic/regions.ts` の定数を共有します。レスポンスの `error` フィールドはこれらの固定文言を使用し、リージョン不一致や API エラーの調査時はメタデータに記録された詳細情報を確認してください。
 - `npm run lint:logs` コマンドは `src/` 配下のアプリケーションコードだけでなく `scripts/` 配下のビルド／メンテナンススクリプトも対象に、`logger`（共通ロガー `log` やグローバルの `console` を含む）を用いた `warn` / `error` 呼び出しで静的メッセージが使われているかを検証します。`npm run lint` に統合されているため、テンプレートリテラルや変数をメッセージとして渡すと失敗します。
 - 警告やエラーにコンテキストを付与する場合は、`log.error('Failed to fetch tools', { error })` のようにオブジェクトでラップしてメタデータとして渡してください。`log.error('Failed', error)` のように値を直接渡すと、サニタイズ時に `meta_0` などの匿名キーに変換され、運用時の追跡が難しくなります。
 - `ensureValidStorageKey` や `coerceAwsCredentials` などのバリデーションユーティリティは、固定メッセージの `StorageKeyValidationError` / `AwsCredentialSanitizationError` をスローします。失敗理由を判定する際は `error.code` と `error.metadata` を参照し、文字列のパースに頼らないでください。
@@ -73,13 +88,14 @@ MacOS に最適化されていますが、Windows, Linux OS でもビルドし�
 - バックグラウンドエージェントのセッション管理およびスケジューラーは `background_session_write_failed` や `background_cron_expression_invalid`、`background_agent_not_found` などの `BackgroundAgentError` を返します。ログや UI ではメッセージ文字列ではなく `error.code` と `error.metadata` を確認し、メタデータに含まれる復旧ヒントを利用してください。
 - ダッシュボードのチャート描画に利用している Chart.js を 4.5.1 に更新しました。グラフが表示されない場合は `npm ci` を実行して依存関係を最新化してください。
 - PDF 関連の IPC ハンドラー（`pdf-extract-text`、`pdf-extract-metadata`、`pdf-get-info`）は `PDF_FILE_TOO_LARGE` や `PDF_PARSE_FAILED`、`PDF_TEXT_EXTRACTION_FAILED` などの `PdfProcessingError` コードを返すようになりました。レンダラー側ではメッセージ本文ではなく `error.code` / `error.metadata` を確認し、ハッシュ化されたパスの要約やバイト数プレースホルダー、検証済みの行範囲情報を使ってエラー内容を表示してください。
-- バンドルされている `pdf-parse` に `PDFParse` クラスが見つからない（古い 1.x が残っている）場合は、`error.metadata.reason === 'parser_initialization_failed'` と `npm ci` を案内する `remediation` が返ります。依存関係を再インストールし、必ず 2.2.x 系の API が使える状態でデバッグしてください。
+- `pdf-parse` 2.3.x の非同期デフォルトエクスポートを内部アダプターでラップし、パース結果をメモ化するようになりました。ブリッジがパーサーを解決できない場合は `error.metadata.reason === 'parser_initialization_failed'` と `npm ci` を案内する `remediation` が返ります。依存関係を再インストールし、必ず 2.3.11 系の API が使える状態でデバッグしてください。一時的なパース失敗が発生した場合はキャッシュされた Promise が自動的にクリアされるため、`pdf-parse` をモックする Jest テストでは `resetPdfParseCacheForTests()` を呼び出し、最新のモック実装が再試行に反映されるようにしてください。
 - `COMMAND_WORKDIR_RESOLUTION_FAILED` のエラーでは拒否された作業ディレクトリをハッシュ化した上で `error.metadata` に格納し、Windows では負の PID (`kill(-pid)`) に依存せず子プロセス自体へシグナルを送るフォールバックを追加しました。既に終了している PID (`ESRCH`) は成功扱いとなるため、生のパスをログに残したりプラットフォーム固有の挙動を前提にしないでください。
 - 旧サンドボックス向けの Jest フィクスチャを削除しました。ローカル検証には既存のユニット / 統合テストと、`src/test/setup/logging.ts` にあるバッファ付きロギング支援を利用してください。
 - コミット前に `describe.only` や `test.only` / `it.only` が残っていないか確認してください。これらが含まれていると他の Jest テストが実行されず、CI での回帰検知が行えません。
 - プロンプトキャッシュ処理とセッションコストの集計は共通の `PromptCacheManager` と `PricingCalculator` に統合されています。チャット関連コードを変更する場合は、個別実装ではなくこれらのユーティリティを再利用してください。
 - ディレクトリアジェントの Python サンプルでは `_format_log_summary` ヘルパー経由で CloudWatch への出力から生の値を取り除くようになりました。TypeScript 以外のランタイムを追加する際も同じ方針を採用してください。
-- AWS Bedrock 系クライアントと Model Context Protocol SDK は最新の 3.908.x / 1.20.x に更新済みです。2025 年 10 月のセキュリティ修正を取り込むため、pull 後は `npm ci` を実行してロックファイルを更新してください。
+- ネイティブ依存関係の再ビルドは `scripts/rebuild-native-deps.mjs` に集約されました。`electron-builder install-app-deps` を実行する前に `.app-builder-bin-*` ディレクトリをクリーンアップし、ライフサイクルスクリプトをスキップした場合でも `npm run rebuild:native` で手動再実行できます。インストーラが `app-builder-bin` のリネームに失敗した場合は `npm run clean:native` を実行してキャッシュを削除してから再試行してください。
+- AWS Bedrock 系クライアントと Model Context Protocol SDK は最新の 3.910.x / 1.20.x に更新済みです。2025 年 10 月のセキュリティ修正を取り込むため、pull 後は `npm ci` を実行してロックファイルを更新してください。
 - コンソールフォールバックでは構造化メタデータが出力前にマスキングされます。特定の年などの固定値をメインメッセージに埋め込まず、必要な情報はメタデータ経由で提供してください。
 - Jest 実行時にはバッファ付きのコンソールライター（`src/test/setup/logging.ts` 参照）が自動的に適用され、テスト出力に `[WARN]` / `[ERROR]` が混ざらないようになっています。サニタイズ済みのログ内容を検証したい場合は `getLoggerBuffer()` や `createBufferedConsoleWriter()` を利用してください。
 - Jest のラッパースクリプトは `jest` と `jest-environment-jsdom`、`babel-jest` の依存関係を実行前にチェックし、見つからない場合は静的なリカバリーメッセージを表示して終了します。メッセージが出た場合は `npm ci`（または `npm install`）を再実行して依存関係を復元してからテストやリントを再試行してください。
@@ -127,6 +143,9 @@ PKGファイルを開く際に、以下のセキュリティ警告が表示さ�
 ```bash
 npm ci
 ```
+
+> [!NOTE]
+> 依存関係のインストール時にネイティブ依存関係の再ビルドを試行します。ライフサイクルスクリプトを無効化した場合や再ビルドが失敗した場合は、インストール完了後に `npm run rebuild:native` を実行してください。ヘルパーは `electron-builder` を実行する前に `.app-builder-bin-*` ディレクトリを削除し、キャッシュが原因の `ENOTEMPTY` リネームエラーを防ぎます。インストーラで `app-builder-bin` キャッシュの警告が表示された場合は `npm run clean:native` を実行してから再試行してください。
 
 次に、アプリケーションパッケージをビルドします。
 

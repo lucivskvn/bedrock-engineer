@@ -3,18 +3,19 @@
  */
 
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
-import { ipc } from '../../../ipc-client'
 import * as fs from 'fs/promises'
+import { DEFAULT_RECOGNIZE_IMAGE_MODEL_ID } from '../../../../common/models/defaults'
+import { ToolResult } from '../../../../types/tools'
+import { ipc } from '../../../ipc-client'
 import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
-import { ToolResult } from '../../../../types/tools'
 
 /**
  * Input type for RecognizeImageTool
  */
 interface RecognizeImageInput {
   type: 'recognizeImage'
-  imagePaths: string[] // 複数画像をサポート
+  imagePaths: string[] // Supports multiple images
   prompt?: string
 }
 
@@ -26,8 +27,10 @@ interface RecognizeImageResult extends ToolResult {
   result: {
     images: Array<{
       path: string
+      sanitizedPath: string
       description: string
       success: boolean
+      errorDetails?: Record<string, unknown>
     }>
     modelUsed: string
   }
@@ -133,24 +136,38 @@ export class RecognizeImageTool extends BaseTool<RecognizeImageInput, RecognizeI
     try {
       // Get the configured model ID from store (using recognizeImageTool setting)
       const recognizeImageSetting = this.store.get('recognizeImageTool')
-      const modelId = recognizeImageSetting?.modelId || 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+      const modelId = recognizeImageSetting?.modelId || DEFAULT_RECOGNIZE_IMAGE_MODEL_ID
 
-      // Promise.all で並列処理 (following legacy implementation)
+      // Process in parallel to match the legacy implementation
       const results = await Promise.all(
         limitedPaths.map(async (imagePath) => {
+          const sanitizedPath = this.sanitizePath(imagePath)
           try {
-            // ファイル存在確認
+            // Validate that the file exists before processing
             try {
               await fs.access(imagePath)
             } catch (error) {
+              const errorName = error instanceof Error ? error.name : 'UnknownError'
+              const errorCode =
+                error instanceof Error && 'code' in error && typeof (error as NodeJS.ErrnoException).code === 'string'
+                  ? (error as NodeJS.ErrnoException).code
+                  : undefined
+
               this.logger.error('Image file not found', {
-                imagePath,
-                error: error instanceof Error ? error.message : String(error)
+                imagePath: sanitizedPath,
+                errorName,
+                ...(errorCode ? { errorCode } : {})
               })
-              throw new Error(`Image file not found: ${imagePath}`)
+              throw new Error('Image file not found', {
+                cause: {
+                  imagePath: sanitizedPath,
+                  errorName,
+                  ...(errorCode ? { errorCode } : {})
+                }
+              })
             }
 
-            // 個別の画像認識処理 - call main process using type-safe IPC
+            // Perform each recognition call by invoking the main process through type-safe IPC
             const description = await ipc('bedrock:recognizeImage', {
               imagePaths: [imagePath], // Single image per call
               prompt,
@@ -158,25 +175,44 @@ export class RecognizeImageTool extends BaseTool<RecognizeImageInput, RecognizeI
             })
 
             this.logger.debug('Successfully recognized image', {
-              imagePath,
-              sanitizedPath: this.sanitizePath(imagePath)
+              sanitizedPath
             })
 
             return {
               path: imagePath,
+              sanitizedPath,
               description: description || 'No description available',
               success: true
             }
           } catch (error) {
+            const errorDetails =
+              error instanceof Error && typeof error.cause === 'object' && error.cause !== null
+                ? (error.cause as Record<string, unknown>)
+                : undefined
+
+            const errorName = error instanceof Error ? error.name : 'UnknownError'
+            const errorCode =
+              error instanceof Error && 'code' in error && typeof (error as NodeJS.ErrnoException).code === 'string'
+                ? (error as NodeJS.ErrnoException).code
+                : undefined
+
             this.logger.error('Failed to recognize image', {
-              imagePath,
-              error: error instanceof Error ? error.message : String(error)
+              imagePath: sanitizedPath,
+              errorName,
+              ...(errorCode ? { errorCode } : {}),
+              ...(errorDetails ? { errorDetails } : {})
             })
 
             return {
               path: imagePath,
-              description: `Error: ${error instanceof Error ? error.message : 'Failed to analyze this image'}`,
-              success: false
+              sanitizedPath,
+              description: 'Failed to analyze this image.',
+              success: false,
+              errorDetails: {
+                ...(errorDetails ?? { imagePath: sanitizedPath }),
+                errorName,
+                ...(errorCode ? { errorCode } : {})
+              }
             }
           }
         })
@@ -192,25 +228,39 @@ export class RecognizeImageTool extends BaseTool<RecognizeImageInput, RecognizeI
 
       return {
         name: 'recognizeImage',
-        success: successCount > 0, // 少なくとも1枚成功していればtrue
+        success: successCount > 0, // True when at least one image succeeded
         message: `Analyzed ${successCount} of ${limitedPaths.length} images successfully`,
         result: {
           images: results,
           modelUsed: modelId
+        },
+        details: {
+          sanitizedPaths: limitedPaths.map((path) => this.sanitizePath(path)),
+          successCount,
+          failureCount: limitedPaths.length - successCount
         }
       }
     } catch (error) {
+      const metadata =
+        error instanceof Error && typeof error.cause === 'object' && error.cause !== null
+          ? (error.cause as Record<string, unknown>)
+          : undefined
+
       this.logger.error('Failed to recognize images', {
         error: error instanceof Error ? error.message : String(error),
-        imageCount: limitedPaths.length
+        imageCount: limitedPaths.length,
+        ...(metadata ? { errorDetails: metadata } : {})
       })
 
-      throw `Error recognizing images: ${JSON.stringify({
-        success: false,
-        name: 'recognizeImage',
-        error: 'Failed to recognize images',
-        message: error instanceof Error ? error.message : String(error)
-      })}`
+      if (error instanceof Error) {
+        throw error
+      }
+
+      throw new Error('Failed to recognize images', {
+        cause: {
+          detail: typeof error === 'string' ? error : JSON.stringify(error)
+        }
+      })
     }
   }
 

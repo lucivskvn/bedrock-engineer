@@ -5,6 +5,7 @@ import { HiOfficeBuilding } from 'react-icons/hi'
 import { CustomAgent, OrganizationConfig } from '@/types/agent-chat'
 import { useSettings } from '@renderer/contexts/SettingsContext'
 import { rendererLogger as log } from '@renderer/lib/logger'
+import { extractErrorMetadata } from '@renderer/lib/logging/errorMetadata'
 
 interface ShareToOrganizationModalProps {
   agent?: CustomAgent
@@ -45,7 +46,13 @@ const ShareToOrganizationModal: React.FC<ShareToOrganizationModalProps> = ({
       onClose()
       setSelectedOrgId('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('unknownError', 'Unknown error occurred'))
+      const metadata = extractErrorMetadata(err)
+      log.error('Failed to share agent with organization', {
+        ...metadata,
+        agentId: agent.id,
+        organizationId: selectedOrg.id
+      })
+      setError(t('unknownError', 'Unknown error occurred'))
     } finally {
       setIsSharing(false)
     }

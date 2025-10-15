@@ -65,10 +65,10 @@ export const ja = {
     editActionAriaLabel: '{{name}} を編集',
     deleteActionAriaLabel: '{{name}} を削除',
     toast: {
-      organizationAdded: '「{{name}}」を追加しました',
-      organizationUpdated: '「{{name}}」を更新しました',
-      organizationDeleted: '「{{name}}」を削除しました',
-      organizationError: 'エラーが発生しました: {{error}}'
+      organizationAdded: '組織を追加しました。',
+      organizationUpdated: '組織を更新しました。',
+      organizationDeleted: '組織を削除しました。',
+      organizationError: '組織設定の更新に失敗しました。'
     }
   },
 

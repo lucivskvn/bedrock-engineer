@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, type RefObject } from 'react'
 
 type UseResizeProps = {
   initialHeight?: number
@@ -10,7 +10,7 @@ type UseResizeReturn = {
   height: number
   isResizing: boolean
   handleMouseDown: (e: React.MouseEvent) => void
-  containerRef: React.RefObject<HTMLDivElement>
+  containerRef: RefObject<HTMLDivElement>
 }
 
 export const useResize = ({
@@ -20,7 +20,7 @@ export const useResize = ({
 }: UseResizeProps = {}): UseResizeReturn => {
   const [height, setHeight] = useState(initialHeight)
   const [isResizing, setIsResizing] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const startY = useRef(0)
   const startHeight = useRef(0)
 
@@ -72,6 +72,6 @@ export const useResize = ({
     height,
     isResizing,
     handleMouseDown,
-    containerRef
+    containerRef: containerRef as RefObject<HTMLDivElement>
   }
 }

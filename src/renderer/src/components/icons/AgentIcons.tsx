@@ -1,4 +1,5 @@
 import React from 'react'
+import type { IconBaseProps } from 'react-icons/lib'
 import { AgentIcon } from '@/types/agent-chat'
 import {
   TbRobot,
@@ -150,7 +151,7 @@ import { BiSolidFirstAid, BiStore } from 'react-icons/bi'
 
 export type AgentIconOption = {
   value: AgentIcon
-  icon: React.ReactNode
+  icon: React.ReactElement<IconBaseProps>
   label: string
   category:
     | 'general'
@@ -167,6 +168,8 @@ export type AgentIconOption = {
     | 'shopping'
   color?: string
 }
+
+export type AgentIconRenderOptions = Partial<Pick<IconBaseProps, 'color' | 'className' | 'style'>>
 
 export const AGENT_ICONS: AgentIconOption[] = [
   // General Purpose
@@ -400,13 +403,32 @@ export const AGENT_ICONS: AgentIconOption[] = [
   { value: 'shop', icon: <BiStore />, label: 'Shop', category: 'shopping' }
 ]
 
-export const getIconByValue = (value: AgentIcon, color?: string): React.ReactNode => {
-  const option = AGENT_ICONS.find((opt) => opt.value === value)
-  const icon = option?.icon || <TbRobot />
+export const getIconByValue = (
+  value?: AgentIcon,
+  options: AgentIconRenderOptions = {}
+): React.ReactElement<IconBaseProps> => {
+  const option = AGENT_ICONS.find((opt) => opt.value === value) ?? AGENT_ICONS[0]
+  const { color, className, style } = options
+  const existingProps = option.icon.props as IconBaseProps
+  const nextProps: Partial<IconBaseProps> = {}
+
   if (color) {
-    return React.cloneElement(icon as React.ReactElement, { style: { color } })
+    nextProps.color = color
   }
-  return icon
+
+  if (className) {
+    nextProps.className = [className, existingProps?.className].filter(Boolean).join(' ')
+  }
+
+  if (style) {
+    nextProps.style = { ...(existingProps?.style ?? {}), ...style }
+  }
+
+  if (Object.keys(nextProps).length === 0) {
+    return option.icon
+  }
+
+  return React.cloneElement(option.icon, nextProps)
 }
 
 export const getIconsByCategory = (category: AgentIconOption['category']): AgentIconOption[] => {

@@ -2,6 +2,7 @@ import { rendererLogger as log } from '@renderer/lib/logger';
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import toast from 'react-hot-toast'
+import { extractErrorMetadata, truncateForLogging } from '@renderer/lib/logging/errorMetadata'
 
 export interface ScheduledTask {
   id: string
@@ -60,6 +61,26 @@ export interface ScheduleConfig {
   continueSessionPrompt?: string // セッション継続時専用プロンプト
 }
 
+const buildTaskMetadata = (params: {
+  taskId: string
+  taskName: string
+  sessionId?: string
+  executionTime?: number
+  messageCount?: number
+  toolExecutions?: number
+  runCount?: number
+  nextRun?: number
+}) => ({
+  taskId: params.taskId,
+  taskName: params.taskName,
+  sessionId: params.sessionId,
+  executionTimeMs: params.executionTime,
+  messageCount: params.messageCount,
+  toolExecutions: params.toolExecutions,
+  runCount: params.runCount,
+  nextRun: params.nextRun
+})
+
 export const useBackgroundAgent = () => {
   const { t } = useTranslation()
   const [tasks, setTasks] = useState<ScheduledTask[]>([])
@@ -103,29 +124,36 @@ export const useBackgroundAgent = () => {
           )
         )
 
-        // シンプルなトースト通知（OS通知と同様）
-        const message = params.aiMessage || t('backgroundAgent.messages.taskExecuted')
-        toast.success(`[${params.taskName}]\n ${message}`, { duration: 4000 })
+        log.info('Background agent task completed', {
+          ...buildTaskMetadata(params),
+          status: 'success',
+          aiMessagePreview: truncateForLogging(params.aiMessage)
+        })
+
+        toast.success(t('backgroundAgent.messages.taskExecuted'), { duration: 4000 })
       } else {
         // エラー時のタスク更新
+        const failureMessage = t('backgroundAgent.messages.taskExecutionFailed')
         setTasks((prevTasks) =>
           prevTasks.map((task) =>
             task.id === params.taskId
               ? {
                   ...task,
                   lastRun: params.executedAt,
-                  lastError: params.error
+                  lastError: failureMessage
                 }
               : task
           )
         )
 
-        // エラー時の詳細トースト通知
-        toast.error(
-          `${params.taskName}: ${t('backgroundAgent.messages.taskExecutionFailed')}\n` +
-            `${t('backgroundAgent.error')}: ${params.error || 'Unknown error'}`,
-          { duration: 6000 }
-        )
+        const errorMetadata = extractErrorMetadata(params.error)
+        log.error('Background agent task failed', {
+          ...buildTaskMetadata(params),
+          status: 'failed',
+          ...errorMetadata
+        })
+
+        toast.error(failureMessage, { duration: 6000 })
       }
     })
 
@@ -133,18 +161,17 @@ export const useBackgroundAgent = () => {
     const unsubscribeSkipped = window.api.backgroundAgent.onTaskSkipped((params) => {
       setTaskLoading(params.taskId, false)
 
-      // スキップ理由に応じた通知メッセージを表示
-      let skipMessage = ''
-      if (params.reason === 'duplicate_execution') {
-        const executionTime = params.executionTime ? Math.round(params.executionTime / 1000) : 0
-        skipMessage = t('backgroundAgent.messages.taskSkippedDuplicateExecution', {
-          executionTime
-        })
-      } else {
-        skipMessage = t('backgroundAgent.messages.taskSkipped', { reason: params.reason })
-      }
+      log.warn('Background agent task skipped', {
+        ...buildTaskMetadata(params),
+        status: 'skipped',
+        reason: params.reason,
+        executionTimeSeconds:
+          typeof params.executionTime === 'number'
+            ? Math.round(params.executionTime / 1000)
+            : undefined
+      })
 
-      toast(`[${params.taskName}]\n ${skipMessage}`, {
+      toast(t('backgroundAgent.messages.taskSkippedGeneric'), {
         duration: 4000,
         icon: '⏭️'
       })
@@ -165,8 +192,9 @@ export const useBackgroundAgent = () => {
       const result = await window.api.backgroundAgent.listTasks()
       setTasks(result.tasks || [])
     } catch (err: any) {
-      log.error('Failed to fetch tasks', { error: err })
-      setError(err.message || 'Failed to fetch tasks')
+      const metadata = extractErrorMetadata(err)
+      log.error('Failed to fetch tasks', metadata)
+      setError(t('backgroundAgent.errors.fetchTasks'))
       toast.error(t('backgroundAgent.errors.fetchTasks'))
     } finally {
       setIsLoading(false)

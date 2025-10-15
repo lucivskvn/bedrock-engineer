@@ -3,10 +3,11 @@
  */
 
 import { Tool } from '@aws-sdk/client-bedrock-runtime'
-import { BaseTool } from '../../base/BaseTool'
-import { ValidationResult } from '../../base/types'
+import { DEFAULT_RECOGNIZE_IMAGE_MODEL_ID } from '../../../../common/models/defaults'
 import { ToolResult } from '../../../../types/tools'
 import { ipc } from '../../../ipc-client'
+import { BaseTool } from '../../base/BaseTool'
+import { ValidationResult } from '../../base/types'
 
 /**
  * Input type for ScreenCaptureTool
@@ -97,7 +98,20 @@ export class ScreenCaptureTool extends BaseTool<ScreenCaptureInput, ScreenCaptur
       // Check permissions first
       const permissionCheck = await ipc('screen:check-permissions', undefined)
       if (!permissionCheck.hasPermission) {
-        throw new Error(`Screen capture permission required: ${permissionCheck.message}`)
+        const denialReason =
+          typeof permissionCheck.message === 'string' && permissionCheck.message.trim().length > 0
+            ? permissionCheck.message
+            : undefined
+
+        this.logger.warn('Screen capture permission denied', {
+          reason: denialReason
+        })
+
+        throw new Error('Screen capture permission denied', {
+          cause: {
+            reason: denialReason
+          }
+        })
       }
 
       // Execute screen capture (always PNG format)
@@ -138,8 +152,7 @@ export class ScreenCaptureTool extends BaseTool<ScreenCaptureInput, ScreenCaptur
         try {
           // Get the configured model ID from store (using recognizeImageTool setting)
           const recognizeImageSetting = this.store.get('recognizeImageTool')
-          const modelId =
-            recognizeImageSetting?.modelId || 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+          const modelId = recognizeImageSetting?.modelId || DEFAULT_RECOGNIZE_IMAGE_MODEL_ID
 
           const recognitionResult = await ipc('bedrock:recognizeImage', {
             imagePaths: [captureResult.filePath],
@@ -163,11 +176,18 @@ export class ScreenCaptureTool extends BaseTool<ScreenCaptureInput, ScreenCaptur
             })
           }
         } catch (recognitionError) {
+          const errorName =
+            recognitionError instanceof Error ? recognitionError.name : 'UnknownError'
+          const errorCode =
+            recognitionError instanceof Error &&
+            'code' in recognitionError &&
+            typeof (recognitionError as NodeJS.ErrnoException).code === 'string'
+              ? (recognitionError as NodeJS.ErrnoException).code
+              : undefined
+
           this.logger.warn('Image recognition failed, but screen capture succeeded', {
-            error:
-              recognitionError instanceof Error
-                ? recognitionError.message
-                : String(recognitionError)
+            errorName,
+            ...(errorCode ? { errorCode } : {})
           })
 
           // Add warning to message but don't fail the entire operation
@@ -181,14 +201,15 @@ export class ScreenCaptureTool extends BaseTool<ScreenCaptureInput, ScreenCaptur
         error: error instanceof Error ? error.message : String(error)
       })
 
-      throw new Error(
-        JSON.stringify({
-          success: false,
-          name: 'screenCapture',
-          error: 'Screen capture failed',
-          message: error instanceof Error ? error.message : String(error)
-        })
-      )
+      if (error instanceof Error) {
+        throw error
+      }
+
+      throw new Error('Screen capture failed', {
+        cause: {
+          detail: typeof error === 'string' ? error : JSON.stringify(error)
+        }
+      })
     }
   }
 

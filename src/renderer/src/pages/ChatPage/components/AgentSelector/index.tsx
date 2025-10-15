@@ -1,7 +1,6 @@
 import React from 'react'
 import { Agent } from '@/types/agent-chat'
-import { TbRobot } from 'react-icons/tb'
-import { AGENT_ICONS } from '@renderer/components/icons/AgentIcons'
+import { getIconByValue } from '@renderer/components/icons/AgentIcons'
 
 type AgentSelectorProps = {
   agents: readonly Agent[]
@@ -32,20 +31,10 @@ export const AgentSelector: React.FC<AgentSelectorProps> = ({
         >
           <span className="flex items-center gap-4">
             <span className="text-gray-600 dark:text-gray-400">
-              {selectedAgentData?.icon ? (
-                React.cloneElement(
-                  (AGENT_ICONS.find((opt) => opt.value === selectedAgentData.icon)
-                    ?.icon as React.ReactElement) ?? AGENT_ICONS[0].icon,
-                  {
-                    className: 'w-5 h-5',
-                    style: selectedAgentData.iconColor
-                      ? { color: selectedAgentData.iconColor }
-                      : undefined
-                  }
-                )
-              ) : (
-                <TbRobot className="w-5 h-5" />
-              )}
+              {getIconByValue(selectedAgentData?.icon, {
+                className: 'w-5 h-5',
+                color: selectedAgentData?.iconColor
+              })}
             </span>
             <span className="flex-1 text-left">{selectedAgentData?.name}</span>
           </span>

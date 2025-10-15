@@ -1,11 +1,12 @@
 import React from 'react'
 import { ClockIcon, DocumentTextIcon, CpuChipIcon } from '@heroicons/react/24/outline'
+import type { AgentIcon as AgentIconType } from '@/types/agent-chat'
 import { AgentIcon } from '../atoms/AgentIcon'
 import { ProjectPathDisplay } from '../atoms/ProjectPathDisplay'
 
 interface TaskDetailsProps {
   cronExpression: string
-  agent: { icon?: string; iconColor?: string; name: string } | null
+  agent: { icon?: AgentIconType; iconColor?: string; name: string } | null
   agentName: string
   modelName: string
   projectDirectory?: string

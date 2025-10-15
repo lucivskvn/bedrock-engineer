@@ -11,9 +11,14 @@ import {
   ensurePathWithinAllowedDirectories,
   sanitizeFilename
 } from '../security/path-utils'
+import { toFileToken } from '../../common/security/pathTokens'
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const ALLOWED_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp'])
+
+function hasErrorCause(error: unknown): error is Error & { cause?: unknown } {
+  return error instanceof Error && 'cause' in error && (error as { cause?: unknown }).cause !== undefined
+}
 
 function getPathContext(): {
   projectPath?: string
@@ -84,7 +89,7 @@ export const fileHandlers = {
     if (path) {
       if (path !== store.get('projectPath')) {
         store.set('projectPath', path)
-        log.info('Project path changed', { newPath: path })
+        log.info('Project path changed', { newPath: toFileToken(path) })
       }
     }
 
@@ -92,17 +97,31 @@ export const fileHandlers = {
   },
 
   'get-local-image': async (_event: IpcMainInvokeEvent, filePath: string) => {
+    let fileNameToken = toFileToken(filePath)
+
     try {
       const resolvedPath = resolveReadableFilePath(filePath)
+      fileNameToken = toFileToken(resolvedPath)
       const extension = path.extname(resolvedPath).toLowerCase()
 
       if (!ALLOWED_IMAGE_EXTENSIONS.has(extension)) {
-        throw new Error(`Unsupported image extension: ${extension || 'unknown'}`)
+        throw new Error('Unsupported image extension.', {
+          cause: {
+            fileName: fileNameToken,
+            extension: extension || '[unknown]'
+          }
+        })
       }
 
       const stats = await fs.promises.stat(resolvedPath)
       if (stats.size > MAX_IMAGE_BYTES) {
-        throw new Error('Image file exceeds maximum allowed size')
+        throw new Error('Image file exceeds maximum allowed size.', {
+          cause: {
+            fileName: fileNameToken,
+            fileSize: stats.size,
+            maxBytes: MAX_IMAGE_BYTES
+          }
+        })
       }
 
       const data = await fs.promises.readFile(resolvedPath)
@@ -111,10 +130,20 @@ export const fileHandlers = {
       return `data:image/${ext};base64,${base64}`
     } catch (error) {
       log.error('Failed to read image', {
-        path: filePath,
+        fileName: fileNameToken,
         error: error instanceof Error ? error.message : String(error)
       })
-      throw error
+
+      if (hasErrorCause(error)) {
+        throw error
+      }
+
+      throw new Error('Failed to load local image.', {
+        cause: {
+          fileName: fileNameToken,
+          reason: error instanceof Error ? error.message : String(error)
+        }
+      })
     }
   },
 
@@ -127,19 +156,25 @@ export const fileHandlers = {
 
       try {
         const content = await fs.promises.readFile(ignoreFilePath, 'utf-8')
-        log.info('Project ignore file read successfully', { projectPath, ignoreFilePath })
+        log.info('Project ignore file read successfully', {
+          projectPath: toFileToken(projectPath),
+          ignoreFilePath: toFileToken(ignoreFilePath)
+        })
         return { content, exists: true }
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           // ファイルが存在しない場合は空の内容を返す
-          log.info('Project ignore file does not exist', { projectPath, ignoreFilePath })
+          log.info('Project ignore file does not exist', {
+            projectPath: toFileToken(projectPath),
+            ignoreFilePath: toFileToken(ignoreFilePath)
+          })
           return { content: '', exists: false }
         }
         throw error
       }
     } catch (error) {
       log.error('Failed to read project ignore file', {
-        projectPath,
+        projectPath: toFileToken(projectPath),
         error: error instanceof Error ? error.message : String(error)
       })
       throw error
@@ -160,7 +195,9 @@ export const fileHandlers = {
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           await fs.promises.mkdir(bedrockEngineerDir, { recursive: true })
-          log.info('Created .bedrock-engineer directory', { bedrockEngineerDir })
+          log.info('Created .bedrock-engineer directory', {
+            bedrockEngineerDir: toFileToken(bedrockEngineerDir)
+          })
         } else {
           throw error
         }
@@ -168,12 +205,15 @@ export const fileHandlers = {
 
       // .ignoreファイルを書き込み
       await fs.promises.writeFile(ignoreFilePath, content, 'utf-8')
-      log.info('Project ignore file written successfully', { projectPath, ignoreFilePath })
+      log.info('Project ignore file written successfully', {
+        projectPath: toFileToken(projectPath),
+        ignoreFilePath: toFileToken(ignoreFilePath)
+      })
 
       return { success: true }
     } catch (error) {
       log.error('Failed to write project ignore file', {
-        projectPath,
+        projectPath: toFileToken(projectPath),
         error: error instanceof Error ? error.message : String(error)
       })
       return { success: false }
@@ -196,6 +236,8 @@ export const fileHandlers = {
       format: 'html' | 'txt'
     }
   ) => {
+    const requestedDirectoryToken = directory ? toFileToken(directory) : undefined
+
     try {
       const projectPathValue = store.get('projectPath')
       const projectPath =
@@ -286,9 +328,13 @@ export const fileHandlers = {
       // ファイルを保存
       await fs.promises.writeFile(finalPath, content, 'utf-8')
 
+      const finalPathToken = toFileToken(finalPath)
+      const targetDirectoryToken = toFileToken(targetDirectory)
+
       log.info('Website content saved successfully', {
         url,
-        filePath: finalPath,
+        filePath: finalPathToken,
+        targetDirectory: targetDirectoryToken,
         format,
         fileSize: content.length
       })
@@ -298,12 +344,18 @@ export const fileHandlers = {
         filePath: finalPath
       }
     } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError'
+      const rawErrorMessage = error instanceof Error ? error.message : String(error)
+      const errorMessage =
+        rawErrorMessage.length > 200 ? `${rawErrorMessage.slice(0, 200)}...` : rawErrorMessage
+
       log.error('Failed to save website content', {
         url,
         filename,
-        directory,
+        directory: requestedDirectoryToken,
         format,
-        error: error instanceof Error ? error.message : String(error)
+        errorName,
+        errorMessage
       })
 
       return {

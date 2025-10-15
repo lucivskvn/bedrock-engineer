@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import type { ReactElement } from 'react'
 import { AiOutlineCloud, AiOutlineCode, AiOutlineProject } from 'react-icons/ai'
 
 export type DiagramMode = 'aws' | 'software-architecture' | 'business-process'
@@ -7,7 +8,7 @@ interface DiagramModeOption {
   id: DiagramMode
   label: string
   description: string
-  icon: JSX.Element
+  icon: ReactElement
 }
 
 const modeOptions: DiagramModeOption[] = [

@@ -18,6 +18,7 @@ import { AWS_REGIONS } from '@/types/aws-regions'
 import { HiExclamationTriangle } from 'react-icons/hi2'
 import { useToast } from '@renderer/hooks/useToast'
 import { rendererLogger as log } from '@renderer/lib/logger'
+import { extractErrorMetadata, truncateForLogging } from '@renderer/lib/logging/errorMetadata'
 
 interface OrganizationModalProps {
   organization?: OrganizationConfig
@@ -138,10 +139,18 @@ const OrganizationModal: React.FC<OrganizationModalProps> = ({ organization, isO
 
       if (organization) {
         updateOrganization(organizationData)
-        toast.success(t('organization.toast.organizationUpdated', { name: organizationData.name }))
+        log.info('Organization updated', {
+          organizationId: organizationData.id,
+          organizationName: truncateForLogging(organizationData.name)
+        })
+        toast.success(t('organization.toast.organizationUpdated'))
       } else {
         addOrganization(organizationData)
-        toast.success(t('organization.toast.organizationAdded', { name: organizationData.name }))
+        log.info('Organization added', {
+          organizationId: organizationData.id,
+          organizationName: truncateForLogging(organizationData.name)
+        })
+        toast.success(t('organization.toast.organizationAdded'))
       }
 
       onClose()
@@ -156,10 +165,14 @@ const OrganizationModal: React.FC<OrganizationModalProps> = ({ organization, isO
         }
       })
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : t('organization.unknownError')
-      log.error('Failed to save organization configuration', { error: errorMessage })
-      setError(errorMessage)
-      toast.error(t('organization.toast.organizationError', { error: errorMessage }))
+      const metadata = extractErrorMetadata(err)
+      log.error('Failed to save organization configuration', {
+        ...metadata,
+        organizationId: organization?.id,
+        organizationName: truncateForLogging(formData.name)
+      })
+      setError(t('organization.toast.organizationError'))
+      toast.error(t('organization.toast.organizationError'))
     } finally {
       setIsLoading(false)
     }
@@ -367,14 +380,20 @@ export const useOrganizationModal = () => {
     if (!deletingOrganization) return
 
     try {
-      const organizationName = deletingOrganization.name
       removeOrganization(deletingOrganization.id)
-      toast.success(t('organization.toast.organizationDeleted', { name: organizationName }))
+      log.info('Organization deleted', {
+        organizationId: deletingOrganization.id,
+        organizationName: truncateForLogging(deletingOrganization.name)
+      })
+      toast.success(t('organization.toast.organizationDeleted'))
       // 削除成功後はAgentDirectoryContextで選択中組織の処理が必要
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      log.error('Failed to delete organization', { error: errorMessage })
-      toast.error(t('organization.toast.organizationError', { error: errorMessage }))
+      const metadata = extractErrorMetadata(error)
+      log.error('Failed to delete organization', {
+        ...metadata,
+        organizationId: deletingOrganization.id
+      })
+      toast.error(t('organization.toast.organizationError'))
       throw error
     }
   }

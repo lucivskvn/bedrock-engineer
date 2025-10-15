@@ -31,6 +31,25 @@ import { buildAllowedOutputDirectories, resolveSafeOutputPath } from '../../secu
 
 const logger = createCategoryLogger('sonic:client')
 
+const SONIC_ERROR_MESSAGES = {
+  SESSION_ALREADY_EXISTS: 'Nova Sonic stream session already exists.',
+  SESSION_NOT_FOUND: 'Nova Sonic stream session not found.',
+  SESSION_INACTIVE: 'Nova Sonic stream session is not active.',
+  SESSION_AUDIO_REJECTED: 'Nova Sonic stream session cannot accept audio input.',
+  ASYNC_ITERABLE_UNAVAILABLE: 'Nova Sonic async iterable is unavailable.',
+  TOOL_INPUT_CONVERSION_FAILED: 'Failed to convert Nova Sonic tool input.',
+  TOOL_EXECUTION_FAILED: 'Nova Sonic tool execution failed.'
+} as const
+
+type SonicErrorKey = keyof typeof SONIC_ERROR_MESSAGES
+
+function createSonicError(
+  key: SonicErrorKey,
+  metadata?: Record<string, unknown>
+): Error {
+  return new Error(SONIC_ERROR_MESSAGES[key], metadata ? { cause: metadata } : undefined)
+}
+
 export interface NovaSonicBidirectionalStreamClientConfig {
   requestHandlerConfig?: NodeHttp2HandlerOptions | Provider<NodeHttp2HandlerOptions | void>
   clientConfig: Partial<BedrockRuntimeClientConfig>
@@ -232,7 +251,7 @@ export class NovaSonicBidirectionalStreamClient {
     config?: NovaSonicBidirectionalStreamClientConfig
   ): StreamSession {
     if (this.activeSessions.has(sessionId)) {
-      throw new Error(`Stream session with ID ${sessionId} already exists`)
+      throw createSonicError('SESSION_ALREADY_EXISTS', { sessionId })
     }
 
     const session: SessionData = {
@@ -317,23 +336,25 @@ export class NovaSonicBidirectionalStreamClient {
 
       return parsedResult
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
+      const causeMessage = error instanceof Error ? error.message : String(error)
+      const causeName = error instanceof Error ? error.constructor.name : typeof error
       logger.error('Tool execution failed', {
         toolName,
-        error: errorMessage,
-        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        causeName,
+        causeMessage,
         stack: error instanceof Error ? error.stack : undefined
       })
 
       // Return structured error response
       return {
         error: true,
-        message: `Tool execution failed: ${errorMessage}`,
+        message: SONIC_ERROR_MESSAGES.TOOL_EXECUTION_FAILED,
         details: {
           toolName,
-          originalError: errorMessage,
+          causeName,
+          causeMessage,
           timestamp: new Date().toISOString(),
-          reason: 'Tool execution error'
+          reason: 'tool_execution_error'
         }
       }
     }
@@ -370,11 +391,18 @@ export class NovaSonicBidirectionalStreamClient {
 
       return toolInput
     } catch (error) {
+      const causeMessage = error instanceof Error ? error.message : String(error)
+      const causeName = error instanceof Error ? error.constructor.name : typeof error
       logger.error('Tool input conversion failed', {
         toolName,
-        error: error instanceof Error ? error.message : String(error)
+        causeName,
+        causeMessage
       })
-      throw new Error(`Failed to convert tool input for ${toolName}: ${error}`)
+      throw createSonicError('TOOL_INPUT_CONVERSION_FAILED', {
+        toolName,
+        causeName,
+        causeMessage
+      })
     }
   }
 
@@ -620,7 +648,7 @@ export class NovaSonicBidirectionalStreamClient {
   public async initiateSession(sessionId: string): Promise<void> {
     const session = this.activeSessions.get(sessionId)
     if (!session) {
-      throw new Error(`Stream session ${sessionId} not found`)
+      throw createSonicError('SESSION_NOT_FOUND', { sessionId })
     }
 
     try {
@@ -693,7 +721,7 @@ export class NovaSonicBidirectionalStreamClient {
     sessionId: string
   ): AsyncIterable<InvokeModelWithBidirectionalStreamInput> {
     if (!this.isSessionActive(sessionId)) {
-      logger.debug(`Cannot create async iterable: Session ${sessionId} not active`)
+      logger.debug('Cannot create async iterable for inactive session', { sessionId })
       return {
         [Symbol.asyncIterator]: () => ({
           next: async () => ({ value: undefined, done: true })
@@ -703,21 +731,24 @@ export class NovaSonicBidirectionalStreamClient {
 
     const session = this.activeSessions.get(sessionId)
     if (!session) {
-      throw new Error(`Cannot create async iterable: Session ${sessionId} not found`)
+      throw createSonicError('ASYNC_ITERABLE_UNAVAILABLE', {
+        sessionId,
+        reason: 'session_missing'
+      })
     }
 
     let _eventCount = 0
 
     return {
       [Symbol.asyncIterator]: () => {
-        logger.debug(`AsyncIterable iterator requested for session ${sessionId}`)
+        logger.debug('AsyncIterable iterator requested for session', { sessionId })
 
         return {
           next: async (): Promise<IteratorResult<InvokeModelWithBidirectionalStreamInput>> => {
             try {
               // Check if session is still active
               if (!session.isActive || !this.activeSessions.has(sessionId)) {
-                logger.debug(`Iterator closing for session ${sessionId}, done = true`)
+                logger.debug('Iterator closing because session is inactive', { sessionId })
                 return { value: undefined, done: true }
               }
               // Wait for items in the queue or close signal
@@ -1115,7 +1146,11 @@ export class NovaSonicBidirectionalStreamClient {
   public async streamAudioChunk(sessionId: string, audioData: Buffer): Promise<void> {
     const session = this.activeSessions.get(sessionId)
     if (!session || !session.isActive || !session.audioContentId) {
-      throw new Error(`Invalid session ${sessionId} for audio streaming`)
+      throw createSonicError('SESSION_AUDIO_REJECTED', {
+        sessionId,
+        isActive: session?.isActive ?? false,
+        hasAudioContentId: Boolean(session?.audioContentId)
+      })
     }
     // Convert audio to base64
     const base64Data = audioData.toString('base64')
@@ -1237,7 +1272,7 @@ export class NovaSonicBidirectionalStreamClient {
     session.closeSignal.complete()
     this.activeSessions.delete(sessionId)
     this.sessionLastActivity.delete(sessionId)
-    logger.debug(`Session ${sessionId} closed and removed from active sessions`)
+    logger.debug('Session closed and removed from active sessions', { sessionId })
   }
 
   // Register an event handler for a session
@@ -1248,7 +1283,7 @@ export class NovaSonicBidirectionalStreamClient {
   ): void {
     const session = this.activeSessions.get(sessionId)
     if (!session) {
-      throw new Error(`Session ${sessionId} not found`)
+      throw createSonicError('SESSION_NOT_FOUND', { sessionId })
     }
     session.responseHandlers.set(eventType, handler)
   }

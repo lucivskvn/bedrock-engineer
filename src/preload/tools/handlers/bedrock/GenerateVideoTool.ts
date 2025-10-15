@@ -8,6 +8,7 @@ import { BaseTool } from '../../base/BaseTool'
 import { ValidationResult } from '../../base/types'
 import { ExecutionError } from '../../base/errors'
 import { ToolResult } from '../../../../types/tools'
+import { toFileToken } from '../../../../common/security/pathTokens'
 
 /**
  * Input type for GenerateVideoTool
@@ -228,6 +229,7 @@ export class GenerateVideoTool extends BaseTool<GenerateVideoInput, GenerateVide
    */
   protected async executeInternal(input: GenerateVideoInput): Promise<GenerateVideoResult> {
     const { prompt, durationSeconds, outputPath, seed, inputImages, prompts } = input
+    const outputPathToken = outputPath ? toFileToken(outputPath) : undefined
 
     // Check S3 URI configuration
     const generateVideoConfig = this.store.get('generateVideoTool')
@@ -256,7 +258,7 @@ export class GenerateVideoTool extends BaseTool<GenerateVideoInput, GenerateVide
     this.logger.debug('Starting video generation with Nova Reel', {
       promptLength: prompt.length,
       durationSeconds,
-      outputPath,
+      outputPath: outputPathToken,
       s3Uri,
       seed,
       hasInputImages: !!inputImages,
@@ -298,7 +300,8 @@ export class GenerateVideoTool extends BaseTool<GenerateVideoInput, GenerateVide
         estimatedCompletionTime: `${estimatedMinutes} minutes`
       })
 
-      const successMessage = `Video generation started successfully. Use checkVideoStatus with ARN: ${response.invocationArn} to track progress.`
+      const successMessage =
+        'Video generation started successfully. Use checkVideoStatus with the returned invocationArn to track progress.'
 
       return {
         success: true,
@@ -319,21 +322,23 @@ export class GenerateVideoTool extends BaseTool<GenerateVideoInput, GenerateVide
         prompt: this.truncateForLogging(prompt, 100),
         durationSeconds,
         s3Uri,
+        outputPath: outputPathToken,
         hasInputImages: !!inputImages,
         imageCount: inputImages?.length || 0
       })
 
       throw new ExecutionError(
-        `Error starting video generation: ${error instanceof Error ? error.message : String(error)}`,
+        'Error starting video generation.',
         this.name,
         error instanceof Error ? error : undefined,
         {
           prompt: this.truncateForLogging(prompt, 100),
           durationSeconds,
           s3Uri,
-          outputPath,
+          outputPath: outputPathToken,
           hasInputImages: !!inputImages,
-          imageCount: inputImages?.length || 0
+          imageCount: inputImages?.length || 0,
+          errorMessage: error instanceof Error ? error.message : String(error)
         }
       )
     }

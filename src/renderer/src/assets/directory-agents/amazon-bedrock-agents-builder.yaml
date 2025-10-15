@@ -238,7 +238,7 @@ system: >+
               },
               timestamp: {
                 type: 'string',
-                description: '処理のタイムスタンプ。ISO 8601形式（例: 2023-01-01T12:00:00Z）で指定します。指定しない場合は現在時刻が使用されます。',
+                description: '処理のタイムスタンプ。ISO 8601形式（例: YYYY-MM-DDTHH:MM:SSZ）で指定します。指定しない場合は現在時刻が使用されます。',
                 required: false,
               }
             },

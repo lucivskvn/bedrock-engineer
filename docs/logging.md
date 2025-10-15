@@ -5,11 +5,16 @@ The logging stack is built on top of Winston 3.18 and is configured to produce v
 ## Message Guidelines
 
 - **Keep log messages static.** Messages must read as human sentences without embedded runtime values such as years, IDs, or bucket names. Placeholders like `[USER_ID]` or `[REQUEST_ID]` may be used when a contextual hint is required.
+- **Stabilise renderer toast copy.** Toast notifications surfaced through `toast.success` / `toast.error` follow the same rule—keep the visible text constant and log sanitised metadata (server names, durations, failure reasons) separately so UI copy never leaks dynamic values.
 - **Pass dynamic data through metadata.** Use structured objects or arrays when additional context is required. The sanitiser will redact raw values while preserving structural hints such as value length, array size, or error type.
+- **Attach runtime context via `Error#cause`.** When you need to throw an exception but still surface structured details, keep the top-level message static (for example `'Image file not found'`) and populate the `cause` object with sanitised metadata such as `{ fileName: '[diagram.png]' }` or `{ reason: permissionCheck.message }`. Downstream handlers can inspect `error.cause` and forward it to the logger without reintroducing dynamic strings into the primary message.
+- **Tokenise filesystem paths with `toFileToken`.** Main-process handlers should call `toFileToken(path)` before logging or throwing so errors only expose `[filename.ext]` placeholders instead of raw user paths.
 - **Wrap standalone values in an object.** Passing `log.error('Failed', error)` works but the sanitiser will store the information under a generic key such as `meta_0`. Prefer `log.error('Failed', { error })` (or another descriptive property name) so operators can identify values quickly when scanning logs.
 - **Prefer categories over bespoke prefixes.** When you need component-specific visibility use `createCategoryLogger('component-name')` instead of encoding the component name in the message string.
 - **Treat MCP IPC handlers like any other logging surface.** The main-process MCP entrypoints now call `createCategoryLogger('mcp:ipc')` and emit static messages for initialisation, execution, and connection tests. When you add new handlers, keep the message string fixed and capture tool names, server counts, and raw errors inside the metadata payload.
 - **Keep streaming instrumentation value-stable.** Real-time surfaces such as the Speak page audio worklet, Nova streaming clients, and renderer socket bridges must log connection IDs, tool types, durations, and payload previews through metadata only. Leave the primary message as a constant string so repeated audio updates or WebSocket events do not spam dynamic content into production logs.
+- **Nova Sonic session errors are static.** The bidirectional client throws errors created through an internal helper that emits fixed messages (for example `'Nova Sonic stream session not found.'` or `'Nova Sonic async iterable is unavailable.'`). Session IDs, retry hints, and tool conversion details live in the `cause` metadata. When handling these errors, inspect `error.cause.sessionId`, `error.cause.reason`, or `error.cause.causeMessage` rather than parsing message strings.
+- **Nova Sonic region checks share constants.** The availability and connectivity endpoints expose error text via the exports in `src/common/sonic/regions.ts`. Keep the response `error` fields set to those values and emit request-specific context (requested region, HTTP status, provider message) through structured metadata.
 
 ## Cross-Process Logging APIs
 
@@ -30,6 +35,8 @@ The helper `prepareLogMetadata` automatically replaces runtime data with structu
 | `{ category: 'proxy', status: 500 }` | `{ category: 'proxy', status: '[number]' }`            |
 
 The sanitiser keeps reserved keys like `category` and `process` untouched so that log routing continues to work, while all other primitive values are summarised.
+
+Renderer utilities call `extractErrorMetadata` before forwarding exceptions to the logger. The helper trims whitespace-only messages, truncates verbose strings, and guards against circular references inside `error.cause` payloads. Nested objects, Maps, and Sets are serialised into redacted previews, typed arrays are truncated with a trailing `[Truncated]` marker, and WeakMap/WeakSet instances collapse to placeholders. Nested `Error` objects retain their own sanitised metadata so logging an exception never triggers infinite recursion or leaks raw values.
 
 ## Structured Validation Errors
 
@@ -85,6 +92,42 @@ handle these failures, branch on the reason code and consult the metadata object
 instead of comparing message text or attempting to rehydrate the original
 exception.
 
+Bedrock media generators follow the same playbook. The GenerateImage,
+GenerateVideo, and DownloadVideo preload tools tokenise any saved-path metadata
+with `toFileToken` before logging or rethrowing errors, keeping the renderer
+aware of file names without exposing full user directories.
+
+The FetchWebsite preload tool now adheres to the same contract. Status strings
+such as success/failure summaries stay static while saved file paths are
+tokenised with `toFileToken`. Detailed diagnostics—including `errorName`,
+truncated `errorMessage` values, selected variants, and directory tokens—belong
+in the metadata payload (or `ExecutionError` cause) instead of the message text.
+When persisting website content, log the requested variants and directories
+through metadata and keep user-visible strings free of raw paths.
+
+Tavily web searches follow identical hygiene requirements. Keep every log and
+tool response message static (`'Tavily search completed.'` on success) while
+recording only truncated (≤100 character) query previews, response snippets,
+and request diagnostics inside metadata. Avoid logging the raw Tavily
+configuration object or API key wrappers—stick to boolean flags (for example
+`hasApiKey`) and length summaries so the sanitiser never sees the actual secret
+values.
+
+Vision recognition flows adhere to a similar contract. RecognizeImage,
+ScreenCapture, and CameraCapture always fall back to
+`DEFAULT_RECOGNIZE_IMAGE_MODEL_ID` and surface failures using the fixed message
+`'Failed to analyze this image.'`. Runtime details—including model overrides,
+`errorName`, `errorCode`, and tokenised file paths—travel through metadata so
+renderers and logs gain diagnostic context without leaking raw identifiers.
+
+Recent refactors extend the same pattern to long-running helpers such as the
+Think tool, todo list orchestration, Docker cleanup routines, and Bedrock
+image/flow utilities. They now reject with `ExecutionError` instances (or
+`createFileExecutionError`) so promise rejections stay value-stable. When adding
+new asynchronous helpers, never interpolate runtime data into the rejection
+message—return a static string and push identifiers, counts, and provider
+responses into the error `cause`/metadata payload.
+
 The Code Interpreter task manager applies the same policy. Task snapshots and
 list results now expose a structured `errorInfo` object alongside the legacy
 `error` string. The `message` field stays static (`'Task execution failed.'`,
@@ -127,6 +170,17 @@ try {
   }
 }
 ```
+
+#### ExecuteCommand Tool metadata
+
+The renderer-facing `ExecuteCommandTool` mirrors this behaviour. The preload
+wrapper now routes request diagnostics through a `sanitizeExecuteCommandInput`
+helper so working directories are tokenised with `toFileToken` and stdin
+payloads collapse to length counters. Resolver failures throw the static
+message `'Failed to resolve working directory.'` while attaching the sanitised
+metadata and original detail message to `error.cause`. Permission denials emit
+`'Command is not permitted.'` without echoing the rejected shell string—check
+the logger metadata instead when triaging allow-list misses.
 
 ### Background Agent Structured Errors
 
@@ -174,7 +228,7 @@ value=…]`, `[line value=…]`).
 If the bundled `pdf-parse` dependency is missing its `PDFParse` class export
 (which happens when a stale 1.x release is still installed), the handlers raise
 `PDF_PARSE_FAILED` with `metadata.reason === 'parser_initialization_failed'` and
-`metadata.remediation === 'Reinstall dependencies with npm ci to refresh pdf-parse >=2.2.16.'`.
+`metadata.remediation === 'Reinstall dependencies with npm ci to refresh pdf-parse >=2.3.0.'`.
 Surface the remediation hint as-is and avoid logging raw error messages—the
 structured metadata already captures `parserExportType` so you can confirm
 whether the module export resolved to `undefined`, `function`, or another

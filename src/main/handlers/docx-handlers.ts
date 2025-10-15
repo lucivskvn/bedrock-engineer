@@ -13,6 +13,7 @@ import {
   buildAllowedOutputDirectories,
   ensurePathWithinAllowedDirectories
 } from '../security/path-utils'
+import { toFileToken } from '../../common/security/pathTokens'
 
 export interface LineRange {
   from?: number
@@ -118,15 +119,44 @@ async function assertDocxFileSafe(filePath: string): Promise<string> {
   const safePath = resolveDocxPath(filePath)
 
   if (!isDocxFile(safePath)) {
-    throw new Error(`File ${filePath} is not a DOCX file`)
+    throw new Error('Provided file is not a DOCX document.', {
+      cause: {
+        fileName: toFileToken(filePath),
+        extension: path.extname(filePath).toLowerCase()
+      }
+    })
   }
 
   const stats = await fs.stat(safePath)
   if (stats.size > MAX_DOCX_BYTES) {
-    throw new Error('DOCX file is too large to process safely')
+    throw new Error('DOCX file exceeds maximum allowed size.', {
+      cause: {
+        fileName: toFileToken(safePath),
+        fileSize: stats.size,
+        maxBytes: MAX_DOCX_BYTES
+      }
+    })
   }
 
   return safePath
+}
+
+function createDocxError(
+  message: string,
+  filePath: string,
+  error: unknown,
+  metadata: Record<string, unknown> = {}
+): Error {
+  const errorMessage = error instanceof Error ? error.message : String(error)
+
+  return new Error(message, {
+    cause: {
+      fileName: toFileToken(filePath),
+      reason: errorMessage,
+      errorName: error instanceof Error ? error.name : undefined,
+      ...metadata
+    }
+  })
 }
 
 /**
@@ -146,7 +176,10 @@ export const docxHandlers = {
     _event: IpcMainInvokeEvent,
     { filePath, lineRange }: { filePath: string; lineRange?: LineRange }
   ): Promise<string> => {
-    log.info('Extracting text from DOCX', { filePath, hasLineRange: !!lineRange })
+    log.info('Extracting text from DOCX', {
+      fileName: toFileToken(filePath),
+      hasLineRange: !!lineRange
+    })
 
     try {
       const safePath = await assertDocxFileSafe(filePath)
@@ -164,7 +197,7 @@ export const docxHandlers = {
       const filteredResult = filterByLineRange(cleanedText, lineRange)
 
       log.info('DOCX text extraction successful', {
-        filePath: safePath,
+        fileName: toFileToken(safePath),
         originalLength: cleanedText.length,
         filteredLength: filteredResult.length,
         warningCount: result.messages.length
@@ -174,10 +207,12 @@ export const docxHandlers = {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       log.error('DOCX text extraction failed', {
-        filePath,
+        fileName: toFileToken(filePath),
         error: errorMessage
       })
-      throw new Error(`Failed to extract text from DOCX ${filePath}: ${errorMessage}`)
+      throw createDocxError('Failed to extract text from DOCX file.', filePath, error, {
+        hasLineRange: !!lineRange
+      })
     }
   },
 
@@ -188,7 +223,7 @@ export const docxHandlers = {
     _event: IpcMainInvokeEvent,
     { filePath }: { filePath: string }
   ): Promise<DocxContent> => {
-    log.info('Extracting DOCX metadata', { filePath })
+    log.info('Extracting DOCX metadata', { fileName: toFileToken(filePath) })
 
     try {
       const safePath = await assertDocxFileSafe(filePath)
@@ -213,7 +248,7 @@ export const docxHandlers = {
       }
 
       log.info('DOCX metadata extraction successful', {
-        filePath: safePath,
+        fileName: toFileToken(safePath),
         totalLines: docxContent.totalLines,
         wordCount: docxContent.metadata.wordCount,
         characterCount: docxContent.metadata.characterCount
@@ -223,10 +258,10 @@ export const docxHandlers = {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       log.error('DOCX metadata extraction failed', {
-        filePath,
+        fileName: toFileToken(filePath),
         error: errorMessage
       })
-      throw new Error(`Failed to parse DOCX file ${filePath}: ${errorMessage}`)
+      throw createDocxError('Failed to parse DOCX file.', filePath, error)
     }
   },
 
@@ -237,7 +272,7 @@ export const docxHandlers = {
     _event: IpcMainInvokeEvent,
     { filePath }: { filePath: string }
   ): Promise<{ title?: string; author?: string; wordCount?: number }> => {
-    log.info('Getting DOCX info', { filePath })
+    log.info('Getting DOCX info', { fileName: toFileToken(filePath) })
 
     try {
       const safePath = await assertDocxFileSafe(filePath)
@@ -260,7 +295,7 @@ export const docxHandlers = {
       }
 
       log.info('DOCX info extraction successful', {
-        filePath: safePath,
+        fileName: toFileToken(safePath),
         estimatedWordCount
       })
 
@@ -268,10 +303,10 @@ export const docxHandlers = {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       log.error('DOCX info extraction failed', {
-        filePath,
+        fileName: toFileToken(filePath),
         error: errorMessage
       })
-      throw new Error(`Failed to get DOCX info for ${filePath}: ${errorMessage}`)
+      throw createDocxError('Failed to retrieve DOCX information.', filePath, error)
     }
   },
 
