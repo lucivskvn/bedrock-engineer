@@ -133,9 +133,159 @@ npm test
 npm run test:integration
 ```
 
+To run the full verification suite (lint, type checks, and unit tests with coverage) in one step, use the aggregate script:
+
+```bash
+npm run ci:verify
+```
+
+> [!TIP]
+> A containerised workflow is available for reproducible local checks. Build the image and execute the same verification script with Docker:
+>
+> ```bash
+> docker compose build verify
+> docker compose run --rm verify
+> ```
+>
+> Rebuild the image whenever you update dependencies so the container picks up the latest lockfile.
+
+#### Generate a CycloneDX SBOM
+
+Create a CycloneDX JSON software bill of materials for dependency auditing with:
+
+```bash
+npm run sbom:generate
+```
+
+The generated document is written to `sbom/bom.json` (ignored by Git on purpose). The helper now surfaces non-zero exit codes from `@cyclonedx/cyclonedx-npm`, so inspect the preceding logs if the command halts after upstream `npm ls` warnings.
+
 > The Jest wrapper verifies that `jest` and `jest-environment-jsdom` are installed before execution; if it reports missing dependencies, rerun `npm ci` (or `npm install`) to restore the pinned toolchain before retrying the test or lint commands.
 > The TypeScript wrapper now confirms that `typescript` is installed, then resolves every `extends` config and `references.path` entry declared in the requested tsconfig files before running `npm run typecheck:*`; rerun `npm ci` (or restore the missing config files) if it exits with a missing dependency warning.
 
+
+##### Coverage expectations
+
+Unit tests must maintain **≥95%** statements, branches, functions, and lines
+across the authentication and health surfaces under `src/main/api` (specifically
+`auth/token-utils.ts`, `config/runtime-config.ts`, and the files within
+`health/`). These modules gate startup security checks and the `/healthz`
+endpoint, so we require deterministic coverage before merging changes. Run
+`npm run ci:verify` or `npm test -- --coverage` before sending changes to ensure
+the threshold passes and to catch regressions early.
+
+#### Security and compliance automation
+
+Run the following commands locally before opening a pull request to mirror the
+automated compliance gates:
+
+- `npm run security:audit` — fails on any high/critical dependency vulnerability reported by `npm audit`.
+- `npm run license:check` — validates that the production dependency tree exposes only MIT, MIT-0, Apache-2.0, BSD, or ISC
+  licensed packages.
+- `npm run dast` — executes the integration smoke suite against the hardened API surface to mimic the CI dynamic scan.
+
+
+#### GitHub Actions workflow
+
+The Bitbucket pipeline has been superseded by `.github/workflows/build.yml`. The
+workflow mirrors the local verification commands (`npm run ci:verify`,
+`npm run security:audit`, `npm run license:check`, `npm run dast`) and adds
+container image scanning via Trivy. The `verify` and `dast` jobs assume an IAM
+role through GitHub’s OpenID Connect integration using the repository secrets
+`AWS_ROLE_TO_ASSUME` and `AWS_REGION`. Provide the appropriate `SECRETS_DRIVER`
+value for each environment via encrypted secrets or environment configuration.
+When the variable is omitted the runtime inspects the environment and logs a
+warning before defaulting to AWS Secrets Manager (or Vault when Vault settings
+are detected). Set the value explicitly to silence the warning and guarantee
+the intended provider. The workflow sets `SECRETS_DRIVER=aws-secrets-manager`
+by default; adjust the value for Vault-backed staging or production projects.
+Electron build artefacts are cached with `actions/cache@v4` to keep rebuild
+times predictable across runs.
+
+To complete the migration, mark the old Bitbucket pipelines as read-only once
+the GitHub Actions workflow is green in your environment. Branch protection
+rules should require the `verify`, `sast`, `dast`, and `container-scan` jobs so
+that future pull requests cannot bypass the strengthened gates.
+
+
+### Authentication and authorisation
+
+The embedded API now enforces role-based access control. Every request must supply an API token either through the `X-API-Key`
+header or a Bearer token. Tokens can be defined through:
+
+* `API_AUTH_TOKEN` – primary environment token (defaults to the admin role).
+* `API_AUTH_TOKEN_SHA256` – optional hex-encoded SHA-256 digest for the environment token. When present it overrides
+  `API_AUTH_TOKEN`, keeping the plaintext secret out of process environments. The runtime clears the
+  `API_AUTH_TOKEN` variable and removes any stored plaintext token once the digest is detected so child processes cannot
+  observe the secret or persist it on disk.
+* `API_AUTH_TOKEN_ROLE` / `API_AUTH_TOKEN_PERMISSIONS` – optional overrides for the environment token (comma-separated
+  permission names such as `monitoring:read`).
+* `API_AUTH_STORE_ROLE` / `API_AUTH_STORE_PERMISSIONS` – overrides for the token persisted in the encrypted Electron store.
+* `API_AUTH_SECRET_ID` – when set, the server loads tokens from the configured secret
+  manager. Pair it with `SECRETS_DRIVER` to select the backend and optional
+  companions like `API_AUTH_SECRET_REGION` (AWS) or `API_AUTH_SECRET_FIELD`
+  (Vault KV field name). `API_AUTH_SECRET_CACHE_SECONDS` limits how long secret
+  payloads remain cached in-process (default 60 seconds, max 3600).
+* `SECRETS_DRIVER` – selects the external secret manager implementation. Supported
+  values are `aws-secrets-manager` (or `aws`) and `hashicorp-vault` (or `vault`).
+  The runtime refuses to contact any secret manager when this variable is
+  missing; it emits an error and, if possible, suggests the most likely provider
+  inferred from the environment (Vault signals take priority over AWS). Always
+  set the variable explicitly in production environments to keep Zero-Trust
+  guarantees intact and document the intended backend.
+  * AWS Secrets Manager: optionally supply `API_AUTH_SECRET_REGION` and
+    `API_AUTH_SECRET_ENDPOINT` if you use a regional or VPC endpoint.
+  * HashiCorp Vault: configure `SECRETS_VAULT_ADDR`, `SECRETS_VAULT_NAMESPACE`
+    (if multi-tenant), and either AppRole credentials (`SECRETS_VAULT_APPROLE_ROLE_ID`
+    / `SECRETS_VAULT_APPROLE_SECRET_ID`) or JWT auth (`SECRETS_VAULT_JWT_ROLE` plus
+    `SECRETS_VAULT_JWT` or `SECRETS_VAULT_JWT_FILE`). Use
+    `SECRETS_VAULT_AUTH_MOUNT` when your auth method lives under a custom path and
+    `SECRETS_VAULT_TOKEN_RENEW_WINDOW_SECONDS` to control token refresh margins.
+    Set `API_AUTH_SECRET_FIELD` to the KV data field that contains the JSON payload
+    (defaults to serialising the entire `data` object when omitted).
+
+Secret payloads must contain JSON in the following structure (identical for AWS
+and Vault-based stores):
+
+```json
+{
+  "tokens": [
+    { "sha256": "<hex-encoded SHA-256 digest>", "role": "operator" },
+    { "token": "<plain-text token>", "role": "observer", "permissions": ["monitoring:read"] }
+  ],
+  "roles": {
+    "observer": ["monitoring:read"],
+    "operator": ["monitoring:read", "bedrock:converse-stream", "bedrock:list-models", "bedrock:diagnostics", "sonic:stream-session"]
+  }
+}
+```
+
+Omit the `token` field when storing only hashed secrets. Valid permission names are:
+
+* `monitoring:read` – access to `/metrics`.
+* `bedrock:converse-stream` – POST `/converse/stream` and socket streaming.
+* `bedrock:list-models` – GET `/listModels`.
+* `bedrock:diagnostics` – GET `/nova-sonic/region-check` and `/bedrock/connectivity-test`.
+* `sonic:stream-session` – Nova Sonic socket life-cycle events.
+
+The default roles are:
+
+* `admin` – all permissions.
+* `operator` – all Bedrock and metrics permissions.
+* `observer` – metrics only.
+
+Custom roles can be declared inside the secret `roles` map. Invalid role names or permission strings are surfaced through the
+`/healthz` report to simplify operational diagnostics.
+
+### Disaster recovery
+
+* **Configuration backups** – the Electron configuration store (`config.json` under the user data directory) should be backed
+  up with standard workstation profile backups. The store contains generated API tokens and AWS profile preferences.
+* **SBOM snapshots** – run `npm run sbom:generate` during release preparation and retain the resulting `sbom/bom.json` for
+  compliance audits.
+* **Rehydrating secrets** – when using AWS Secrets Manager, document the secret ARN alongside the infrastructure-as-code
+  templates so that a compromised deployment can rotate tokens and reapply role policies quickly.
+* **Operational restoration** – after redeploying the desktop application, re-run the readiness checks (`/readyz` and
+  `/metrics`) to confirm Bedrock connectivity before directing traffic back to the node.
 
 #### October 2025 maintenance notes
 
@@ -217,15 +367,18 @@ only with trusted values that meet these constraints.
 The embedded Express + Socket.IO API now requires an authentication token for
 all requests and websocket connections. During startup Bedrock Engineer will:
 
-1. Read the `API_AUTH_TOKEN` environment variable if it is set.
-2. Otherwise generate a 256-bit random token, persist it in the encrypted
-   application store, and share it with the renderer process.
+1. Register the environment token digest when `API_AUTH_TOKEN_SHA256` is set,
+   allowing CI/CD pipelines to avoid injecting plaintext credentials.
+2. Otherwise read the `API_AUTH_TOKEN` environment variable if it is present.
+3. If neither value exists, generate a 256-bit random token, persist it in the
+   encrypted application store, and share it with the renderer process.
 
 Every HTTP call issued by the renderer automatically sends this token via the
 `X-API-Key` header, and Socket.IO uses it during the connection handshake. If
-you run external tooling that talks to the local API, set the
-`API_AUTH_TOKEN` environment variable explicitly so that the same value can be
-supplied with each request.
+you run external tooling that talks to the local API, set either
+`API_AUTH_TOKEN_SHA256` (preferred) or `API_AUTH_TOKEN` explicitly so that the
+same secret is recognised on every request without leaking the token value to
+logs or process explorers.
 
 For additional protection the backend enforces a strict CORS allowlist. Use the
 `ALLOWED_ORIGINS` environment variable to provide a comma-separated list of
@@ -249,6 +402,30 @@ need to honour `X-Forwarded-For` headers for websocket rate limiting, set
 `TRUST_PROXY_FOR_SOCKETS=true`. Leaving the flag unset instructs the server to
 ignore forwarded addresses and rely on the direct socket IP, which is the safer
 default for desktop deployments.
+
+### Health monitoring
+
+Operational tooling can poll `GET /healthz` (or `HEAD /healthz`) without an authentication token.
+The endpoint returns a JSON payload that includes the overall health status (`ok`, `degraded`, or `error`),
+process uptime, and component-level diagnostics for the configuration store and API authentication token.
+Requests that surface a degraded or error state emit structured log entries with the same metadata so the
+application log stream mirrors health-check behaviour.
+
+Kubernetes-style readiness checks are exposed via `GET /readyz` (and `HEAD /readyz`). This endpoint blocks until the
+encrypted configuration store is reachable and emits a `503` response whenever dependent subsystems report an
+`initializing` or `error` state. Readiness responses mirror health logging semantics so the structured log stream carries the
+same `status`/`healthStatus` metadata.
+
+Prometheus-compatible metrics are published at `GET /metrics` (API token required). The registry exports latency histograms
+and request counters tagged with HTTP method, resolved route, status code, and outcome classification. Configure the
+collector to supply a static `X-API-Key` header so metrics scraping remains authenticated.
+
+Every API response now includes an `X-Request-Id` header. Downstream callers may forward their own value (restricted to
+`[A-Za-z0-9_.-]`) to correlate cross-service traces; otherwise a UUID v4 is generated automatically. The correlation ID,
+OpenTelemetry trace ID, and span ID are attached to every structured log entry emitted while processing the request. To export
+traces, set `OTEL_EXPORTER_OTLP_ENDPOINT` (and optional `OTEL_EXPORTER_OTLP_HEADERS`) before launching the app—spans are batched
+to the configured OTLP HTTP collector. If tracing is not required, leave the environment variables unset and the provider will
+operate with in-memory spans only.
 
 
 ## Agent Chat

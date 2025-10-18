@@ -1,6 +1,6 @@
 # Logging Hygiene and Redaction Policy
 
-The logging stack is built on top of Winston 3.18 and is configured to produce value-stable entries that avoid leaking sensitive runtime information. Metadata is automatically sanitised before it reaches any transport (console or rotating log files).
+The logging stack is built on top of Winston 3.18 and is configured to produce value-stable JSON entries that avoid leaking sensitive runtime information. Metadata is automatically sanitised before it reaches any transport (console or rotating log files), and every log event includes the active `correlationId`, `traceId`, and `spanId` when available.
 
 ## Message Guidelines
 
@@ -35,6 +35,12 @@ The helper `prepareLogMetadata` automatically replaces runtime data with structu
 | `{ category: 'proxy', status: 500 }` | `{ category: 'proxy', status: '[number]' }`            |
 
 The sanitiser keeps reserved keys like `category` and `process` untouched so that log routing continues to work, while all other primitive values are summarised.
+
+## Request-scoped context
+
+- **Express middleware:** The API bootstrap wires in `createRequestContextMiddleware`, which extracts or generates an `X-Request-Id`, starts an OpenTelemetry span, and ensures all downstream log entries inherit the `correlationId`, `traceId`, and `spanId`. New routers must either mount under the existing Express instance or reuse the middleware to keep request-level telemetry intact.
+- **Manual tasks:** When invoking asynchronous tasks outside of HTTP request handling, call `ensureLogContext({ correlationId, traceId, spanId })` before logging so structured entries remain correlated.
+- **Tracing exporters:** Set `OTEL_EXPORTER_OTLP_ENDPOINT` (and optional `OTEL_EXPORTER_OTLP_HEADERS`) to stream spans to your collector. Leave the variables unset to operate with in-memory spans suitable for local development.
 
 Renderer utilities call `extractErrorMetadata` before forwarding exceptions to the logger. The helper trims whitespace-only messages, truncates verbose strings, and guards against circular references inside `error.cause` payloads. Nested objects, Maps, and Sets are serialised into redacted previews, typed arrays are truncated with a trailing `[Truncated]` marker, and WeakMap/WeakSet instances collapse to placeholders. Nested `Error` objects retain their own sanitised metadata so logging an exception never triggers infinite recursion or leaks raw values.
 

@@ -13,7 +13,6 @@ import { Server } from 'socket.io'
 import { SonicToolExecutor } from './sonic/tool-executor'
 import { checkNovaSonicRegionSupport, testBedrockConnectivity } from './sonic/regionCheck'
 import { RateLimiterMemory } from 'rate-limiter-flexible'
-import { timingSafeEqual } from 'crypto'
 import {
   hasPrototypePollution,
   createSequentialTaskQueue,
@@ -28,7 +27,11 @@ import {
   validateRegionParam
 } from './validation'
 import { isOriginAllowed } from './cors-utils'
-import { normalizeApiToken, MIN_API_TOKEN_LENGTH } from '../../common/security'
+import { buildHealthReport } from './health/report'
+import { hasConfiguredApiTokens, verifyApiToken } from './auth/api-token'
+import { resolveProvidedToken } from './auth/token-utils'
+import { API_PERMISSIONS, createPermissionMiddleware, ensurePermission } from './auth/rbac'
+import { OVERALL_HEALTH_STATUS } from '../../common/health'
 import { resolveAllowedOrigins as computeAllowedOrigins } from './origin-allowlist'
 import {
   normalizeIpAddress,
@@ -38,61 +41,38 @@ import {
 import { createHardenedServer } from './server-hardening'
 import { toCallConverseApiProps, toRetrieveAndGenerateInput } from './payload-normalizers'
 import { describeError, sendApiErrorResponse, createApiError } from './api-error-response'
+import { resolveRuntimeConfig } from './config/runtime-config'
+import { createRequestContextMiddleware } from './middleware/request-context'
+import { metricsHandler } from './observability/metrics'
+import { buildReadinessReport } from './health/readiness'
+import { initializeTracing } from '../../common/observability/tracing'
+import { createCircuitBreaker, CircuitBreakerOpenError, executeWithRetry } from './resilience'
+
+initializeTracing()
 
 // Create category logger for API
 const apiLogger = createCategoryLogger('api:express')
 const bedrockLogger = createCategoryLogger('api:bedrock')
 
-let envTokenWarningEmitted = false
-let storedTokenWarningEmitted = false
-
-type ClampOptions = {
-  min?: number
-  max?: number
-}
-
-function parsePositiveIntEnv(
-  envKey: string,
-  fallback: number,
-  options: ClampOptions = {}
-): number {
-  const rawValue = process.env[envKey]
-  if (!rawValue) {
-    return fallback
-  }
-
-  const parsed = Number.parseInt(rawValue, 10)
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    apiLogger.warn('Ignoring invalid numeric environment override', {
-      envKey,
-      rawValue
-    })
-    return fallback
-  }
-
-  const { min, max } = options
-  let normalized = parsed
-
-  if (typeof min === 'number' && normalized < min) {
-    apiLogger.warn('Clamping numeric environment override below minimum', {
-      envKey,
-      rawValue: parsed,
-      min
-    })
-    normalized = min
-  }
-
-  if (typeof max === 'number' && normalized > max) {
-    apiLogger.warn('Clamping numeric environment override above maximum', {
-      envKey,
-      rawValue: parsed,
-      max
-    })
-    normalized = max
-  }
-
-  return normalized
-}
+const {
+  rateLimitWindowMs,
+  rateLimitMax,
+  maxRequestsPerSocket,
+  socketMaxHttpBufferSize,
+  socketPingTimeout,
+  socketPingInterval,
+  audioRateLimitWindowSeconds,
+  audioRateLimitPoints,
+  maxHeaderBytes,
+  maxHeadersCount,
+  maxAudioPayloadBytes,
+  externalCallMaxRetries,
+  externalCallBaseDelayMs,
+  externalCallMaxDelayMs,
+  circuitBreakerFailureThreshold,
+  circuitBreakerCooldownMs,
+  circuitBreakerHalfOpenMaxCalls
+} = resolveRuntimeConfig({ env: process.env, logger: apiLogger })
 
 interface PromiseRequestHandler {
   (req: Request, res: Response, next: NextFunction): Promise<unknown>
@@ -101,6 +81,18 @@ interface PromiseRequestHandler {
 function wrap(fn: PromiseRequestHandler): RequestHandler {
   return (req, res, next) => fn(req, res, next).catch(next)
 }
+
+const createBedrockCircuitBreaker = (name: string) =>
+  createCircuitBreaker({
+    failureThreshold: circuitBreakerFailureThreshold,
+    cooldownMs: circuitBreakerCooldownMs,
+    halfOpenMaxCalls: circuitBreakerHalfOpenMaxCalls,
+    logger: bedrockLogger,
+    name
+  })
+
+const bedrockListModelsBreaker = createBedrockCircuitBreaker('bedrock:listModels')
+const bedrockDiagnosticsBreaker = createBedrockCircuitBreaker('bedrock:diagnostics')
 
 function resolveRequestClientIp(req: Request): string {
   const normalized = normalizeIpAddress(req.ip) ?? normalizeIpAddress(req.socket.remoteAddress)
@@ -150,46 +142,7 @@ if (trustProxySetting.enabled) {
   apiLogger.info('Express trust proxy enabled', { trustProxyValue: trustProxySetting.value })
 }
 
-const rateLimitWindowMs = parsePositiveIntEnv('RATE_LIMIT_WINDOW_MS', 15 * 60 * 1000, {
-  min: 5_000,
-  max: 60 * 60 * 1000
-})
-const rateLimitMax = parsePositiveIntEnv('RATE_LIMIT_MAX', 100, {
-  min: 10,
-  max: 1000
-})
-const maxRequestsPerSocket = parsePositiveIntEnv('MAX_REQUESTS_PER_SOCKET', 100, {
-  min: 10,
-  max: 500
-})
-const socketMaxHttpBufferSize = parsePositiveIntEnv('SOCKET_MAX_HTTP_BUFFER_SIZE', 1024 * 1024, {
-  min: 32 * 1024,
-  max: 4 * 1024 * 1024
-})
-const socketPingTimeout = parsePositiveIntEnv('SOCKET_PING_TIMEOUT_MS', 20_000, {
-  min: 5_000,
-  max: 60_000
-})
-const socketPingInterval = parsePositiveIntEnv('SOCKET_PING_INTERVAL_MS', 25_000, {
-  min: 5_000,
-  max: 60_000
-})
-const audioRateLimitWindowSeconds = parsePositiveIntEnv('AUDIO_RATE_LIMIT_WINDOW_SEC', 60, {
-  min: 10,
-  max: 600
-})
-const audioRateLimitPoints = parsePositiveIntEnv('AUDIO_RATE_LIMIT_POINTS', 120, {
-  min: 10,
-  max: 600
-})
-const maxHeaderBytes = parsePositiveIntEnv('API_MAX_HEADER_BYTES', 8 * 1024, {
-  min: 2 * 1024,
-  max: 64 * 1024
-})
-const maxHeadersCount = parsePositiveIntEnv('API_MAX_HEADERS_COUNT', 200, {
-  min: 20,
-  max: 1000
-})
+api.use(createRequestContextMiddleware({ logger: apiLogger }))
 
 const rateLimitExceededHandler: RequestHandler = (_req, res) => {
   const retryAfterSeconds = Math.ceil(rateLimitWindowMs / 1000)
@@ -234,35 +187,6 @@ const allowedOrigins = computeAllowedOrigins({
   env: process.env,
   log: apiLogger
 })
-
-async function getApiAuthToken(): Promise<string | null> {
-  const envToken = normalizeApiToken(process.env.API_AUTH_TOKEN)
-  if (envToken) {
-    return envToken
-  }
-
-  if (process.env.API_AUTH_TOKEN && !envTokenWarningEmitted) {
-    apiLogger.warn('Ignoring weak API_AUTH_TOKEN value from environment', {
-      minLength: MIN_API_TOKEN_LENGTH
-    })
-    envTokenWarningEmitted = true
-  }
-
-  await storeReady
-
-  const storedToken = normalizeApiToken(store.get('apiAuthToken'))
-  if (storedToken) {
-    return storedToken
-  }
-
-  const rawStoredToken = store.get('apiAuthToken')
-  if (!storedTokenWarningEmitted && typeof rawStoredToken === 'string' && rawStoredToken.trim().length > 0) {
-    apiLogger.warn('Stored API token failed strength validation; a new token will be issued')
-    storedTokenWarningEmitted = true
-  }
-  return null
-}
-
 
 const allowFileProtocol = !isDevelopment
 
@@ -317,21 +241,6 @@ const audioRateLimiter = new RateLimiterMemory({
   points: audioRateLimitPoints,
   duration: audioRateLimitWindowSeconds
 })
-const MAX_AUDIO_PAYLOAD_BYTES = parsePositiveIntEnv('MAX_AUDIO_PAYLOAD_BYTES', 1024 * 1024, {
-  min: 32 * 1024,
-  max: 4 * 1024 * 1024
-})
-
-function tokensMatch(expected: string, provided: string): boolean {
-  const expectedBuffer = Buffer.from(expected)
-  const providedBuffer = Buffer.from(provided)
-
-  if (expectedBuffer.length !== providedBuffer.length) {
-    return false
-  }
-
-  return timingSafeEqual(expectedBuffer, providedBuffer)
-}
 
 function getClientIp(socket: import('socket.io').Socket): string {
   const remoteAddress =
@@ -354,13 +263,19 @@ function getClientIp(socket: import('socket.io').Socket): string {
 function getSocketAuthToken(socket: import('socket.io').Socket): string {
   const authToken =
     socket.handshake.auth && typeof socket.handshake.auth.token === 'string'
-      ? socket.handshake.auth.token
-      : undefined
-  const headerToken =
-    typeof socket.handshake.headers['x-api-key'] === 'string'
-      ? (socket.handshake.headers['x-api-key'] as string)
-      : undefined
-  return (authToken || headerToken || '').trim()
+      ? socket.handshake.auth.token.trim()
+      : ''
+
+  if (authToken) {
+    return authToken
+  }
+
+  const headerToken = resolveProvidedToken({
+    'x-api-key': socket.handshake.headers['x-api-key'] as string | string[] | undefined,
+    authorization: socket.handshake.headers.authorization as string | string[] | undefined
+  })
+
+  return headerToken ?? ''
 }
 
 io.use(async (socket, next) => {
@@ -379,8 +294,8 @@ io.use(async (socket, next) => {
     return
   }
 
-  const token = await getApiAuthToken()
-  if (!token) {
+  const tokensAvailable = await hasConfiguredApiTokens()
+  if (!tokensAvailable) {
     next(new Error('Server authentication token is not configured'))
     return
   }
@@ -398,7 +313,17 @@ io.use(async (socket, next) => {
 
   const providedToken = getSocketAuthToken(socket)
 
-  if (!providedToken || !tokensMatch(token, providedToken)) {
+  if (!providedToken) {
+    apiLogger.warn('Socket connection rejected without authentication token', {
+      socketId: socket.id,
+      origin: socket.handshake.headers.origin
+    })
+    next(new Error('Unauthorized'))
+    return
+  }
+
+  const identity = await verifyApiToken(providedToken)
+  if (!identity) {
     apiLogger.warn('Socket connection rejected due to invalid token', {
       socketId: socket.id,
       origin: socket.handshake.headers.origin
@@ -407,10 +332,21 @@ io.use(async (socket, next) => {
     return
   }
 
+  if (!ensurePermission(identity, API_PERMISSIONS.SONIC_STREAM_SESSION)) {
+    apiLogger.warn('Socket connection rejected due to insufficient permissions', {
+      socketId: socket.id,
+      origin: socket.handshake.headers.origin,
+      role: identity.role
+    })
+    next(new Error('Forbidden'))
+    return
+  }
+
   socket.data = {
     ...(socket.data || {}),
     authToken: providedToken,
-    clientIp: getClientIp(socket)
+    clientIp: getClientIp(socket),
+    authIdentity: identity
   }
 
   next()
@@ -491,25 +427,37 @@ const requireApiKey: RequestHandler = (async (req, res, next) => {
       return next()
     }
 
-    if (req.path === '/' && req.method === 'GET') {
+    if (
+      (req.path === '/healthz' || req.path === '/readyz') &&
+      (req.method === 'GET' || req.method === 'HEAD')
+    ) {
       return next()
     }
 
-    const token = await getApiAuthToken()
-    if (!token) {
+    const tokensAvailable = await hasConfiguredApiTokens()
+    if (!tokensAvailable) {
       apiLogger.error('API auth token is not configured')
       sendApiErrorResponse(res, 'server_auth_not_configured', { status: 500 })
       return
     }
 
-    const providedToken =
-      (req.headers['x-api-key'] as string | undefined) ||
-      (typeof req.headers.authorization === 'string' &&
-      req.headers.authorization.toLowerCase().startsWith('bearer ')
-        ? req.headers.authorization.slice(7).trim()
-        : undefined)
+    const providedToken = resolveProvidedToken({
+      'x-api-key': req.headers['x-api-key'],
+      authorization: req.headers.authorization
+    })
 
-    if (!providedToken || !tokensMatch(token, providedToken.trim())) {
+    if (!providedToken) {
+      apiLogger.warn('Rejected request without authentication token', {
+        path: req.path,
+        method: req.method,
+        origin: req.headers.origin
+      })
+      sendApiErrorResponse(res, 'unauthorized_request', { status: 401 })
+      return
+    }
+
+    const identity = await verifyApiToken(providedToken)
+    if (!identity) {
       apiLogger.warn('Rejected request with invalid API token', {
         path: req.path,
         method: req.method,
@@ -519,35 +467,98 @@ const requireApiKey: RequestHandler = (async (req, res, next) => {
       return
     }
 
+    req.authIdentity = identity
     return next()
   } catch (error) {
     return next(error)
   }
 }) as RequestHandler
 
-// Add request logging
-api.use((req, res, next) => {
-  const start = Date.now()
-
-  // Log when response is finished
-  res.on('finish', () => {
-    const duration = Date.now() - start
-    apiLogger.debug(`${req.method} ${req.path}`, {
-      method: req.method,
-      path: req.path,
-      statusCode: res.statusCode,
-      duration: `${duration}ms`
-    })
-  })
-
-  next()
-})
-
 api.use(requireApiKey)
 
-api.get('/', (_req: Request, res: Response) => {
-  res.send('Hello World')
-})
+function summarizeHealthComponents(report: Awaited<ReturnType<typeof buildHealthReport>>) {
+  return Object.entries(report.components).map(([key, component]) => ({
+    key,
+    status: component.status,
+    issueCount: component.issues?.length ?? 0
+  }))
+}
+
+api.get(
+  '/healthz',
+  wrap(async (_req, res) => {
+    const report = await buildHealthReport()
+    const componentSummaries = summarizeHealthComponents(report)
+    const statusCode = report.status === OVERALL_HEALTH_STATUS.ERROR ? 503 : 200
+
+    if (report.status === OVERALL_HEALTH_STATUS.ERROR) {
+      apiLogger.error('Health endpoint responded with error status', { components: componentSummaries })
+    } else if (report.status === OVERALL_HEALTH_STATUS.DEGRADED) {
+      apiLogger.warn('Health endpoint responded with degraded status', { components: componentSummaries })
+    } else {
+      apiLogger.debug('Health endpoint responded with ok status', { components: componentSummaries })
+    }
+
+    res.status(statusCode).json(report)
+  }) as RequestHandler
+)
+
+api.get(
+  '/readyz',
+  wrap(async (_req, res) => {
+    const readiness = await buildReadinessReport()
+    const statusCode = readiness.status === 'ready' ? 200 : 503
+
+    if (statusCode === 503) {
+      apiLogger.warn('Readiness probe reported degraded state', {
+        status: readiness.status,
+        healthStatus: readiness.healthStatus
+      })
+    }
+
+    res.status(statusCode).json(readiness)
+  }) as RequestHandler
+)
+
+api.head(
+  '/readyz',
+  wrap(async (_req, res) => {
+    const readiness = await buildReadinessReport()
+    const statusCode = readiness.status === 'ready' ? 200 : 503
+    if (statusCode === 503) {
+      apiLogger.warn('Readiness probe reported degraded state', {
+        status: readiness.status,
+        healthStatus: readiness.healthStatus
+      })
+    }
+    res.status(statusCode).end()
+  }) as RequestHandler
+)
+
+api.get(
+  '/metrics',
+  createPermissionMiddleware({ permission: API_PERMISSIONS.MONITORING_READ, logger: apiLogger }),
+  metricsHandler
+)
+
+api.head(
+  '/healthz',
+  wrap(async (_req, res) => {
+    const report = await buildHealthReport()
+    const componentSummaries = summarizeHealthComponents(report)
+    const statusCode = report.status === OVERALL_HEALTH_STATUS.ERROR ? 503 : 200
+
+    if (report.status === OVERALL_HEALTH_STATUS.ERROR) {
+      apiLogger.error('Health endpoint responded with error status', { components: componentSummaries })
+    } else if (report.status === OVERALL_HEALTH_STATUS.DEGRADED) {
+      apiLogger.warn('Health endpoint responded with degraded status', { components: componentSummaries })
+    } else {
+      apiLogger.debug('Health endpoint responded with ok status', { components: componentSummaries })
+    }
+
+    res.status(statusCode).end()
+  }) as RequestHandler
+)
 
 interface CustomRequest<T> extends Request {
   body: T
@@ -557,6 +568,10 @@ type ConverseStreamRequest = CustomRequest<ValidatedConversePayload>
 
 api.post(
   '/converse/stream',
+  createPermissionMiddleware({
+    permission: API_PERMISSIONS.BEDROCK_CONVERSE_STREAM,
+    logger: apiLogger
+  }),
   wrap(async (req: ConverseStreamRequest, res) => {
     const validationResult = validateConversePayload(req.body)
     if (!validationResult.success) {
@@ -731,13 +746,45 @@ api.post(
 
 api.get(
   '/listModels',
+  createPermissionMiddleware({
+    permission: API_PERMISSIONS.BEDROCK_LIST_MODELS,
+    logger: apiLogger
+  }),
   wrap(async (_req: Request, res) => {
     const bedrockService = await getBedrockService()
     res.setHeader('Content-Type', 'application/json')
     try {
-      const result = await bedrockService.listModels()
+      const result = await bedrockListModelsBreaker.execute(() =>
+        executeWithRetry(() => bedrockService.listModels(), {
+          maxAttempts: externalCallMaxRetries,
+          initialDelayMs: externalCallBaseDelayMs,
+          maxDelayMs: externalCallMaxDelayMs,
+          logger: bedrockLogger,
+          operationName: 'bedrock:listModels'
+        })
+      )
       return res.json(result)
     } catch (error: any) {
+      if (error instanceof CircuitBreakerOpenError) {
+        const retryAfterMs = Math.max(0, error.retryAt - Date.now())
+        const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1000))
+        res.setHeader('Retry-After', retryAfterSeconds.toString())
+        const referenceId = sendApiErrorResponse(res, 'service_temporarily_unavailable', {
+          status: 503,
+          metadata: {
+            operation: 'listModels',
+            breakerName: error.breakerName ?? 'bedrock:listModels',
+            retryAfterMs
+          }
+        })
+        bedrockLogger.warn('ListModels short-circuited by circuit breaker', {
+          referenceId,
+          breakerName: error.breakerName ?? 'bedrock:listModels',
+          retryAfterMs
+        })
+        return
+      }
+
       const referenceId = sendApiErrorResponse(res, 'internal_server_error', {
         metadata: { operation: 'listModels' }
       })
@@ -753,6 +800,10 @@ api.get(
 // Nova Sonic region support check endpoint
 api.get(
   '/nova-sonic/region-check',
+  createPermissionMiddleware({
+    permission: API_PERMISSIONS.BEDROCK_DIAGNOSTICS,
+    logger: apiLogger
+  }),
   wrap(async (req: Request, res) => {
     res.setHeader('Content-Type', 'application/json')
     try {
@@ -761,9 +812,36 @@ api.get(
         sendApiErrorResponse(res, 'invalid_region_parameter', { status: 400 })
         return
       }
-      const result = await checkNovaSonicRegionSupport(regionValidation.data)
+      const result = await bedrockDiagnosticsBreaker.execute(() =>
+        executeWithRetry(() => checkNovaSonicRegionSupport(regionValidation.data), {
+          maxAttempts: externalCallMaxRetries,
+          initialDelayMs: externalCallBaseDelayMs,
+          maxDelayMs: externalCallMaxDelayMs,
+          logger: apiLogger,
+          operationName: 'bedrock:novaSonicRegionCheck'
+        })
+      )
       return res.json(result)
     } catch (error: any) {
+      if (error instanceof CircuitBreakerOpenError) {
+        const retryAfterMs = Math.max(0, error.retryAt - Date.now())
+        const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1000))
+        res.setHeader('Retry-After', retryAfterSeconds.toString())
+        const referenceId = sendApiErrorResponse(res, 'service_temporarily_unavailable', {
+          status: 503,
+          metadata: {
+            operation: 'novaSonicRegionCheck',
+            breakerName: error.breakerName ?? 'bedrock:diagnostics',
+            retryAfterMs
+          }
+        })
+        apiLogger.warn('Nova Sonic region check short-circuited by circuit breaker', {
+          referenceId,
+          breakerName: error.breakerName ?? 'bedrock:diagnostics',
+          retryAfterMs
+        })
+        return
+      }
       const referenceId = sendApiErrorResponse(res, 'nova_sonic_region_check_failed')
       apiLogger.error('Nova Sonic region check error', {
         referenceId,
@@ -777,6 +855,10 @@ api.get(
 // Bedrock connectivity test endpoint
 api.get(
   '/bedrock/connectivity-test',
+  createPermissionMiddleware({
+    permission: API_PERMISSIONS.BEDROCK_DIAGNOSTICS,
+    logger: apiLogger
+  }),
   wrap(async (req: Request, res) => {
     res.setHeader('Content-Type', 'application/json')
     try {
@@ -785,9 +867,36 @@ api.get(
         sendApiErrorResponse(res, 'invalid_region_parameter', { status: 400 })
         return
       }
-      const result = await testBedrockConnectivity(regionValidation.data)
+      const result = await bedrockDiagnosticsBreaker.execute(() =>
+        executeWithRetry(() => testBedrockConnectivity(regionValidation.data), {
+          maxAttempts: externalCallMaxRetries,
+          initialDelayMs: externalCallBaseDelayMs,
+          maxDelayMs: externalCallMaxDelayMs,
+          logger: apiLogger,
+          operationName: 'bedrock:connectivityTest'
+        })
+      )
       return res.json(result)
     } catch (error: any) {
+      if (error instanceof CircuitBreakerOpenError) {
+        const retryAfterMs = Math.max(0, error.retryAt - Date.now())
+        const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1000))
+        res.setHeader('Retry-After', retryAfterSeconds.toString())
+        const referenceId = sendApiErrorResponse(res, 'service_temporarily_unavailable', {
+          status: 503,
+          metadata: {
+            operation: 'bedrockConnectivityTest',
+            breakerName: error.breakerName ?? 'bedrock:diagnostics',
+            retryAfterMs
+          }
+        })
+        apiLogger.warn('Bedrock connectivity test short-circuited by circuit breaker', {
+          referenceId,
+          breakerName: error.breakerName ?? 'bedrock:diagnostics',
+          retryAfterMs
+        })
+        return
+      }
       const referenceId = sendApiErrorResponse(res, 'bedrock_connectivity_test_failed')
       apiLogger.error('Bedrock connectivity test error', {
         referenceId,
@@ -937,7 +1046,7 @@ io.on('connection', (socket) => {
           throw new Error('Empty audio payload')
         }
 
-        if (audioBuffer.length > MAX_AUDIO_PAYLOAD_BYTES) {
+        if (audioBuffer.length > maxAudioPayloadBytes) {
           throw new Error('Audio payload too large')
         }
 

@@ -281,46 +281,26 @@ export const sanitizeMetadataRecord = (
   return sanitized
 }
 
-export const formatConsoleLogMessage = (
-  level: LogLevel,
-  message: string,
-  sanitizedMeta?: Record<string, unknown>,
-  category?: string
-): string => {
-  const levelTag = level.toUpperCase()
-  const categoryPrefix = category ? `[${category}] ` : ''
-  const metaSuffix =
-    sanitizedMeta && Object.keys(sanitizedMeta).length > 0
-      ? ` ${JSON.stringify(sanitizedMeta)}`
-      : ''
-
-  return `[${levelTag}] ${categoryPrefix}${message}${metaSuffix}`
+export const formatConsoleLogMessage = (entry: ConsoleLogEntry): string => {
+  return JSON.stringify({
+    level: entry.level,
+    message: entry.message,
+    ...entry.payload
+  })
 }
 
 export interface ConsoleLogEntry {
   level: LogLevel
   message: string
-  sanitizedMeta?: Record<string, unknown>
-  category?: string
-  formatted: string
+  payload: Record<string, unknown>
 }
 
-export type ConsoleWriter = (
-  level: LogLevel,
-  message: string,
-  sanitizedMeta?: Record<string, unknown>,
-  category?: string
-) => void
+export type ConsoleWriter = (entry: ConsoleLogEntry) => void
 
-const defaultConsoleWriter: ConsoleWriter = (
-  level,
-  message,
-  sanitizedMeta,
-  category
-) => {
-  const formatted = formatConsoleLogMessage(level, message, sanitizedMeta, category)
+const defaultConsoleWriter: ConsoleWriter = (entry) => {
+  const formatted = formatConsoleLogMessage(entry)
 
-  switch (level) {
+  switch (entry.level) {
     case LOG_LEVELS.ERROR:
       console.error(formatted)
       break
@@ -354,13 +334,11 @@ export interface BufferedConsoleWriter {
 export const createBufferedConsoleWriter = (): BufferedConsoleWriter => {
   const entries: ConsoleLogEntry[] = []
 
-  const write: ConsoleWriter = (level, message, sanitizedMeta, category) => {
+  const write: ConsoleWriter = (entry) => {
     entries.push({
-      level,
-      message,
-      sanitizedMeta,
-      category,
-      formatted: formatConsoleLogMessage(level, message, sanitizedMeta, category)
+      level: entry.level,
+      message: entry.message,
+      payload: JSON.parse(JSON.stringify(entry.payload))
     })
   }
 
@@ -368,13 +346,7 @@ export const createBufferedConsoleWriter = (): BufferedConsoleWriter => {
     entries.length = 0
   }
 
-  const snapshot = () =>
-    entries.map((entry) => ({
-      ...entry,
-      sanitizedMeta: entry.sanitizedMeta
-        ? JSON.parse(JSON.stringify(entry.sanitizedMeta))
-        : undefined
-    }))
+  const snapshot = () => entries.map((entry) => ({ ...entry, payload: { ...entry.payload } }))
 
   return { entries, write, clear, snapshot }
 }
@@ -382,10 +354,9 @@ export const createBufferedConsoleWriter = (): BufferedConsoleWriter => {
 export const writeConsoleLog = (
   level: LogLevel,
   message: string,
-  sanitizedMeta?: Record<string, unknown>,
-  category?: string
+  payload: Record<string, unknown>
 ): void => {
-  activeConsoleWriter(level, message, sanitizedMeta, category)
+  activeConsoleWriter({ level, message, payload })
 }
 
 export type { LogLevel }

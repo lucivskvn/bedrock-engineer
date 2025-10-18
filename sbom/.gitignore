@@ -1,0 +1,3 @@
+# Ignore generated SBOM artefacts; regenerate via `npm run sbom:generate`.
+*.json
+!.gitignore

@@ -1,5 +1,10 @@
 import http, { type RequestListener, type Server } from 'http'
 
+/**
+ * Options that control low-level HTTP server resource limits. These values are
+ * derived from environment variables and validated before reaching this module
+ * so the server always starts with safe defaults.
+ */
 export interface ServerHardeningOptions {
   maxHeaderBytes: number
   maxHeadersCount: number
@@ -10,6 +15,10 @@ export interface ServerHardeningOptions {
   idleSocketTimeoutMs: number
 }
 
+/**
+ * Creates a Node.js HTTP server pre-configured with defensive socket limits to
+ * reduce the blast radius of slow-loris style attacks and misbehaving clients.
+ */
 export function createHardenedServer(
   listener: RequestListener,
   options: ServerHardeningOptions

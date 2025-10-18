@@ -47,6 +47,7 @@ describe('CodeInterpreterTool Integration Tests', () => {
     const storeManager = {
       get: () => undefined as any,
       set: () => {},
+      delete: () => {},
       openInEditor: async () => {}
     }
 

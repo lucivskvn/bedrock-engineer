@@ -32,6 +32,68 @@ preload bridge.
 > (`A-Za-z0-9+_.=-`). We ignore weaker values and fall back to a securely
 > generated token to prevent accidental weakening of the local API surface.
 
+If you would prefer not to place plaintext secrets in the process environment,
+export the `API_AUTH_TOKEN_SHA256` variable with the token's hexadecimal
+SHA-256 digest instead. The backend registers the hashed value, ignores any
+plaintext `API_AUTH_TOKEN`, and compares incoming credentials by hashing the
+presented token. This keeps CI/CD logs, environment dumps, and local process
+inspectors free of the raw secret while preserving the same authentication
+semantics. The application removes the `API_AUTH_TOKEN` entry from the process
+environment and purges any stored plaintext token when a valid digest is
+present so spawned child processes cannot accidentally inherit the secret nor
+leave it persisted at rest. If the store still contains a plaintext token when
+the digest override is detected, `/healthz` reports the store source as weak to
+prompt operational cleanup.
+
+## External secrets managers
+
+When `API_AUTH_SECRET_ID` is configured you **must** set `SECRETS_DRIVER` to one
+of the supported providers. If the variable is missing the runtime records an
+error and, when possible, logs a single warning with the provider it detected
+from the surrounding environment (Vault signals take priority over AWS). The
+service refuses to contact any secrets backend until `SECRETS_DRIVER` is
+explicitly provided, keeping Zero-Trust boundaries intact and ensuring the
+health report reflects the intended provider.
+
+### AWS Secrets Manager
+
+Set `SECRETS_DRIVER=aws-secrets-manager` (or `aws`) and provide
+`API_AUTH_SECRET_ID` along with the optional `API_AUTH_SECRET_REGION` and
+`API_AUTH_SECRET_ENDPOINT` overrides. The helper honours
+`API_AUTH_SECRET_CACHE_SECONDS` to reduce API calls and surfaces structured
+errors (`retryAfterSeconds`) when the SDK is throttled. All lookups are hashed
+and audited via the `security:audit` logger.
+
+### HashiCorp Vault
+
+Set `SECRETS_DRIVER=hashicorp-vault` (or `vault`) and configure:
+
+* `SECRETS_VAULT_ADDR` – Vault base URL.
+* `SECRETS_VAULT_NAMESPACE` – optional namespace header.
+* `SECRETS_VAULT_AUTH_METHOD` – `approle` (default) or `jwt`.
+  * AppRole: `SECRETS_VAULT_APPROLE_ROLE_ID` and `SECRETS_VAULT_APPROLE_SECRET_ID`.
+  * JWT: `SECRETS_VAULT_JWT_ROLE` plus either `SECRETS_VAULT_JWT` or
+    `SECRETS_VAULT_JWT_FILE` pointing at an ephemeral OIDC token.
+* `SECRETS_VAULT_AUTH_MOUNT` – custom auth mount path when not using the
+  defaults (`auth/approle` or `auth/jwt`).
+* `SECRETS_VAULT_TOKEN_RENEW_WINDOW_SECONDS` – optional safety margin before
+  cached tokens are re-authenticated.
+* `API_AUTH_SECRET_FIELD` – optional KV field containing the JSON payload. When
+  omitted the entire `data` object is serialised.
+
+Vault logins and secret reads are hashed and written to the `security:audit`
+stream so downstream collectors can retain 90-day access logs. Any configuration
+error is logged once with a fixed reason code to keep runbooks actionable.
+
+GitHub Actions assumes the short-lived IAM role provided via repository secrets
+(`AWS_ROLE_TO_ASSUME`, `AWS_REGION`) using OpenID Connect before executing the
+verification, DAST, and deployment preparation jobs. Local development can rely
+on the same flow by exporting `AWS_PROFILE` or running `aws sts assume-role`
+manually. Rotate the IAM role at least quarterly and ensure the linked policy
+restricts access to the specific `API_AUTH_SECRET_ID` resource. For Vault flows
+issue short-lived AppRole or OIDC tokens and rotate them via the runbook in
+`docs/runbooks/rotate-secrets.md`.
+
 ## Tavily API key and endpoint validation
 
 Tavily search credentials (`tavilySearch.apikey`) are now validated before they
