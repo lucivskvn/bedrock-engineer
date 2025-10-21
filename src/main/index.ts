@@ -17,7 +17,13 @@ import {
   log,
   createCategoryLogger
 } from '../common/logger'
-import { isApiTokenStrong, normalizeApiToken, MIN_API_TOKEN_LENGTH } from '../common/security'
+import {
+  isApiTokenStrong,
+  normalizeApiToken,
+  parseSha256Digest,
+  MIN_API_TOKEN_LENGTH
+} from '../common/security'
+import { hasStoredApiTokenValue, shouldClearStoredApiToken } from './api/auth/token-utils'
 import { configureIpcSecurity, registerIpcHandlers, registerLogHandler } from './lib/ipc-handler'
 import { bedrockHandlers } from './handlers/bedrock-handlers'
 import { fileHandlers } from './handlers/file-handlers'
@@ -652,8 +658,11 @@ async function createWindow(): Promise<void> {
     }
   })
 
-  const envToken = normalizeApiToken(process.env.API_AUTH_TOKEN)
-  if (process.env.API_AUTH_TOKEN && !envToken) {
+  const envDigestResult = parseSha256Digest(process.env.API_AUTH_TOKEN_SHA256)
+  const hasEnvDigestOverride = Boolean(envDigestResult && 'digest' in envDigestResult)
+  const envToken = hasEnvDigestOverride ? null : normalizeApiToken(process.env.API_AUTH_TOKEN)
+
+  if (!hasEnvDigestOverride && process.env.API_AUTH_TOKEN && !envToken) {
     apiLogger.warn('Ignoring weak API_AUTH_TOKEN value from environment', {
       minLength: MIN_API_TOKEN_LENGTH
     })
@@ -661,29 +670,49 @@ async function createWindow(): Promise<void> {
 
   const storedTokenValue = store.get('apiAuthToken')
   const normalizedStoredToken = normalizeApiToken(storedTokenValue)
+  const hasMeaningfulStoredToken = hasStoredApiTokenValue(storedTokenValue)
+  const hasAnyStoredString = typeof storedTokenValue === 'string' && storedTokenValue.length > 0
 
   if (
-    typeof storedTokenValue === 'string' &&
-    normalizedStoredToken === null &&
-    storedTokenValue.trim().length > 0
+    (hasMeaningfulStoredToken && normalizedStoredToken === null) ||
+    (!hasMeaningfulStoredToken && hasAnyStoredString)
   ) {
     apiLogger.warn('Stored API token failed strength validation; regenerating a new token')
   }
 
   const storedToken = normalizedStoredToken ?? undefined
 
-  let apiAuthToken = envToken ?? storedToken ?? randomBytes(32).toString('hex')
+  let apiAuthToken = envToken ?? storedToken ?? null
+
+  if (!apiAuthToken) {
+    apiAuthToken = randomBytes(32).toString('hex')
+  }
 
   if (!isApiTokenStrong(apiAuthToken)) {
     apiLogger.warn('Generated API token did not meet strength requirements; regenerating')
     apiAuthToken = randomBytes(32).toString('hex')
   }
 
-  if (!storedToken || storedToken !== apiAuthToken) {
-    store.set('apiAuthToken', apiAuthToken)
+  if (hasEnvDigestOverride) {
+    if (shouldClearStoredApiToken({
+      hasEnvDigestOverride,
+      storedTokenValue
+    })) {
+      try {
+        store.delete('apiAuthToken')
+      } catch (error) {
+        apiLogger.error('Failed to clear stored API auth token after digest override', {
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+    delete process.env.API_AUTH_TOKEN
+  } else {
+    if (!storedToken || storedToken !== apiAuthToken) {
+      store.set('apiAuthToken', apiAuthToken)
+    }
+    process.env.API_AUTH_TOKEN = apiAuthToken
   }
-
-  process.env.API_AUTH_TOKEN = apiAuthToken
 
   const port = await getRandomPort()
   store.set('apiEndpoint', `http://127.0.0.1:${port}`)

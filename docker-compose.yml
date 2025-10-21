@@ -1,0 +1,18 @@
+version: '3.9'
+
+services:
+  verify:
+    build:
+      context: .
+      target: verifier
+    environment:
+      - CI=1
+    command: npm run ci:verify
+
+  runtime:
+    build:
+      context: .
+      target: runner
+    environment:
+      - NODE_ENV=production
+    command: node out/main/index.js

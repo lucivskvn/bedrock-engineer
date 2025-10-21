@@ -72,11 +72,24 @@ describe('logger utils metadata sanitisation', () => {
   })
 
   it('formats console log messages with compact JSON payloads', () => {
-    const meta = prepareLogMetadata([{ detail: 'secret' }])
-    const formatted = formatConsoleLogMessage('error', 'Operation failed', meta, 'scheduler')
+    const payload = {
+      category: 'scheduler',
+      detail: '[string length=6]'
+    }
+    const formatted = formatConsoleLogMessage({
+      level: 'error',
+      message: 'Operation failed',
+      payload
+    })
 
-    expect(formatted).toContain('[ERROR] [scheduler] Operation failed')
-    expect(formatted).toContain('"detail":"[string length=6]"')
+    expect(() => JSON.parse(formatted)).not.toThrow()
+    const parsed = JSON.parse(formatted)
+    expect(parsed).toMatchObject({
+      level: 'error',
+      message: 'Operation failed',
+      category: 'scheduler',
+      detail: '[string length=6]'
+    })
   })
 
   it('supports swapping the console writer for buffered assertions', () => {
@@ -84,17 +97,20 @@ describe('logger utils metadata sanitisation', () => {
     setConsoleWriter(buffer.write)
 
     try {
-      writeConsoleLog('warn', 'Action skipped', { reason: '[string length=4]' }, 'tests')
+      writeConsoleLog('warn', 'Action skipped', {
+        reason: '[string length=4]',
+        category: 'tests'
+      })
 
       expect(buffer.entries).toHaveLength(1)
       expect(buffer.entries[0]).toMatchObject({
         level: 'warn',
-        message: 'Action skipped',
+        message: 'Action skipped'
+      })
+      expect(buffer.entries[0].payload).toEqual({
+        reason: '[string length=4]',
         category: 'tests'
       })
-      expect(buffer.entries[0].formatted).toBe(
-        '[WARN] [tests] Action skipped {"reason":"[string length=4]"}'
-      )
 
       buffer.clear()
       expect(buffer.entries).toHaveLength(0)

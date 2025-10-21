@@ -1,0 +1,78 @@
+{
+  "title": "Bedrock Engineer API Overview",
+  "uid": "bedrock-api-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Availability burn rate",
+      "targets": [
+        {
+          "expr": "sum_over_time((1 - sum(rate(http_requests_total{status=\"5xx\",job=\"bedrock-engineer\"}[5m])) / sum(rate(http_requests_total{job=\"bedrock-engineer\"}[5m])))[1h:1m])",
+          "legendFormat": "burn"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.25 },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 latency (/converse/stream)",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"bedrock-engineer\",route=\"/converse/stream\"}[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.35 },
+              { "color": "red", "value": 0.45 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Secret provider failures",
+      "targets": [
+        {
+          "expr": "sum(increase(secret_provider_failures_total[5m]))",
+          "legendFormat": "failures"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}

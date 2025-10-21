@@ -1,10 +1,10 @@
-import { createLogger } from 'winston'
+import { createLogger, format } from 'winston'
 import path from 'path'
 import { LogLevel, LoggerConfig, defaultLoggerConfig } from './config'
 import { createFileTransport, getLogFilePaths } from './transports/file'
 import { createConsoleTransport } from './transports/console'
-import { mainLogFormat } from './formatters'
 import { prepareLogMetadata, writeConsoleLog } from './utils'
+import { getLogContext } from './context'
 
 // Current logger configuration instance
 let loggerConfig = { ...defaultLoggerConfig }
@@ -34,10 +34,24 @@ export const createLoggerInstance = () => {
     transports.push(createConsoleTransport(loggerConfig))
   }
 
+  const jsonLogFormat = format.combine(
+    format.timestamp(),
+    format.errors({ stack: true }),
+    format((info) => {
+      const { message, ...rest } = info
+      return {
+        ...rest,
+        message,
+        timestamp: info.timestamp
+      }
+    })(),
+    format.json()
+  )
+
   // Create and return the logger instance
   return createLogger({
     level: loggerConfig.level,
-    format: mainLogFormat,
+    format: jsonLogFormat,
     defaultMeta: { process: 'main' },
     transports
   })
@@ -71,23 +85,36 @@ const emitLog = (
   category?: string
 ) => {
   const sanitizedMeta = prepareLogMetadata(meta, {
-    excludeKeys: category ? ['category'] : undefined
+    excludeKeys: category ? ['category'] : undefined,
+    preserveKeys: ['correlationId', 'traceId', 'spanId']
   })
 
-  if (logger) {
-    const payload: Record<string, unknown> = sanitizedMeta
-      ? { ...sanitizedMeta }
-      : {}
+  const basePayload: Record<string, unknown> = sanitizedMeta ? { ...sanitizedMeta } : {}
 
-    if (category) {
-      payload.category = category
+  if (category) {
+    basePayload.category = category
+  }
+
+  const context = getLogContext()
+  if (context) {
+    basePayload.correlationId = context.correlationId
+    if (context.traceId) {
+      basePayload.traceId = context.traceId
     }
+    if (context.spanId) {
+      basePayload.spanId = context.spanId
+    }
+    if (context.attributes && Object.keys(context.attributes).length > 0) {
+      basePayload.contextAttributes = prepareLogMetadata([context.attributes])?.meta_0 ?? {}
+    }
+  }
 
-    logger.log({ level, message, ...payload })
+  if (logger) {
+    logger.log({ level, message, ...basePayload })
     return
   }
 
-  writeConsoleLog(level, message, sanitizedMeta, category)
+  writeConsoleLog(level, message, basePayload)
 }
 
 /**
@@ -133,6 +160,15 @@ export const createCategoryLogger = (category: string) => {
     }
   }
 }
+
+/**
+ * Lightweight type alias that captures the logging surface returned by
+ * {@link createCategoryLogger}. The alias makes it possible to describe
+ * dependencies on category-aware loggers without importing `winston`
+ * specific types in downstream modules, which keeps our API adapters
+ * platform-agnostic and easier to mock in tests.
+ */
+export type CategoryLogger = ReturnType<typeof createCategoryLogger>
 
 /**
  * Get current logger configuration

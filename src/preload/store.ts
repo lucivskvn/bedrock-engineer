@@ -59,7 +59,7 @@ const createStoreValidationError = (
     metadata
   })
 
-type StoreStateOperation = 'get' | 'set' | 'open_in_editor'
+type StoreStateOperation = 'get' | 'set' | 'delete' | 'open_in_editor'
 
 const createStoreStateError = (operation: StoreStateOperation, key?: string) =>
   createStructuredError({
@@ -1063,6 +1063,28 @@ export const store = {
       return electronStore.set('apiAuthToken', normalized)
     }
     return electronStore.set(key, value)
+  },
+  delete<T extends Key>(key: T): void {
+    if (!electronStore) {
+      throw createStoreStateError('delete', key as string)
+    }
+
+    if (key === 'aws') {
+      cachedCredentials = {
+        accessKeyId: '',
+        secretAccessKey: '',
+        sessionToken: undefined
+      }
+      electronStore.delete('aws')
+      return
+    }
+
+    if (key === 'apiAuthToken') {
+      electronStore.delete('apiAuthToken')
+      return
+    }
+
+    electronStore.delete(key as string)
   },
   async openInEditor(): Promise<void> {
     if (!electronStore) {
