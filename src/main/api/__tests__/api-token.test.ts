@@ -332,12 +332,103 @@ describe('getApiAuthTokenHealthComponent', () => {
     )
   })
 
+  test('suggests AWS secrets driver when secret id is an ARN', async () => {
+    const hashedToken = createHash('sha256').update(strongToken).digest('hex')
+    process.env.API_AUTH_SECRET_ID =
+      'arn:aws:secretsmanager:us-west-2:123456789012:secret:api/token-AbCdEf'
+    mockFetchSecretString.mockResolvedValue(
+      JSON.stringify({ tokens: [{ sha256: hashedToken, role: 'operator' }] })
+    )
+    mockStoreModule(null, Promise.resolve())
+
+    const module = await loadAuthModule()
+    const health = await module.getApiAuthTokenHealthComponent()
+
+    expect(mockFetchSecretString).not.toHaveBeenCalled()
+    expect(health.status).toBe(HEALTH_STATUS.ERROR)
+    expect(health.metadata?.secretDriver).toBeNull()
+    expect(health.metadata?.secretStatus).toBe('error')
+    expect(health.metadata?.suggestedSecretDriver).toBe('aws-secrets-manager')
+    expect(health.metadata?.suggestedSecretDriverReason).toBe('aws_configuration_detected')
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Secrets driver not configured for API auth token retrieval',
+      expect.objectContaining({ secretIdHash: expect.any(String) })
+    )
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Secrets driver not configured; detected potential secret manager configuration',
+      expect.objectContaining({
+        detectedDriver: 'aws-secrets-manager',
+        detectionReason: 'aws_configuration_detected'
+      })
+    )
+  })
+
+  test('still suggests AWS secrets driver for slash-delimited secret names', async () => {
+    const hashedToken = createHash('sha256').update(strongToken).digest('hex')
+    process.env.API_AUTH_SECRET_ID = 'prod/service/api-token'
+    mockFetchSecretString.mockResolvedValue(
+      JSON.stringify({ tokens: [{ sha256: hashedToken, role: 'operator' }] })
+    )
+    mockStoreModule(null, Promise.resolve())
+
+    const module = await loadAuthModule()
+    const health = await module.getApiAuthTokenHealthComponent()
+
+    expect(mockFetchSecretString).not.toHaveBeenCalled()
+    expect(health.status).toBe(HEALTH_STATUS.ERROR)
+    expect(health.metadata?.secretDriver).toBeNull()
+    expect(health.metadata?.secretStatus).toBe('error')
+    expect(health.metadata?.suggestedSecretDriver).toBe('aws-secrets-manager')
+    expect(health.metadata?.suggestedSecretDriverReason).toBe('aws_configuration_detected')
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Secrets driver not configured for API auth token retrieval',
+      expect.objectContaining({ secretIdHash: expect.any(String) })
+    )
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Secrets driver not configured; detected potential secret manager configuration',
+      expect.objectContaining({
+        detectedDriver: 'aws-secrets-manager',
+        detectionReason: 'aws_configuration_detected'
+      })
+    )
+  })
+
   test('suggests Vault secrets driver when Vault configuration is present', async () => {
     const hashedToken = createHash('sha256').update(strongToken).digest('hex')
     process.env.API_AUTH_SECRET_ID = 'kv/data/api'
     process.env.SECRETS_VAULT_ADDR = 'https://vault.internal'
     process.env.SECRETS_VAULT_APPROLE_ROLE_ID = 'role-id'
     process.env.SECRETS_VAULT_APPROLE_SECRET_ID = 'secret-id'
+    mockFetchSecretString.mockResolvedValue(
+      JSON.stringify({ tokens: [{ sha256: hashedToken, role: 'observer' }] })
+    )
+    mockStoreModule(null, Promise.resolve())
+
+    const module = await loadAuthModule()
+    const health = await module.getApiAuthTokenHealthComponent()
+
+    expect(mockFetchSecretString).not.toHaveBeenCalled()
+    expect(health.status).toBe(HEALTH_STATUS.ERROR)
+    expect(health.metadata?.secretDriver).toBeNull()
+    expect(health.metadata?.secretStatus).toBe('error')
+    expect(health.metadata?.suggestedSecretDriver).toBe('hashicorp-vault')
+    expect(health.metadata?.suggestedSecretDriverReason).toBe('vault_configuration_detected')
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Secrets driver not configured for API auth token retrieval',
+      expect.objectContaining({ secretIdHash: expect.any(String) })
+    )
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Secrets driver not configured; detected potential secret manager configuration',
+      expect.objectContaining({
+        detectedDriver: 'hashicorp-vault',
+        detectionReason: 'vault_configuration_detected'
+      })
+    )
+  })
+
+  test('suggests Vault secrets driver when secret id resembles a Vault path', async () => {
+    const hashedToken = createHash('sha256').update(strongToken).digest('hex')
+    process.env.API_AUTH_SECRET_ID = 'kv/data/api'
     mockFetchSecretString.mockResolvedValue(
       JSON.stringify({ tokens: [{ sha256: hashedToken, role: 'observer' }] })
     )

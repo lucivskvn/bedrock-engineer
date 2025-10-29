@@ -193,11 +193,15 @@ container image scanning via Trivy. The `verify` and `dast` jobs assume an IAM
 role through GitHub’s OpenID Connect integration using the repository secrets
 `AWS_ROLE_TO_ASSUME` and `AWS_REGION`. Provide the appropriate `SECRETS_DRIVER`
 value for each environment via encrypted secrets or environment configuration.
-When the variable is omitted the runtime inspects the environment and logs a
-warning before defaulting to AWS Secrets Manager (or Vault when Vault settings
-are detected). Set the value explicitly to silence the warning and guarantee
-the intended provider. The workflow sets `SECRETS_DRIVER=aws-secrets-manager`
-by default; adjust the value for Vault-backed staging or production projects.
+When the variable is omitted the runtime inspects both the surrounding
+environment and the `API_AUTH_SECRET_ID` format, then logs a warning with the
+most likely provider (Vault signals and KV-style mounts—paths containing
+segments such as `kv/` or `secret/data/`—take priority over AWS; AWS ARNs and
+slash-delimited names without Vault markers fall back to Secrets Manager). Set
+the value explicitly to silence the warning and guarantee the intended
+provider. The workflow sets
+`SECRETS_DRIVER=aws-secrets-manager` by default; adjust the value for
+Vault-backed staging or production projects.
 Electron build artefacts are cached with `actions/cache@v4` to keep rebuild
 times predictable across runs.
 
@@ -229,9 +233,12 @@ header or a Bearer token. Tokens can be defined through:
   values are `aws-secrets-manager` (or `aws`) and `hashicorp-vault` (or `vault`).
   The runtime refuses to contact any secret manager when this variable is
   missing; it emits an error and, if possible, suggests the most likely provider
-  inferred from the environment (Vault signals take priority over AWS). Always
-  set the variable explicitly in production environments to keep Zero-Trust
-  guarantees intact and document the intended backend.
+  inferred from the environment or the secret identifier (Vault signals and
+  mounts whose path segments include markers such as `kv/` or `secret/data/`
+  take priority over AWS; AWS ARNs and slash-delimited names without Vault
+  markers map to Secrets Manager). Always set the variable explicitly in
+  production environments to keep Zero-Trust guarantees intact and document the
+  intended backend.
   * AWS Secrets Manager: optionally supply `API_AUTH_SECRET_REGION` and
     `API_AUTH_SECRET_ENDPOINT` if you use a regional or VPC endpoint.
   * HashiCorp Vault: configure `SECRETS_VAULT_ADDR`, `SECRETS_VAULT_NAMESPACE`
