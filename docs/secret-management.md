@@ -50,10 +50,12 @@ prompt operational cleanup.
 When `API_AUTH_SECRET_ID` is configured you **must** set `SECRETS_DRIVER` to one
 of the supported providers. If the variable is missing the runtime records an
 error and, when possible, logs a single warning with the provider it detected
-from the surrounding environment (Vault signals take priority over AWS). The
-service refuses to contact any secrets backend until `SECRETS_DRIVER` is
-explicitly provided, keeping Zero-Trust boundaries intact and ensuring the
-health report reflects the intended provider.
+from the surrounding environment or the secret identifier (Vault signals and
+mounts whose path segments include markers such as `kv/` or `secret/data/` take
+priority over AWS; AWS ARNs and slash-delimited names without Vault markers map
+to Secrets Manager). The service refuses to contact any secrets backend until
+`SECRETS_DRIVER` is explicitly provided, keeping Zero-Trust boundaries intact
+and ensuring the health report reflects the intended provider.
 
 ### AWS Secrets Manager
 

@@ -125,7 +125,42 @@ function detectSecretsDriverFromEnvironment(): DetectedSecretsDriver | null {
     return { driver: 'aws-secrets-manager', reason: 'aws_configuration_detected' }
   }
 
-  return null
+  const secretId = getTrimmedEnv('API_AUTH_SECRET_ID')
+  if (!secretId) {
+    return null
+  }
+
+  if (secretId.startsWith('arn:aws:')) {
+    return { driver: 'aws-secrets-manager', reason: 'aws_configuration_detected' }
+  }
+
+  const segments = secretId
+    .toLowerCase()
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]
+
+    if (segment.startsWith('kv')) {
+      return { driver: 'hashicorp-vault', reason: 'vault_configuration_detected' }
+    }
+
+    if (segment === 'cubbyhole' || segment === 'sys' || segment === 'database' || segment === 'transit') {
+      return { driver: 'hashicorp-vault', reason: 'vault_configuration_detected' }
+    }
+
+    if (
+      segment === 'secret' &&
+      index + 1 < segments.length &&
+      (segments[index + 1] === 'data' || segments[index + 1] === 'metadata')
+    ) {
+      return { driver: 'hashicorp-vault', reason: 'vault_configuration_detected' }
+    }
+  }
+
+  return { driver: 'aws-secrets-manager', reason: 'aws_configuration_detected' }
 }
 
 function resolveSecretsDriver(value: string | null): SecretsDriver | null {
@@ -411,7 +446,7 @@ async function loadSecretTokens(): Promise<SecretTokenResolution> {
   const explicitDriver = resolveSecretsDriver(normaliseSecretsDriver(process.env.SECRETS_DRIVER))
   const secretIdHash = computeFingerprint(secretId).slice(0, 16)
 
-  let configuredDriver: SecretsDriver | null = explicitDriver
+  const configuredDriver: SecretsDriver | null = explicitDriver
   let autodetectedDriver: DetectedSecretsDriver | null = null
 
   if (!configuredDriver) {
