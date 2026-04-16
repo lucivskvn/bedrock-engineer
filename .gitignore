@@ -10,4 +10,4 @@ ash_output/
 .bedrock-engineer/workspaces/
 
 test-outputs
-
+coverage/

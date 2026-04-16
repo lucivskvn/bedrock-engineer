@@ -211,6 +211,64 @@ const MODEL_REGISTRY: ModelConfig[] = [
     }
   },
 
+  // Claude Sonnet 4
+  {
+    baseId: 'claude-sonnet-4-20250514-v1:0',
+    name: 'Claude Sonnet 4',
+    provider: 'anthropic',
+    category: 'text',
+    toolUse: true,
+    maxTokensLimit: 64000,
+    supportsThinking: true,
+    inferenceProfiles: [
+      {
+        type: 'regional-us',
+        prefix: 'us',
+        regions: ['us-east-1', 'us-east-2', 'us-west-2'],
+        displaySuffix: '(US)'
+      }
+    ],
+    pricing: {
+      input: 0.003,
+      output: 0.015,
+      cacheRead: 0.0003,
+      cacheWrite: 0.00375
+    },
+    cache: {
+      supported: true,
+      cacheableFields: ['messages', 'system', 'tools']
+    }
+  },
+
+  // Claude Opus 4
+  {
+    baseId: 'claude-opus-4-20250514-v1:0',
+    name: 'Claude Opus 4',
+    provider: 'anthropic',
+    category: 'text',
+    toolUse: true,
+    maxTokensLimit: 32000,
+    supportsThinking: true,
+    inferenceProfiles: [
+      {
+        type: 'regional-us',
+        prefix: 'us',
+        regions: ['us-east-1', 'us-east-2', 'us-west-2'],
+        displaySuffix: '(US)'
+      }
+    ],
+    pricing: {
+      input: 0.015,
+      output: 0.075,
+      cacheRead: 0.0015,
+      cacheWrite: 0.01875
+    },
+    cache: {
+      supported: true,
+      cacheableFields: ['messages', 'system', 'tools']
+    }
+  },
+
   // Claude Sonnet 4.5
   {
     baseId: 'claude-sonnet-4-5-20250929-v1:0',
