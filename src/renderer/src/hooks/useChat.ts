@@ -52,7 +52,7 @@ export const useChat = (props: UseChatProps) => {
       try {
         for await (const json of generator) {
           lastDataTime = Date.now() // Update last data time on each chunk
-          
+
           if (json.contentBlockDelta) {
             const text = json.contentBlockDelta.delta?.text
             if (text) {
@@ -92,5 +92,14 @@ export const useChat = (props: UseChatProps) => {
     setLatestText('')
   }
 
-  return { messages, handleSubmit, loading, initChat, lastText, setLoading, stopReason, waitingForResponse }
+  return {
+    messages,
+    handleSubmit,
+    loading,
+    initChat,
+    lastText,
+    setLoading,
+    stopReason,
+    waitingForResponse
+  }
 }

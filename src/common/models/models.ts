@@ -102,7 +102,6 @@ export interface ModelConfig {
  * Unified model registry
  */
 const MODEL_REGISTRY: ModelConfig[] = [
- 
   // Claude Haiku 4.5
   {
     baseId: 'claude-haiku-4-5-20251001-v1:0',
@@ -212,8 +211,6 @@ const MODEL_REGISTRY: ModelConfig[] = [
     }
   },
 
-  
-
   // Claude Sonnet 4.5
   {
     baseId: 'claude-sonnet-4-5-20250929-v1:0',
@@ -269,7 +266,6 @@ const MODEL_REGISTRY: ModelConfig[] = [
       cacheableFields: ['messages', 'system', 'tools']
     }
   },
-
 
   // Claude Sonnet 4.6
   {

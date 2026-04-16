@@ -33,7 +33,8 @@ export const TagsSection: React.FC<TagsSectionProps> = ({ tags, availableTags = 
     })
   }, [query, availableTags, tags])
 
-  const handleAddTag = (newTag: string) => {
+  const handleAddTag = (newTag: string | null) => {
+    if (!newTag) return
     const normalizedNewTag = normalizeTag(newTag)
     if (normalizedNewTag && !tags.map(normalizeTag).includes(normalizedNewTag)) {
       onChange([...tags, normalizedNewTag])

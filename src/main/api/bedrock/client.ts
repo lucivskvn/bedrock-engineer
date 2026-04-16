@@ -33,14 +33,15 @@ export function createRuntimeClient(awsCredentials: AWSCredentials) {
   const httpOptions = createHttpOptions(awsCredentials)
 
   // Add default timeout configuration if no custom handler is provided
-  const defaultHttpOptions = Object.keys(httpOptions).length === 0 
-    ? {
-        requestHandler: new NodeHttpHandler({
-          requestTimeout: 300000, // 5 minutes for long-running operations
-          connectionTimeout: 30000 // 30 seconds for connection establishment
-        })
-      }
-    : httpOptions
+  const defaultHttpOptions =
+    Object.keys(httpOptions).length === 0
+      ? {
+          requestHandler: new NodeHttpHandler({
+            requestTimeout: 300000, // 5 minutes for long-running operations
+            connectionTimeout: 30000 // 30 seconds for connection establishment
+          })
+        }
+      : httpOptions
 
   if (useProfile) {
     return new BedrockRuntimeClient({
@@ -81,14 +82,15 @@ export function createAgentRuntimeClient(awsCredentials: AWSCredentials) {
   const httpOptions = createHttpOptions(awsCredentials)
 
   // Add default timeout configuration if no custom handler is provided
-  const defaultHttpOptions = Object.keys(httpOptions).length === 0 
-    ? {
-        requestHandler: new NodeHttpHandler({
-          requestTimeout: 300000, // 5 minutes for long-running agent operations
-          connectionTimeout: 30000 // 30 seconds for connection establishment
-        })
-      }
-    : httpOptions
+  const defaultHttpOptions =
+    Object.keys(httpOptions).length === 0
+      ? {
+          requestHandler: new NodeHttpHandler({
+            requestTimeout: 300000, // 5 minutes for long-running agent operations
+            connectionTimeout: 30000 // 30 seconds for connection establishment
+          })
+        }
+      : httpOptions
 
   if (useProfile) {
     return new BedrockAgentRuntimeClient({
