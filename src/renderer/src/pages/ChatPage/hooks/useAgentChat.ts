@@ -349,47 +349,49 @@ export const useAgentChat = (
     const WAIT_THRESHOLD = 10000 // 10 seconds without data = waiting state
     const TIMEOUT_MS = requestTimeout * 60 * 1000 // Convert minutes to milliseconds
     const HEARTBEAT_INTERVAL = 30000 // 30 seconds heartbeat check
-    
+
     const checkWaitingState = setInterval(() => {
       const timeSinceLastData = Date.now() - lastDataTime
       const isWaiting = timeSinceLastData > WAIT_THRESHOLD
       setWaitingForResponse(isWaiting)
-      
+
       if (isWaiting) {
         const remainingTime = Math.max(0, TIMEOUT_MS - timeSinceLastData)
         setTimeoutCountdown(Math.floor(remainingTime / 1000))
-        
+
         // Abort when timeout is reached
         if (remainingTime === 0 && abortController.current && !timedOut) {
           timedOut = true
           console.log(`Request timed out after ${requestTimeout} minutes - aborting request`)
-          
+
           // Add timeout message to chat immediately
-          const timeoutMessage = t('Request timed out after {{timeout}} minutes', { timeout: requestTimeout })
+          const timeoutMessage = t('Request timed out after {{timeout}} minutes', {
+            timeout: requestTimeout
+          })
           const timeoutChatMessage: IdentifiableMessage = {
             id: generateMessageId(),
             role: 'assistant' as ConversationRole,
             content: [{ text: timeoutMessage }]
           }
           setMessages((prev) => [...prev, timeoutChatMessage])
-          
+
           abortController.current.abort()
         }
       }
     }, 1000)
-    
+
     // Heartbeat check every 30 seconds
     const heartbeatCheck = setInterval(() => {
       if (!requestCompleted && abortController.current) {
         const timeSinceLastData = Date.now() - lastDataTime
         // If no data for 30+ seconds, verify connection is still alive
         if (timeSinceLastData >= HEARTBEAT_INTERVAL) {
-          setHeartbeatCount(prev => prev + 1)
+          setHeartbeatCount((prev) => prev + 1)
           console.log(`Heartbeat: ${Math.floor(timeSinceLastData / 1000)}s since last data`)
         }
       }
     }, HEARTBEAT_INTERVAL)
-    
+
     try {
       // 既存の通信があれば中断
       if (abortController.current) {
@@ -454,143 +456,107 @@ export const useAgentChat = (
       try {
         for await (const json of generator) {
           lastDataTime = Date.now() // Update last data time on each chunk
-          
+
           if (json.messageStart) {
-          role = json.messageStart.role ?? 'assistant' // デフォルト値を設定
-          messageStart = true
-        } else if (json.messageStop) {
-          if (!messageStart) {
-            console.warn('messageStop without messageStart')
-            console.log(messages)
-            await streamChat(props, currentMessages)
-            return
-          }
-          // 新しいメッセージIDを生成
-          const messageId = generateMessageId()
-          const newMessage: IdentifiableMessage = { role, content, id: messageId }
+            role = json.messageStart.role ?? 'assistant' // デフォルト値を設定
+            messageStart = true
+          } else if (json.messageStop) {
+            if (!messageStart) {
+              console.warn('messageStop without messageStart')
+              console.log(messages)
+              await streamChat(props, currentMessages)
+              return
+            }
+            // 新しいメッセージIDを生成
+            const messageId = generateMessageId()
+            const newMessage: IdentifiableMessage = { role, content, id: messageId }
 
-          // アシスタントメッセージの場合、最後のメッセージIDを保持
-          if (role === 'assistant') {
-            lastAssistantMessageId.current = messageId
-          }
-
-          // UI表示のために即時メッセージを追加
-          setMessages([...currentMessages, newMessage])
-          currentMessages.push(newMessage)
-
-          // メッセージ停止時点では永続化せず、後のメタデータ処理で永続化する
-          // この時点ではまだメタデータが来ていない可能性があるため
-
-          stopReason = json.messageStop.stopReason
-        } else if (json.contentBlockStart) {
-          toolUse = json.contentBlockStart.start?.toolUse
-        } else if (json.contentBlockStop) {
-          if (toolUse) {
-            let parseInput: any
-            // 空文字列の場合は空オブジェクトを使用（JSONパースエラーとしない）
-            if (input === '' || input === '""' || input === "''") {
-              parseInput = {}
-            } else {
-              try {
-                parseInput = JSON.parse(input)
-              } catch (e) {
-                parseInput = {
-                  __jsonParseError: true,
-                  originalInput: input,
-                  maxTokens: inferenceParams.maxTokens,
-                  error:
-                    (e instanceof Error ? e.message : 'JSON parse failed') +
-                    '\n JSON parsing failed. This error might have occurred because the token limit (character count) was exceeded while the AI was trying to create the input JSON for tool use. \nThe output needs to fit within the maxTokens limit.'
-                }
-              }
+            // アシスタントメッセージの場合、最後のメッセージIDを保持
+            if (role === 'assistant') {
+              lastAssistantMessageId.current = messageId
             }
 
-            content.push({
-              toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: parseInput }
-            })
-          } else {
-            if (s.length > 0) {
-              const getReasoningBlock = () => {
-                if (reasoningContentText.length > 0) {
-                  return {
-                    reasoningContent: {
-                      reasoningText: {
-                        text: reasoningContentText,
-                        signature: reasoningContentSignature
-                      }
-                    }
-                  }
-                } else if (reasoningContentSignature.length > 0) {
-                  return {
-                    reasoningContent: {
-                      redactedContent: redactedContent
-                    }
-                  }
-                } else {
-                  return null
-                }
-              }
+            // UI表示のために即時メッセージを追加
+            setMessages([...currentMessages, newMessage])
+            currentMessages.push(newMessage)
 
-              const reasoningBlock = getReasoningBlock()
-              const contentBlocks = reasoningBlock ? [reasoningBlock, { text: s }] : [{ text: s }]
-              content.push(...contentBlocks)
-            }
-          }
-          input = ''
-          setReasoning(false)
-        } else if (json.contentBlockDelta) {
-          const text = json.contentBlockDelta.delta?.text
-          if (text) {
-            s = s + text
+            // メッセージ停止時点では永続化せず、後のメタデータ処理で永続化する
+            // この時点ではまだメタデータが来ていない可能性があるため
 
-            const getContentBlocks = () => {
-              if (redactedContent) {
-                return [
-                  {
-                    reasoningContent: {
-                      redactedContent: redactedContent
-                    }
-                  },
-                  { text: s }
-                ]
-              } else if (reasoningContentText.length > 0) {
-                return [
-                  {
-                    reasoningContent: {
-                      reasoningText: {
-                        text: reasoningContentText,
-                        signature: reasoningContentSignature
-                      }
-                    }
-                  },
-                  { text: s }
-                ]
+            stopReason = json.messageStop.stopReason
+          } else if (json.contentBlockStart) {
+            toolUse = json.contentBlockStart.start?.toolUse
+          } else if (json.contentBlockStop) {
+            if (toolUse) {
+              let parseInput: any
+              // 空文字列の場合は空オブジェクトを使用（JSONパースエラーとしない）
+              if (input === '' || input === '""' || input === "''") {
+                parseInput = {}
               } else {
-                return [{ text: s }]
+                try {
+                  parseInput = JSON.parse(input)
+                } catch (e) {
+                  parseInput = {
+                    __jsonParseError: true,
+                    originalInput: input,
+                    maxTokens: inferenceParams.maxTokens,
+                    error:
+                      (e instanceof Error ? e.message : 'JSON parse failed') +
+                      '\n JSON parsing failed. This error might have occurred because the token limit (character count) was exceeded while the AI was trying to create the input JSON for tool use. \nThe output needs to fit within the maxTokens limit.'
+                  }
+                }
+              }
+
+              content.push({
+                toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: parseInput }
+              })
+            } else {
+              if (s.length > 0) {
+                const getReasoningBlock = () => {
+                  if (reasoningContentText.length > 0) {
+                    return {
+                      reasoningContent: {
+                        reasoningText: {
+                          text: reasoningContentText,
+                          signature: reasoningContentSignature
+                        }
+                      }
+                    }
+                  } else if (reasoningContentSignature.length > 0) {
+                    return {
+                      reasoningContent: {
+                        redactedContent: redactedContent
+                      }
+                    }
+                  } else {
+                    return null
+                  }
+                }
+
+                const reasoningBlock = getReasoningBlock()
+                const contentBlocks = reasoningBlock ? [reasoningBlock, { text: s }] : [{ text: s }]
+                content.push(...contentBlocks)
               }
             }
+            input = ''
+            setReasoning(false)
+          } else if (json.contentBlockDelta) {
+            const text = json.contentBlockDelta.delta?.text
+            if (text) {
+              s = s + text
 
-            const contentBlocks = getContentBlocks()
-            setMessages([...currentMessages, { role, content: contentBlocks }])
-          }
-
-          const reasoningContent = json.contentBlockDelta.delta?.reasoningContent
-          if (reasoningContent && supportsThinking) {
-            setReasoning(true)
-            if (reasoningContent?.text || reasoningContent?.signature) {
-              reasoningContentText = reasoningContentText + (reasoningContent?.text || '')
-              reasoningContentSignature = reasoningContent?.signature || ''
-
-              // 最新のreasoningTextを状態として保持
-              if (reasoningContent?.text) {
-                setLatestReasoningText(reasoningContentText)
-              }
-
-              setMessages([
-                ...currentMessages,
-                {
-                  role: 'assistant',
-                  content: [
+              const getContentBlocks = () => {
+                if (redactedContent) {
+                  return [
+                    {
+                      reasoningContent: {
+                        redactedContent: redactedContent
+                      }
+                    },
+                    { text: s }
+                  ]
+                } else if (reasoningContentText.length > 0) {
+                  return [
                     {
                       reasoningContent: {
                         reasoningText: {
@@ -601,157 +567,193 @@ export const useAgentChat = (
                     },
                     { text: s }
                   ]
+                } else {
+                  return [{ text: s }]
                 }
-              ])
-            } else if (reasoningContent.redactedContent) {
-              redactedContent = reasoningContent.redactedContent
+              }
+
+              const contentBlocks = getContentBlocks()
+              setMessages([...currentMessages, { role, content: contentBlocks }])
+            }
+
+            const reasoningContent = json.contentBlockDelta.delta?.reasoningContent
+            if (reasoningContent && supportsThinking) {
+              setReasoning(true)
+              if (reasoningContent?.text || reasoningContent?.signature) {
+                reasoningContentText = reasoningContentText + (reasoningContent?.text || '')
+                reasoningContentSignature = reasoningContent?.signature || ''
+
+                // 最新のreasoningTextを状態として保持
+                if (reasoningContent?.text) {
+                  setLatestReasoningText(reasoningContentText)
+                }
+
+                setMessages([
+                  ...currentMessages,
+                  {
+                    role: 'assistant',
+                    content: [
+                      {
+                        reasoningContent: {
+                          reasoningText: {
+                            text: reasoningContentText,
+                            signature: reasoningContentSignature
+                          }
+                        }
+                      },
+                      { text: s }
+                    ]
+                  }
+                ])
+              } else if (reasoningContent.redactedContent) {
+                redactedContent = reasoningContent.redactedContent
+                setMessages([
+                  ...currentMessages,
+                  {
+                    role: 'assistant',
+                    content: [
+                      {
+                        reasoningContent: {
+                          redactedContent: reasoningContent.redactedContent
+                        }
+                      },
+                      { text: s }
+                    ]
+                  }
+                ])
+              }
+            }
+
+            if (toolUse) {
+              input = input + json.contentBlockDelta.delta?.toolUse?.input
+
+              const getContentBlocks = () => {
+                if (redactedContent) {
+                  return [
+                    {
+                      reasoningContent: {
+                        redactedContent: redactedContent
+                      }
+                    },
+                    { text: s },
+                    {
+                      toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
+                    }
+                  ]
+                } else if (reasoningContentText.length > 0) {
+                  return [
+                    {
+                      reasoningContent: {
+                        reasoningText: {
+                          text: reasoningContentText,
+                          signature: reasoningContentSignature
+                        }
+                      }
+                    },
+                    { text: s },
+                    {
+                      toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
+                    }
+                  ]
+                } else {
+                  return [
+                    { text: s },
+                    {
+                      toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
+                    }
+                  ]
+                }
+              }
+
               setMessages([
                 ...currentMessages,
                 {
-                  role: 'assistant',
-                  content: [
-                    {
-                      reasoningContent: {
-                        redactedContent: reasoningContent.redactedContent
-                      }
-                    },
-                    { text: s }
-                  ]
+                  role,
+                  content: getContentBlocks()
                 }
               ])
             }
-          }
+          } else if (json.metadata) {
+            // Metadataを処理
+            const metadata: IdentifiableMessage['metadata'] = {
+              converseMetadata: {},
+              sessionCost: undefined
+            }
+            metadata.converseMetadata = json.metadata
 
-          if (toolUse) {
-            input = input + json.contentBlockDelta.delta?.toolUse?.input
+            let sessionCost: number
+            // モデルIDがある場合、コストを計算
+            if (
+              modelId &&
+              metadata.converseMetadata.usage &&
+              metadata.converseMetadata.usage.inputTokens &&
+              metadata.converseMetadata.usage.outputTokens
+            ) {
+              try {
+                const pricingCalculator = new PricingCalculator(modelId)
+                sessionCost = pricingCalculator.calculateTotalCost(
+                  metadata.converseMetadata.usage.inputTokens,
+                  metadata.converseMetadata.usage.outputTokens,
+                  metadata.converseMetadata.usage.cacheReadInputTokens || 0,
+                  metadata.converseMetadata.usage.cacheWriteInputTokens || 0
+                )
+                metadata.sessionCost = sessionCost
+              } catch (error) {
+                console.error('Error calculating cost:', error)
+              }
+            }
 
-            const getContentBlocks = () => {
-              if (redactedContent) {
-                return [
-                  {
-                    reasoningContent: {
-                      redactedContent: redactedContent
-                    }
-                  },
-                  { text: s },
-                  {
-                    toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
-                  }
-                ]
-              } else if (reasoningContentText.length > 0) {
-                return [
-                  {
-                    reasoningContent: {
-                      reasoningText: {
-                        text: reasoningContentText,
-                        signature: reasoningContentSignature
+            // 直近のアシスタントメッセージにメタデータを関連付ける
+            if (lastAssistantMessageId.current) {
+              // メッセージ配列からIDが一致するメッセージを見つけてメタデータを追加
+              setMessages((prevMessages) => {
+                return prevMessages.map((msg) => {
+                  if (msg.id === lastAssistantMessageId.current) {
+                    return {
+                      ...msg,
+                      metadata: {
+                        ...msg.metadata,
+                        converseMetadata: metadata.converseMetadata,
+                        sessionCost: metadata.sessionCost
                       }
                     }
-                  },
-                  { text: s },
-                  {
-                    toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
                   }
-                ]
-              } else {
-                return [
-                  { text: s },
-                  {
-                    toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
-                  }
-                ]
-              }
-            }
-
-            setMessages([
-              ...currentMessages,
-              {
-                role,
-                content: getContentBlocks()
-              }
-            ])
-          }
-        } else if (json.metadata) {
-          // Metadataを処理
-          const metadata: IdentifiableMessage['metadata'] = {
-            converseMetadata: {},
-            sessionCost: undefined
-          }
-          metadata.converseMetadata = json.metadata
-
-          let sessionCost: number
-          // モデルIDがある場合、コストを計算
-          if (
-            modelId &&
-            metadata.converseMetadata.usage &&
-            metadata.converseMetadata.usage.inputTokens &&
-            metadata.converseMetadata.usage.outputTokens
-          ) {
-            try {
-              const pricingCalculator = new PricingCalculator(modelId)
-              sessionCost = pricingCalculator.calculateTotalCost(
-                metadata.converseMetadata.usage.inputTokens,
-                metadata.converseMetadata.usage.outputTokens,
-                metadata.converseMetadata.usage.cacheReadInputTokens || 0,
-                metadata.converseMetadata.usage.cacheWriteInputTokens || 0
-              )
-              metadata.sessionCost = sessionCost
-            } catch (error) {
-              console.error('Error calculating cost:', error)
-            }
-          }
-
-          // 直近のアシスタントメッセージにメタデータを関連付ける
-          if (lastAssistantMessageId.current) {
-            // メッセージ配列からIDが一致するメッセージを見つけてメタデータを追加
-            setMessages((prevMessages) => {
-              return prevMessages.map((msg) => {
-                if (msg.id === lastAssistantMessageId.current) {
-                  return {
-                    ...msg,
-                    metadata: {
-                      ...msg.metadata,
-                      converseMetadata: metadata.converseMetadata,
-                      sessionCost: metadata.sessionCost
-                    }
-                  }
-                }
-                return msg
+                  return msg
+                })
               })
-            })
 
-            // currentMessagesの最後（直近のメッセージ）を永続化する
-            const lastMessageIndex = currentMessages.length - 1
-            const lastMessage = currentMessages[lastMessageIndex]
+              // currentMessagesの最後（直近のメッセージ）を永続化する
+              const lastMessageIndex = currentMessages.length - 1
+              const lastMessage = currentMessages[lastMessageIndex]
 
-            if (
-              lastMessage &&
-              'id' in lastMessage &&
-              lastMessage.id === lastAssistantMessageId.current
-            ) {
-              // 型を明確にしてメタデータを追加
-              const updatedMessage: IdentifiableMessage = {
-                ...(lastMessage as IdentifiableMessage),
-                metadata: {
-                  ...(lastMessage as any).metadata,
-                  converseMetadata: metadata.converseMetadata,
-                  sessionCost: metadata.sessionCost
+              if (
+                lastMessage &&
+                'id' in lastMessage &&
+                lastMessage.id === lastAssistantMessageId.current
+              ) {
+                // 型を明確にしてメタデータを追加
+                const updatedMessage: IdentifiableMessage = {
+                  ...(lastMessage as IdentifiableMessage),
+                  metadata: {
+                    ...(lastMessage as any).metadata,
+                    converseMetadata: metadata.converseMetadata,
+                    sessionCost: metadata.sessionCost
+                  }
                 }
+
+                // 配列の最後のメッセージを更新
+                currentMessages[lastMessageIndex] = updatedMessage
+
+                // メタデータを受信した時点で永続化を行う
+                await persistMessage(updatedMessage)
               }
-
-              // 配列の最後のメッセージを更新
-              currentMessages[lastMessageIndex] = updatedMessage
-
-              // メタデータを受信した時点で永続化を行う
-              await persistMessage(updatedMessage)
             }
+          } else {
+            console.error('unexpected json:', json)
           }
-        } else {
-          console.error('unexpected json:', json)
         }
-      }
 
-      return stopReason
+        return stopReason
       } catch (innerError: any) {
         // Handle streaming errors
         if (innerError.name === 'AbortError') {
@@ -792,7 +794,7 @@ export const useAgentChat = (
       setWaitingForResponse(false)
       setTimeoutCountdown(0)
       setHeartbeatCount(0)
-      
+
       // 使用済みの AbortController をクリア
       if (abortController.current?.signal.aborted) {
         abortController.current = null
