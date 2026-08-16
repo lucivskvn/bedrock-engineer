@@ -1,4 +1,4 @@
-import {
+import type {
   ConversationRole,
   ContentBlock,
   Message,
@@ -94,8 +94,11 @@ export const useAgentChat = (
 
   const [messages, setMessages] = useState<IdentifiableMessage[]>([])
   const [loading, setLoading] = useState(false)
+  const [waitingForResponse, setWaitingForResponse] = useState(false)
+  const [timeoutCountdown, setTimeoutCountdown] = useState<number>(0)
+  const [heartbeatCount, setHeartbeatCount] = useState<number>(0)
   const [reasoning, setReasoning] = useState(false)
-  const [executingTool, setExecutingTool] = useState<ToolName | null>(null)
+  const [executingTools, setExecutingTools] = useState<Set<ToolName>>(new Set())
   const [latestReasoningText, setLatestReasoningText] = useState<string>('')
   const [currentSessionId, setCurrentSessionId] = useState<string | undefined>(sessionId)
   const lastAssistantMessageId = useRef<string | null>(null)
@@ -114,7 +117,8 @@ export const useAgentChat = (
     getAgentTools,
     agents,
     enablePromptCache,
-    inferenceParams
+    inferenceParams,
+    requestTimeout
   } = useSettings()
 
   // エージェントIDからツール設定を取得
@@ -247,7 +251,7 @@ export const useAgentChat = (
     }
 
     setLoading(false)
-    setExecutingTool(null)
+    setExecutingTools(new Set())
   }, [messages, currentSessionId, t])
 
   // ChatHistoryContext から操作関数を取得
@@ -338,204 +342,221 @@ export const useAgentChat = (
   )
 
   const streamChat = async (props: StreamChatCompletionProps, currentMessages: Message[]) => {
-    // 既存の通信があれば中断
-    if (abortController.current) {
-      abortController.current.abort()
-    }
+    // Track last data received time for timeout detection
+    let lastDataTime = Date.now()
+    let timedOut = false
+    let requestCompleted = false
+    const WAIT_THRESHOLD = 10000 // 10 seconds without data = waiting state
+    const TIMEOUT_MS = requestTimeout * 60 * 1000 // Convert minutes to milliseconds
+    const HEARTBEAT_INTERVAL = 30000 // 30 seconds heartbeat check
 
-    // 新しい AbortController を作成
-    abortController.current = new AbortController()
+    const checkWaitingState = setInterval(() => {
+      const timeSinceLastData = Date.now() - lastDataTime
+      const isWaiting = timeSinceLastData > WAIT_THRESHOLD
+      setWaitingForResponse(isWaiting)
 
-    // モデルがthinkingをサポートしているか確認
-    const thinkingSupportedModelIds = getThinkingSupportedModelIds()
-    const supportsThinking = thinkingSupportedModelIds.some((id) => modelId.includes(id))
+      if (isWaiting) {
+        const remainingTime = Math.max(0, TIMEOUT_MS - timeSinceLastData)
+        setTimeoutCountdown(Math.floor(remainingTime / 1000))
 
-    // Context長に基づいてメッセージを制限
-    let limitedMessages = removeTraces(limitContextLength(currentMessages, contextLength))
+        // Abort when timeout is reached
+        if (remainingTime === 0 && abortController.current && !timedOut) {
+          timedOut = true
+          console.log(`Request timed out after ${requestTimeout} minutes - aborting request`)
 
-    // モデルがthinkingをサポートしていない場合、reasoningContentを除外
-    if (!supportsThinking) {
-      limitedMessages = removeReasoningContent(limitedMessages)
-    }
+          // Add timeout message to chat immediately
+          const timeoutMessage = t('Request timed out after {{timeout}} minutes', {
+            timeout: requestTimeout
+          })
+          const timeoutChatMessage: IdentifiableMessage = {
+            id: generateMessageId(),
+            role: 'assistant' as ConversationRole,
+            content: [{ text: timeoutMessage }]
+          }
+          setMessages((prev) => [...prev, timeoutChatMessage])
 
-    // Prompt Cache適用（enablePromptCacheが有効な場合）
-    if (enablePromptCache) {
-      const cacheManager = new PromptCacheManager(modelId)
-      props.messages = cacheManager.addCachePointsToMessages(
-        limitedMessages,
-        lastCachePoint.current
-      )
-
-      // キャッシュポイントが更新された場合、次回の会話ためにキャッシュポイントのインデックスを更新
-      if (props.messages[props.messages.length - 1].content?.some((b) => b.cachePoint?.type)) {
-        // 次回の会話のために現在のキャッシュポイントを更新
-        // 現在のメッセージ配列の最後のインデックスを次回の最初のキャッシュポイントとして設定
-        lastCachePoint.current = props.messages.length - 1
+          abortController.current.abort()
+        }
       }
+    }, 1000)
 
-      // システムプロンプトとツール設定にもキャッシュポイントを追加
-      if (props.system) {
-        props.system = cacheManager.addCachePointToSystem(props.system)
+    // Heartbeat check every 30 seconds
+    const heartbeatCheck = setInterval(() => {
+      if (!requestCompleted && abortController.current) {
+        const timeSinceLastData = Date.now() - lastDataTime
+        // If no data for 30+ seconds, verify connection is still alive
+        if (timeSinceLastData >= HEARTBEAT_INTERVAL) {
+          setHeartbeatCount((prev) => prev + 1)
+          console.log(`Heartbeat: ${Math.floor(timeSinceLastData / 1000)}s since last data`)
+        }
       }
+    }, HEARTBEAT_INTERVAL)
 
-      if (props.toolConfig) {
-        props.toolConfig = cacheManager.addCachePointToTools(props.toolConfig) as any
-      }
-    } else {
-      props.messages = limitedMessages
-    }
-
-    const generator = streamChatCompletion(props, abortController.current.signal)
-
-    let s = ''
-    let reasoningContentText = ''
-    let reasoningContentSignature = ''
-    let redactedContent
-    let input = ''
-    let role: ConversationRole = 'assistant' // デフォルト値を設定
-    let toolUse: ToolUseBlockStart | undefined = undefined
-    let stopReason
-    const content: ContentBlock[] = []
-
-    let messageStart = false
     try {
-      for await (const json of generator) {
-        if (json.messageStart) {
-          role = json.messageStart.role ?? 'assistant' // デフォルト値を設定
-          messageStart = true
-        } else if (json.messageStop) {
-          if (!messageStart) {
-            console.warn('messageStop without messageStart')
-            console.log(messages)
-            await streamChat(props, currentMessages)
-            return
-          }
-          // 新しいメッセージIDを生成
-          const messageId = generateMessageId()
-          const newMessage: IdentifiableMessage = { role, content, id: messageId }
+      // 既存の通信があれば中断
+      if (abortController.current) {
+        abortController.current.abort()
+      }
 
-          // アシスタントメッセージの場合、最後のメッセージIDを保持
-          if (role === 'assistant') {
-            lastAssistantMessageId.current = messageId
-          }
+      // 新しい AbortController を作成
+      abortController.current = new AbortController()
 
-          // UI表示のために即時メッセージを追加
-          setMessages([...currentMessages, newMessage])
-          currentMessages.push(newMessage)
+      // モデルがthinkingをサポートしているか確認
+      const thinkingSupportedModelIds = getThinkingSupportedModelIds()
+      const supportsThinking = thinkingSupportedModelIds.some((id) => modelId.includes(id))
 
-          // メッセージ停止時点では永続化せず、後のメタデータ処理で永続化する
-          // この時点ではまだメタデータが来ていない可能性があるため
+      // Context長に基づいてメッセージを制限
+      let limitedMessages = removeTraces(limitContextLength(currentMessages, contextLength))
 
-          stopReason = json.messageStop.stopReason
-        } else if (json.contentBlockStart) {
-          toolUse = json.contentBlockStart.start?.toolUse
-        } else if (json.contentBlockStop) {
-          if (toolUse) {
-            let parseInput: any
-            // 空文字列の場合は空オブジェクトを使用（JSONパースエラーとしない）
-            if (input === '' || input === '""' || input === "''") {
-              parseInput = {}
-            } else {
-              try {
-                parseInput = JSON.parse(input)
-              } catch (e) {
-                parseInput = {
-                  __jsonParseError: true,
-                  originalInput: input,
-                  maxTokens: inferenceParams.maxTokens,
-                  error:
-                    (e instanceof Error ? e.message : 'JSON parse failed') +
-                    '\n JSON parsing failed. This error might have occurred because the token limit (character count) was exceeded while the AI was trying to create the input JSON for tool use. \nThe output needs to fit within the maxTokens limit.'
-                }
-              }
+      // モデルがthinkingをサポートしていない場合、reasoningContentを除外
+      if (!supportsThinking) {
+        limitedMessages = removeReasoningContent(limitedMessages)
+      }
+
+      // Prompt Cache適用（enablePromptCacheが有効な場合）
+      if (enablePromptCache) {
+        const cacheManager = new PromptCacheManager(modelId)
+        props.messages = cacheManager.addCachePointsToMessages(
+          limitedMessages,
+          lastCachePoint.current
+        )
+
+        // キャッシュポイントが更新された場合、次回の会話ためにキャッシュポイントのインデックスを更新
+        if (props.messages[props.messages.length - 1].content?.some((b) => b.cachePoint?.type)) {
+          // 次回の会話のために現在のキャッシュポイントを更新
+          // 現在のメッセージ配列の最後のインデックスを次回の最初のキャッシュポイントとして設定
+          lastCachePoint.current = props.messages.length - 1
+        }
+
+        // システムプロンプトとツール設定にもキャッシュポイントを追加
+        if (props.system) {
+          props.system = cacheManager.addCachePointToSystem(props.system)
+        }
+
+        if (props.toolConfig) {
+          props.toolConfig = cacheManager.addCachePointToTools(props.toolConfig) as any
+        }
+      } else {
+        props.messages = limitedMessages
+      }
+
+      const generator = streamChatCompletion(props, abortController.current.signal)
+
+      let s = ''
+      let reasoningContentText = ''
+      let reasoningContentSignature = ''
+      let redactedContent
+      let input = ''
+      let role: ConversationRole = 'assistant' // デフォルト値を設定
+      let toolUse: ToolUseBlockStart | undefined = undefined
+      let stopReason
+      const content: ContentBlock[] = []
+
+      let messageStart = false
+      try {
+        for await (const json of generator) {
+          lastDataTime = Date.now() // Update last data time on each chunk
+
+          if (json.messageStart) {
+            role = json.messageStart.role ?? 'assistant' // デフォルト値を設定
+            messageStart = true
+          } else if (json.messageStop) {
+            if (!messageStart) {
+              console.warn('messageStop without messageStart')
+              console.log(messages)
+              await streamChat(props, currentMessages)
+              return
+            }
+            // 新しいメッセージIDを生成
+            const messageId = generateMessageId()
+            const newMessage: IdentifiableMessage = { role, content, id: messageId }
+
+            // アシスタントメッセージの場合、最後のメッセージIDを保持
+            if (role === 'assistant') {
+              lastAssistantMessageId.current = messageId
             }
 
-            content.push({
-              toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: parseInput }
-            })
-          } else {
-            if (s.length > 0) {
-              const getReasoningBlock = () => {
-                if (reasoningContentText.length > 0) {
-                  return {
-                    reasoningContent: {
-                      reasoningText: {
-                        text: reasoningContentText,
-                        signature: reasoningContentSignature
-                      }
-                    }
-                  }
-                } else if (reasoningContentSignature.length > 0) {
-                  return {
-                    reasoningContent: {
-                      redactedContent: redactedContent
-                    }
-                  }
-                } else {
-                  return null
-                }
-              }
+            // UI表示のために即時メッセージを追加
+            setMessages([...currentMessages, newMessage])
+            currentMessages.push(newMessage)
 
-              const reasoningBlock = getReasoningBlock()
-              const contentBlocks = reasoningBlock ? [reasoningBlock, { text: s }] : [{ text: s }]
-              content.push(...contentBlocks)
-            }
-          }
-          input = ''
-          setReasoning(false)
-        } else if (json.contentBlockDelta) {
-          const text = json.contentBlockDelta.delta?.text
-          if (text) {
-            s = s + text
+            // メッセージ停止時点では永続化せず、後のメタデータ処理で永続化する
+            // この時点ではまだメタデータが来ていない可能性があるため
 
-            const getContentBlocks = () => {
-              if (redactedContent) {
-                return [
-                  {
-                    reasoningContent: {
-                      redactedContent: redactedContent
-                    }
-                  },
-                  { text: s }
-                ]
-              } else if (reasoningContentText.length > 0) {
-                return [
-                  {
-                    reasoningContent: {
-                      reasoningText: {
-                        text: reasoningContentText,
-                        signature: reasoningContentSignature
-                      }
-                    }
-                  },
-                  { text: s }
-                ]
+            stopReason = json.messageStop.stopReason
+          } else if (json.contentBlockStart) {
+            toolUse = json.contentBlockStart.start?.toolUse
+          } else if (json.contentBlockStop) {
+            if (toolUse) {
+              let parseInput: any
+              // 空文字列の場合は空オブジェクトを使用（JSONパースエラーとしない）
+              if (input === '' || input === '""' || input === "''") {
+                parseInput = {}
               } else {
-                return [{ text: s }]
+                try {
+                  parseInput = JSON.parse(input)
+                } catch (e) {
+                  parseInput = {
+                    __jsonParseError: true,
+                    originalInput: input,
+                    maxTokens: inferenceParams.maxTokens,
+                    error:
+                      (e instanceof Error ? e.message : 'JSON parse failed') +
+                      '\n JSON parsing failed. This error might have occurred because the token limit (character count) was exceeded while the AI was trying to create the input JSON for tool use. \nThe output needs to fit within the maxTokens limit.'
+                  }
+                }
+              }
+
+              content.push({
+                toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: parseInput }
+              })
+            } else {
+              if (s.length > 0) {
+                const getReasoningBlock = () => {
+                  if (reasoningContentText.length > 0) {
+                    return {
+                      reasoningContent: {
+                        reasoningText: {
+                          text: reasoningContentText,
+                          signature: reasoningContentSignature
+                        }
+                      }
+                    }
+                  } else if (reasoningContentSignature.length > 0) {
+                    return {
+                      reasoningContent: {
+                        redactedContent: redactedContent
+                      }
+                    }
+                  } else {
+                    return null
+                  }
+                }
+
+                const reasoningBlock = getReasoningBlock()
+                const contentBlocks = reasoningBlock ? [reasoningBlock, { text: s }] : [{ text: s }]
+                content.push(...contentBlocks)
               }
             }
+            input = ''
+            setReasoning(false)
+          } else if (json.contentBlockDelta) {
+            const text = json.contentBlockDelta.delta?.text
+            if (text) {
+              s = s + text
 
-            const contentBlocks = getContentBlocks()
-            setMessages([...currentMessages, { role, content: contentBlocks }])
-          }
-
-          const reasoningContent = json.contentBlockDelta.delta?.reasoningContent
-          if (reasoningContent && supportsThinking) {
-            setReasoning(true)
-            if (reasoningContent?.text || reasoningContent?.signature) {
-              reasoningContentText = reasoningContentText + (reasoningContent?.text || '')
-              reasoningContentSignature = reasoningContent?.signature || ''
-
-              // 最新のreasoningTextを状態として保持
-              if (reasoningContent?.text) {
-                setLatestReasoningText(reasoningContentText)
-              }
-
-              setMessages([
-                ...currentMessages,
-                {
-                  role: 'assistant',
-                  content: [
+              const getContentBlocks = () => {
+                if (redactedContent) {
+                  return [
+                    {
+                      reasoningContent: {
+                        redactedContent: redactedContent
+                      }
+                    },
+                    { text: s }
+                  ]
+                } else if (reasoningContentText.length > 0) {
+                  return [
                     {
                       reasoningContent: {
                         reasoningText: {
@@ -546,160 +567,209 @@ export const useAgentChat = (
                     },
                     { text: s }
                   ]
+                } else {
+                  return [{ text: s }]
                 }
-              ])
-            } else if (reasoningContent.redactedContent) {
-              redactedContent = reasoningContent.redactedContent
+              }
+
+              const contentBlocks = getContentBlocks()
+              setMessages([...currentMessages, { role, content: contentBlocks }])
+            }
+
+            const reasoningContent = json.contentBlockDelta.delta?.reasoningContent
+            if (reasoningContent && supportsThinking) {
+              setReasoning(true)
+              if (reasoningContent?.text || reasoningContent?.signature) {
+                reasoningContentText = reasoningContentText + (reasoningContent?.text || '')
+                reasoningContentSignature = reasoningContent?.signature || ''
+
+                // 最新のreasoningTextを状態として保持
+                if (reasoningContent?.text) {
+                  setLatestReasoningText(reasoningContentText)
+                }
+
+                setMessages([
+                  ...currentMessages,
+                  {
+                    role: 'assistant',
+                    content: [
+                      {
+                        reasoningContent: {
+                          reasoningText: {
+                            text: reasoningContentText,
+                            signature: reasoningContentSignature
+                          }
+                        }
+                      },
+                      { text: s }
+                    ]
+                  }
+                ])
+              } else if (reasoningContent.redactedContent) {
+                redactedContent = reasoningContent.redactedContent
+                setMessages([
+                  ...currentMessages,
+                  {
+                    role: 'assistant',
+                    content: [
+                      {
+                        reasoningContent: {
+                          redactedContent: reasoningContent.redactedContent
+                        }
+                      },
+                      { text: s }
+                    ]
+                  }
+                ])
+              }
+            }
+
+            if (toolUse) {
+              input = input + json.contentBlockDelta.delta?.toolUse?.input
+
+              const getContentBlocks = () => {
+                if (redactedContent) {
+                  return [
+                    {
+                      reasoningContent: {
+                        redactedContent: redactedContent
+                      }
+                    },
+                    { text: s },
+                    {
+                      toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
+                    }
+                  ]
+                } else if (reasoningContentText.length > 0) {
+                  return [
+                    {
+                      reasoningContent: {
+                        reasoningText: {
+                          text: reasoningContentText,
+                          signature: reasoningContentSignature
+                        }
+                      }
+                    },
+                    { text: s },
+                    {
+                      toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
+                    }
+                  ]
+                } else {
+                  return [
+                    { text: s },
+                    {
+                      toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
+                    }
+                  ]
+                }
+              }
+
               setMessages([
                 ...currentMessages,
                 {
-                  role: 'assistant',
-                  content: [
-                    {
-                      reasoningContent: {
-                        redactedContent: reasoningContent.redactedContent
-                      }
-                    },
-                    { text: s }
-                  ]
+                  role,
+                  content: getContentBlocks()
                 }
               ])
             }
-          }
+          } else if (json.metadata) {
+            // Metadataを処理
+            const metadata: IdentifiableMessage['metadata'] = {
+              converseMetadata: {},
+              sessionCost: undefined
+            }
+            metadata.converseMetadata = json.metadata
 
-          if (toolUse) {
-            input = input + json.contentBlockDelta.delta?.toolUse?.input
+            let sessionCost: number
+            // モデルIDがある場合、コストを計算
+            if (
+              modelId &&
+              metadata.converseMetadata.usage &&
+              metadata.converseMetadata.usage.inputTokens &&
+              metadata.converseMetadata.usage.outputTokens
+            ) {
+              try {
+                const pricingCalculator = new PricingCalculator(modelId)
+                sessionCost = pricingCalculator.calculateTotalCost(
+                  metadata.converseMetadata.usage.inputTokens,
+                  metadata.converseMetadata.usage.outputTokens,
+                  metadata.converseMetadata.usage.cacheReadInputTokens || 0,
+                  metadata.converseMetadata.usage.cacheWriteInputTokens || 0
+                )
+                metadata.sessionCost = sessionCost
+              } catch (error) {
+                console.error('Error calculating cost:', error)
+              }
+            }
 
-            const getContentBlocks = () => {
-              if (redactedContent) {
-                return [
-                  {
-                    reasoningContent: {
-                      redactedContent: redactedContent
-                    }
-                  },
-                  { text: s },
-                  {
-                    toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
-                  }
-                ]
-              } else if (reasoningContentText.length > 0) {
-                return [
-                  {
-                    reasoningContent: {
-                      reasoningText: {
-                        text: reasoningContentText,
-                        signature: reasoningContentSignature
+            // 直近のアシスタントメッセージにメタデータを関連付ける
+            if (lastAssistantMessageId.current) {
+              // メッセージ配列からIDが一致するメッセージを見つけてメタデータを追加
+              setMessages((prevMessages) => {
+                return prevMessages.map((msg) => {
+                  if (msg.id === lastAssistantMessageId.current) {
+                    return {
+                      ...msg,
+                      metadata: {
+                        ...msg.metadata,
+                        converseMetadata: metadata.converseMetadata,
+                        sessionCost: metadata.sessionCost
                       }
                     }
-                  },
-                  { text: s },
-                  {
-                    toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
                   }
-                ]
-              } else {
-                return [
-                  { text: s },
-                  {
-                    toolUse: { name: toolUse?.name, toolUseId: toolUse?.toolUseId, input: input }
-                  }
-                ]
-              }
-            }
-
-            setMessages([
-              ...currentMessages,
-              {
-                role,
-                content: getContentBlocks()
-              }
-            ])
-          }
-        } else if (json.metadata) {
-          // Metadataを処理
-          const metadata: IdentifiableMessage['metadata'] = {
-            converseMetadata: {},
-            sessionCost: undefined
-          }
-          metadata.converseMetadata = json.metadata
-
-          let sessionCost: number
-          // モデルIDがある場合、コストを計算
-          if (
-            modelId &&
-            metadata.converseMetadata.usage &&
-            metadata.converseMetadata.usage.inputTokens &&
-            metadata.converseMetadata.usage.outputTokens
-          ) {
-            try {
-              const pricingCalculator = new PricingCalculator(modelId)
-              sessionCost = pricingCalculator.calculateTotalCost(
-                metadata.converseMetadata.usage.inputTokens,
-                metadata.converseMetadata.usage.outputTokens,
-                metadata.converseMetadata.usage.cacheReadInputTokens || 0,
-                metadata.converseMetadata.usage.cacheWriteInputTokens || 0
-              )
-              metadata.sessionCost = sessionCost
-            } catch (error) {
-              console.error('Error calculating cost:', error)
-            }
-          }
-
-          // 直近のアシスタントメッセージにメタデータを関連付ける
-          if (lastAssistantMessageId.current) {
-            // メッセージ配列からIDが一致するメッセージを見つけてメタデータを追加
-            setMessages((prevMessages) => {
-              return prevMessages.map((msg) => {
-                if (msg.id === lastAssistantMessageId.current) {
-                  return {
-                    ...msg,
-                    metadata: {
-                      ...msg.metadata,
-                      converseMetadata: metadata.converseMetadata,
-                      sessionCost: metadata.sessionCost
-                    }
-                  }
-                }
-                return msg
+                  return msg
+                })
               })
-            })
 
-            // currentMessagesの最後（直近のメッセージ）を永続化する
-            const lastMessageIndex = currentMessages.length - 1
-            const lastMessage = currentMessages[lastMessageIndex]
+              // currentMessagesの最後（直近のメッセージ）を永続化する
+              const lastMessageIndex = currentMessages.length - 1
+              const lastMessage = currentMessages[lastMessageIndex]
 
-            if (
-              lastMessage &&
-              'id' in lastMessage &&
-              lastMessage.id === lastAssistantMessageId.current
-            ) {
-              // 型を明確にしてメタデータを追加
-              const updatedMessage: IdentifiableMessage = {
-                ...(lastMessage as IdentifiableMessage),
-                metadata: {
-                  ...(lastMessage as any).metadata,
-                  converseMetadata: metadata.converseMetadata,
-                  sessionCost: metadata.sessionCost
+              if (
+                lastMessage &&
+                'id' in lastMessage &&
+                lastMessage.id === lastAssistantMessageId.current
+              ) {
+                // 型を明確にしてメタデータを追加
+                const updatedMessage: IdentifiableMessage = {
+                  ...(lastMessage as IdentifiableMessage),
+                  metadata: {
+                    ...(lastMessage as any).metadata,
+                    converseMetadata: metadata.converseMetadata,
+                    sessionCost: metadata.sessionCost
+                  }
                 }
+
+                // 配列の最後のメッセージを更新
+                currentMessages[lastMessageIndex] = updatedMessage
+
+                // メタデータを受信した時点で永続化を行う
+                await persistMessage(updatedMessage)
               }
-
-              // 配列の最後のメッセージを更新
-              currentMessages[lastMessageIndex] = updatedMessage
-
-              // メタデータを受信した時点で永続化を行う
-              await persistMessage(updatedMessage)
             }
+          } else {
+            console.error('unexpected json:', json)
           }
-        } else {
-          console.error('unexpected json:', json)
         }
-      }
 
-      return stopReason
+        return stopReason
+      } catch (innerError: any) {
+        // Handle streaming errors
+        if (innerError.name === 'AbortError') {
+          console.log('Chat stream aborted')
+          return
+        }
+        throw innerError
+      } finally {
+        requestCompleted = true
+      }
     } catch (error: any) {
       if (error.name === 'AbortError') {
         console.log('Chat stream aborted')
+        if (timedOut) {
+          toast.error(t('Request timed out after {{timeout}} minutes', { timeout: requestTimeout }))
+        }
         return
       }
       console.error({ streamChatRequestError: error })
@@ -718,6 +788,13 @@ export const useAgentChat = (
       await persistMessage(errorMessage)
       throw error
     } finally {
+      // Cleanup intervals
+      clearInterval(checkWaitingState)
+      clearInterval(heartbeatCheck)
+      setWaitingForResponse(false)
+      setTimeoutCountdown(0)
+      setHeartbeatCount(0)
+
       // 使用済みの AbortController をクリア
       if (abortController.current?.signal.aborted) {
         abortController.current = null
@@ -747,123 +824,160 @@ export const useAgentChat = (
       return
     }
 
-    const toolResults: ContentBlock[] = []
-    for (const contentBlock of contentBlocks) {
-      if (Object.keys(contentBlock).includes('toolUse')) {
-        const toolUse = contentBlock.toolUse
-        if (toolUse?.name) {
-          try {
-            const toolInput = {
-              type: toolUse.name,
-              ...(toolUse.input as any)
+    // ツールブロックのみを抽出
+    const toolUseBlocks = contentBlocks.filter(
+      (block) => Object.keys(block).includes('toolUse') && block.toolUse?.name
+    )
+
+    // 全てのツール実行をPromiseとして準備
+    const toolExecutionPromises = toolUseBlocks.map(async (contentBlock) => {
+      const toolUse = contentBlock.toolUse!
+      const toolInput = {
+        type: toolUse.name!,
+        ...(toolUse.input as any)
+      }
+
+      // 実行中ツールセットに追加
+      setExecutingTools((prev) => new Set([...prev, toolInput.type]))
+
+      try {
+        const toolResult = await window.api.bedrock.executeTool(toolInput, {
+          sessionId: currentSessionId
+        })
+
+        // 実行中ツールセットから削除
+        setExecutingTools((prev) => {
+          const next = new Set(prev)
+          next.delete(toolInput.type)
+          return next
+        })
+
+        // ツール実行結果用のContentBlockを作成
+        let resultContentBlock: ContentBlock
+        if (Object.prototype.hasOwnProperty.call(toolResult, 'name')) {
+          resultContentBlock = {
+            toolResult: {
+              toolUseId: toolUse.toolUseId,
+              content: [{ json: toolResult as any }],
+              status: 'success'
             }
-            setExecutingTool(toolInput.type)
-
-            const toolResult = await window.api.bedrock.executeTool(toolInput, {
-              sessionId: currentSessionId
-            })
-            setExecutingTool(null)
-
-            // ツール実行結果用のContentBlockを作成
-            let resultContentBlock: ContentBlock
-            if (Object.prototype.hasOwnProperty.call(toolResult, 'name')) {
-              resultContentBlock = {
-                toolResult: {
-                  toolUseId: toolUse.toolUseId,
-                  content: [{ json: toolResult as any }],
-                  status: 'success'
-                }
-              }
-            } else {
-              resultContentBlock = {
-                toolResult: {
-                  toolUseId: toolUse.toolUseId,
-                  content: [{ text: toolResult as any }],
-                  status: 'success'
-                }
-              }
+          }
+        } else {
+          resultContentBlock = {
+            toolResult: {
+              toolUseId: toolUse.toolUseId,
+              content: [{ text: toolResult as any }],
+              status: 'success'
             }
-
-            // GuardrailがActive状態であればチェック実行
-            if (
-              guardrailSettings.enabled &&
-              guardrailSettings.guardrailIdentifier &&
-              guardrailSettings.guardrailVersion
-            ) {
-              try {
-                console.log('Applying guardrail to tool result')
-                // ツール結果をガードレールで検証
-                const toolResultText =
-                  typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
-
-                console.log({ toolResultText })
-                // ツール結果をGuardrailで評価
-                const guardrailResult = await window.api.bedrock.applyGuardrail({
-                  guardrailIdentifier: guardrailSettings.guardrailIdentifier,
-                  guardrailVersion: guardrailSettings.guardrailVersion,
-                  source: 'OUTPUT', // ツールからの出力をチェック
-                  content: [
-                    {
-                      text: {
-                        text: toolResultText
-                      }
-                    }
-                  ]
-                })
-                console.log({ guardrailResult })
-
-                // ガードレールが介入した場合は代わりにエラーメッセージを使用
-                if (guardrailResult.action === 'GUARDRAIL_INTERVENED') {
-                  console.warn('Guardrail intervened for tool result', guardrailResult)
-                  let errorMessage = t('guardrail.toolResult.blocked')
-
-                  // もしガードレールが出力を提供していれば、それを使用
-                  if (guardrailResult.outputs && guardrailResult.outputs.length > 0) {
-                    const output = guardrailResult.outputs[0]
-                    if (output.text) {
-                      errorMessage = output.text
-                    }
-                  }
-
-                  // エラーステータスのツール結果を作成
-                  resultContentBlock = {
-                    toolResult: {
-                      toolUseId: toolUse.toolUseId,
-                      content: [{ text: errorMessage }],
-                      status: 'error'
-                    }
-                  }
-
-                  toast(t('guardrail.intervention'), {
-                    icon: '⚠️',
-                    style: {
-                      backgroundColor: '#FEF3C7', // Light yellow background
-                      color: '#92400E', // Amber text color
-                      border: '1px solid #F59E0B' // Amber border
-                    }
-                  })
-                }
-              } catch (guardrailError) {
-                console.error('Error applying guardrail to tool result:', guardrailError)
-                // ガードレールエラー時は元のツール結果を使用し続ける
-              }
-            }
-
-            // 最終的なツール結果をコレクションに追加
-            toolResults.push(resultContentBlock)
-          } catch (e: any) {
-            console.error(e)
-            toolResults.push({
-              toolResult: {
-                toolUseId: toolUse.toolUseId,
-                content: [{ text: e.toString() }],
-                status: 'error'
-              }
-            })
           }
         }
+
+        // GuardrailがActive状態であればチェック実行
+        if (
+          guardrailSettings.enabled &&
+          guardrailSettings.guardrailIdentifier &&
+          guardrailSettings.guardrailVersion
+        ) {
+          try {
+            console.log('Applying guardrail to tool result')
+            // ツール結果をガードレールで検証
+            const toolResultText =
+              typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
+
+            console.log({ toolResultText })
+            // ツール結果をGuardrailで評価
+            const guardrailResult = await window.api.bedrock.applyGuardrail({
+              guardrailIdentifier: guardrailSettings.guardrailIdentifier,
+              guardrailVersion: guardrailSettings.guardrailVersion,
+              source: 'OUTPUT', // ツールからの出力をチェック
+              content: [
+                {
+                  text: {
+                    text: toolResultText
+                  }
+                }
+              ]
+            })
+            console.log({ guardrailResult })
+
+            // ガードレールが介入した場合は代わりにエラーメッセージを使用
+            if (guardrailResult.action === 'GUARDRAIL_INTERVENED') {
+              console.warn('Guardrail intervened for tool result', guardrailResult)
+              let errorMessage = t('guardrail.toolResult.blocked')
+
+              // もしガードレールが出力を提供していれば、それを使用
+              if (guardrailResult.outputs && guardrailResult.outputs.length > 0) {
+                const output = guardrailResult.outputs[0]
+                if (output.text) {
+                  errorMessage = output.text
+                }
+              }
+
+              // エラーステータスのツール結果を作成
+              resultContentBlock = {
+                toolResult: {
+                  toolUseId: toolUse.toolUseId,
+                  content: [{ text: errorMessage }],
+                  status: 'error'
+                }
+              }
+
+              toast(t('guardrail.intervention'), {
+                icon: '⚠️',
+                style: {
+                  backgroundColor: '#FEF3C7', // Light yellow background
+                  color: '#92400E', // Amber text color
+                  border: '1px solid #F59E0B' // Amber border
+                }
+              })
+            }
+          } catch (guardrailError) {
+            console.error('Error applying guardrail to tool result:', guardrailError)
+            // ガードレールエラー時は元のツール結果を使用し続ける
+          }
+        }
+
+        return resultContentBlock
+      } catch (e: any) {
+        console.error(`Error executing tool ${toolInput.type}:`, e)
+
+        // 実行中ツールセットから削除
+        setExecutingTools((prev) => {
+          const next = new Set(prev)
+          next.delete(toolInput.type)
+          return next
+        })
+
+        // エラー結果を返す
+        return {
+          toolResult: {
+            toolUseId: toolUse.toolUseId,
+            content: [{ text: e.toString() }],
+            status: 'error'
+          }
+        } as ContentBlock
       }
-    }
+    })
+
+    // 全てのツール実行を並列実行し、全ての結果を待つ
+    const settledResults = await Promise.allSettled(toolExecutionPromises)
+
+    // 結果を処理
+    const toolResults: ContentBlock[] = settledResults.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return result.value
+      } else {
+        // Promise自体が reject された場合（ここには来ないはずだが念のため）
+        const toolUse = toolUseBlocks[index].toolUse!
+        return {
+          toolResult: {
+            toolUseId: toolUse.toolUseId,
+            content: [{ text: `Promise rejection: ${result.reason}` }],
+            status: 'error'
+          }
+        } as ContentBlock
+      }
+    })
 
     const toolResultMessage: IdentifiableMessage = {
       role: 'user',
@@ -1034,7 +1148,7 @@ export const useAgentChat = (
       toast.error(error.message || 'An error occurred')
     } finally {
       setLoading(false)
-      setExecutingTool(null)
+      setExecutingTools(new Set())
     }
     return result
   }
@@ -1130,7 +1244,10 @@ export const useAgentChat = (
     messages,
     loading,
     reasoning,
-    executingTool,
+    waitingForResponse,
+    timeoutCountdown,
+    heartbeatCount,
+    executingTools,
     latestReasoningText, // 最新のreasoningTextを外部に公開
     handleSubmit,
     setMessages,

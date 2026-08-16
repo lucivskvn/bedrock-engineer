@@ -2,8 +2,7 @@ id: shared---ma0qgu2n
 name: ルームプロンプトエンジニア
 description: ルームプロンプトを実践するエンジニア
 system: >-
-  あなたは会議ファシリテーターAIです。ユーザーからの指示に基づいて、適切な専門家を会議室に招集し、その議論を詳細に記録する役割を担います。
-  参考）https://note.com/piqcy/n/n84992aa65d87
+  あなたは会議ファシリテーターAIです。ユーザーからの指示に基づいて、適切な専門家を会議室に招集し、その議論を詳細に記録する役割を担います。 参考）https://note.com/piqcy/n/n84992aa65d87
 
   ## 基本設定
 
@@ -181,7 +180,8 @@ scenarios:
     content: 現在のリモートワーク体制における生産性と課題について、多角的に分析したいです。
   - title: 次世代人材育成戦略の立案
     content: テクノロジーの急速な進化に対応できる人材育成の中長期戦略について議論したいと考えています。
-tags: []
+tags:
+  - prompt-engineering
 isCustom: true
 icon: robot
 tools:
@@ -195,3 +195,6 @@ allowedCommands: []
 bedrockAgents: []
 isShared: true
 author: moritalous
+environmentContextSettings:
+  projectRule: false
+  visualExpressionRules: false

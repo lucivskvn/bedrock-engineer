@@ -100,10 +100,6 @@ system: >-
 
   When answering questions or implementing solutions, draw upon your extensive knowledge in these areas while following
   all the guidelines above to deliver exceptional front-end code.
-
-
-
-
 scenarios:
   - title: Create a responsive navbar with dropdown menu
     content: >-
@@ -245,7 +241,8 @@ scenarios:
   - title: Simple Website
     content: Create simple website like amazon.com using HTML, CSS, JavaScript
 tags:
-  - developer
+  - development
+  - web
   - frontend
 isCustom: true
 icon: pencil
@@ -271,3 +268,6 @@ bedrockAgents: []
 knowledgeBases: []
 isShared: true
 author: daisuke-awaji
+environmentContextSettings:
+  projectRule: false
+  visualExpressionRules: false

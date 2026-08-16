@@ -19,7 +19,7 @@ import { useSystemPromptModal } from './modals/useSystemPromptModal'
 import { useTokenAnalyticsModal } from './modals/useTokenAnalyticsModal'
 import { useTodoModal } from './modals/useTodoModal'
 import { useChatHistory } from '@renderer/contexts/ChatHistoryContext'
-import { useLocation } from 'react-router'
+import { useLocation } from 'react-router-dom'
 
 export default function ChatPage() {
   const { t } = useTranslation()
@@ -43,6 +43,9 @@ export default function ChatPage() {
     messages,
     loading,
     reasoning,
+    waitingForResponse,
+    timeoutCountdown,
+    heartbeatCount,
     handleSubmit,
     currentSessionId,
     setCurrentSessionId,
@@ -274,7 +277,7 @@ export default function ChatPage() {
                 {messages.length === 0 ? (
                   <div className="flex flex-col pt-12 h-full w-full justify-center items-center content-center align-center gap-1">
                     <div className="flex flex-row gap-3 items-center mb-2">
-                      <div className="h-6 w-6">
+                      <div className="h-5 w-5">
                         <AILogo />
                       </div>
                       <h1 className="text-lg font-bold dark:text-white">Agent Chat</h1>
@@ -293,6 +296,9 @@ export default function ChatPage() {
                       messages={messages}
                       loading={loading}
                       reasoning={reasoning}
+                      waitingForResponse={waitingForResponse}
+                      timeoutCountdown={timeoutCountdown}
+                      heartbeatCount={heartbeatCount}
                       deleteMessage={handleDeleteMessage}
                     />
                   </div>

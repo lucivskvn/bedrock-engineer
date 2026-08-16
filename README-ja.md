@@ -23,11 +23,11 @@ Bedrock Engineer はネイティブアプリです。アプリをダウンロー
 
 MacOS:
 
-[<img src="https://img.shields.io/badge/Download_FOR_MAC-Latest%20Release-blue?style=for-the-badge&logo=apple" alt="Download Latest Release" height="40">](https://github.com/aws-samples/bedrock-engineer/releases/latest/download/bedrock-engineer-1.19.2.pkg)
+[<img src="https://img.shields.io/badge/Download_FOR_MAC-Latest%20Release-blue?style=for-the-badge&logo=apple" alt="Download Latest Release" height="40">](https://github.com/aws-samples/bedrock-engineer/releases/latest/download/bedrock-engineer-1.21.0.pkg)
 
 Windows:
 
-[<img src="https://img.shields.io/badge/Download_FOR_WINDOWS-Latest%20Release-blue?style=for-the-badge" alt="Download Latest Release" height="40">](https://github.com/aws-samples/bedrock-engineer/releases/latest/download/bedrock-engineer-1.19.2-setup.exe)
+[<img src="https://img.shields.io/badge/Download_FOR_WINDOWS-Latest%20Release-blue?style=for-the-badge" alt="Download Latest Release" height="40">](https://github.com/aws-samples/bedrock-engineer/releases/latest/download/bedrock-engineer-1.21.0-setup.exe)
 
 MacOS に最適化されていますが、Windows, Linux OS でもビルドして使用できます。不具合がある場合、issue に起票ください。
 
@@ -58,6 +58,16 @@ PKGファイルを開く際に、以下のセキュリティ警告が表示さ�
 このセキュリティ警告は、アプリケーションがMac App Store経由で配布されていないために表示されます。
 
 ![PKG Security Warning Privacy Setting](./assets/macos-security-warning-pkg-privacy-setting.png)
+
+### macOS コード署名（必須）
+
+macOS のセキュリティ制限により、インストール後に以下のコマンドを実行してアプリケーションに署名する必要があります。
+
+```bash
+sudo codesign --force --deep --sign - "/Applications/Bedrock Engineer.app"
+```
+
+このアドホックコード署名は、システムの許可ダイヤログの適切な処理を含め、アプリケーションが macOS 上で正しく動作するために必要です。
 
 ### 設定ファイルの問題
 

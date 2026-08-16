@@ -118,8 +118,6 @@ Rules:
 - Please specify how these tools should be used.
 - No explanation or \`\`\` needed, just print the system prompt.
 - Please output in the language entered for the Agent Name and Description.
-- Be sure to include the following instructions:
-  - Visual explanation: Mermaid.js format, Markdown format for Image, Katex for Math
 </Rules>
 
 Available Tools:
@@ -226,6 +224,9 @@ export function usePromptGeneration(
   // Hold the latest references of callback functions to avoid unnecessary re-renders
   const onSystemPromptGeneratedRef = useRef(onSystemPromptGenerated)
   const onScenariosGeneratedRef = useRef(onScenariosGenerated)
+
+  // 前回抽出したシナリオ数を記憶（ストリーム表示用）
+  const lastExtractedCountRef = useRef(0)
 
   // Update callback function references
   useEffect(() => {
@@ -346,8 +347,11 @@ export function usePromptGeneration(
           try {
             // Attempt to parse text as JSON
             const scenarios = extractCompleteObjects(textContent.text)
-            if (Array.isArray(scenarios)) {
-              onScenariosGeneratedRef.current(scenarios)
+            if (Array.isArray(scenarios) && scenarios.length > 0) {
+              if (scenarios.length > lastExtractedCountRef.current) {
+                onScenariosGeneratedRef.current(scenarios)
+                lastExtractedCountRef.current = scenarios.length
+              }
             }
           } catch (e) {
             console.error('Failed to parse scenarios:', e)
@@ -356,6 +360,13 @@ export function usePromptGeneration(
       }
     }
   }, [scenarioMessages])
+
+  // クリーンアップ: 新しい生成開始時にカウントをリセット
+  useEffect(() => {
+    if (isGeneratingScenarios) {
+      lastExtractedCountRef.current = 0
+    }
+  }, [isGeneratingScenarios])
 
   return {
     generateSystemPrompt,

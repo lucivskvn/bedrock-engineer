@@ -102,128 +102,6 @@ export interface ModelConfig {
  * Unified model registry
  */
 const MODEL_REGISTRY: ModelConfig[] = [
-  // Claude 3 Sonnet
-  {
-    baseId: 'claude-3-sonnet-20240229-v1:0',
-    name: 'Claude 3 Sonnet',
-    provider: 'anthropic',
-    category: 'text',
-    toolUse: true,
-    maxTokensLimit: 8192,
-    inferenceProfiles: [
-      {
-        type: 'regional-us',
-        prefix: 'us',
-        regions: ['us-east-1', 'us-west-2'],
-        displaySuffix: '(US)'
-      },
-      {
-        type: 'regional-eu',
-        prefix: 'eu',
-        regions: ['eu-central-1', 'eu-west-1', 'eu-west-3'],
-        displaySuffix: '(EU)'
-      },
-      {
-        type: 'regional-apac',
-        prefix: 'apac',
-        regions: [
-          'ap-northeast-1',
-          'ap-northeast-2',
-          'ap-south-1',
-          'ap-southeast-1',
-          'ap-southeast-2'
-        ],
-        displaySuffix: '(APAC)'
-      }
-    ]
-  },
-
-  // Claude 3 Haiku
-  {
-    baseId: 'claude-3-haiku-20240307-v1:0',
-    name: 'Claude 3 Haiku',
-    provider: 'anthropic',
-    category: 'text',
-    toolUse: true,
-    maxTokensLimit: 4096,
-    inferenceProfiles: [
-      {
-        type: 'base',
-        regions: [
-          'us-east-1',
-          // 'us-east-2', // On-demand not supported - use US CRIS profile instead
-          'us-west-2',
-          'ca-central-1',
-          'ap-northeast-1',
-          'ap-northeast-2',
-          'ap-south-1',
-          'ap-southeast-1',
-          'ap-southeast-2',
-          'eu-central-1',
-          // 'eu-west-1', // On-demand not supported - use EU CRIS profile instead
-          'eu-west-2',
-          'eu-west-3'
-        ]
-      },
-      {
-        type: 'regional-us',
-        prefix: 'us',
-        regions: ['us-east-1', 'us-east-2', 'us-west-2'],
-        displaySuffix: '(US)'
-      },
-      {
-        type: 'regional-eu',
-        prefix: 'eu',
-        regions: ['eu-central-1', 'eu-west-1', 'eu-west-3'],
-        displaySuffix: '(EU)'
-      },
-      {
-        type: 'regional-apac',
-        prefix: 'apac',
-        regions: [
-          'ap-northeast-1',
-          'ap-northeast-2',
-          'ap-south-1',
-          'ap-southeast-1',
-          'ap-southeast-2'
-        ],
-        displaySuffix: '(APAC)'
-      }
-    ]
-  },
-
-  // Claude 3.5 Haiku
-  {
-    baseId: 'claude-3-5-haiku-20241022-v1:0',
-    name: 'Claude 3.5 Haiku',
-    provider: 'anthropic',
-    category: 'text',
-    toolUse: true,
-    maxTokensLimit: 8192,
-    inferenceProfiles: [
-      {
-        type: 'base',
-        regions: ['us-west-2']
-      },
-      {
-        type: 'regional-us',
-        prefix: 'us',
-        regions: ['us-east-1', 'us-east-2', 'us-west-2'],
-        displaySuffix: '(US)'
-      }
-    ],
-    pricing: {
-      input: 0.0008,
-      output: 0.004,
-      cacheRead: 0.00008,
-      cacheWrite: 0.001
-    },
-    cache: {
-      supported: true,
-      cacheableFields: ['messages', 'system', 'tools']
-    }
-  },
-
   // Claude Haiku 4.5
   {
     baseId: 'claude-haiku-4-5-20251001-v1:0',
@@ -304,191 +182,6 @@ const MODEL_REGISTRY: ModelConfig[] = [
     }
   },
 
-  // Claude 3.5 Sonnet
-  {
-    baseId: 'claude-3-5-sonnet-20240620-v1:0',
-    name: 'Claude 3.5 Sonnet',
-    provider: 'anthropic',
-    category: 'text',
-    toolUse: true,
-    maxTokensLimit: 8192,
-    inferenceProfiles: [
-      {
-        type: 'base',
-        regions: [
-          'us-east-1',
-          'us-west-2',
-          'ap-northeast-1',
-          'ap-southeast-1',
-          'eu-central-1',
-          'eu-west-3'
-        ]
-      },
-      {
-        type: 'regional-us',
-        prefix: 'us',
-        regions: ['us-east-1', 'us-west-2'],
-        displaySuffix: '(US)'
-      },
-      {
-        type: 'regional-eu',
-        prefix: 'eu',
-        regions: ['eu-central-1', 'eu-west-1', 'eu-west-3'],
-        displaySuffix: '(EU)'
-      },
-      {
-        type: 'regional-apac',
-        prefix: 'apac',
-        regions: [
-          'ap-northeast-1',
-          'ap-northeast-2',
-          'ap-south-1',
-          'ap-southeast-1',
-          'ap-southeast-2'
-        ],
-        displaySuffix: '(APAC)'
-      }
-    ],
-    pricing: {
-      input: 0.003,
-      output: 0.015,
-      cacheRead: 0.0003,
-      cacheWrite: 0.00375
-    }
-  },
-
-  // Claude 3.5 Sonnet v2
-  {
-    baseId: 'claude-3-5-sonnet-20241022-v2:0',
-    name: 'Claude 3.5 Sonnet v2',
-    provider: 'anthropic',
-    category: 'text',
-    toolUse: true,
-    maxTokensLimit: 8192,
-    inferenceProfiles: [
-      {
-        type: 'regional-us',
-        prefix: 'us',
-        regions: ['us-east-1', 'us-east-2', 'us-west-2'],
-        displaySuffix: '(US)'
-      },
-      {
-        type: 'regional-apac',
-        prefix: 'apac',
-        regions: [
-          'ap-northeast-1',
-          'ap-northeast-2',
-          'ap-northeast-3',
-          'ap-south-1',
-          'ap-south-2',
-          'ap-southeast-1',
-          'ap-southeast-2'
-        ],
-        displaySuffix: '(APAC)'
-      }
-    ],
-    cache: {
-      supported: true,
-      cacheableFields: ['messages', 'system', 'tools']
-    }
-  },
-
-  // Claude 3.7 Sonnet
-  {
-    baseId: 'claude-3-7-sonnet-20250219-v1:0',
-    name: 'Claude 3.7 Sonnet',
-    provider: 'anthropic',
-    category: 'text',
-    toolUse: true,
-    maxTokensLimit: 64000,
-    supportsThinking: true,
-    inferenceProfiles: [
-      {
-        type: 'regional-us',
-        prefix: 'us',
-        regions: ['us-east-1', 'us-east-2', 'us-west-2'],
-        displaySuffix: '(US)'
-      },
-      {
-        type: 'regional-eu',
-        prefix: 'eu',
-        regions: ['eu-central-1', 'eu-north-1', 'eu-west-1', 'eu-west-3'],
-        displaySuffix: '(EU)'
-      },
-      {
-        type: 'regional-apac',
-        prefix: 'apac',
-        regions: [
-          'ap-northeast-1',
-          'ap-northeast-2',
-          'ap-northeast-3',
-          'ap-south-1',
-          'ap-south-2',
-          'ap-southeast-1',
-          'ap-southeast-2'
-        ],
-        displaySuffix: '(APAC)'
-      }
-    ],
-    pricing: {
-      input: 0.003,
-      output: 0.015,
-      cacheRead: 0.0003,
-      cacheWrite: 0.00375
-    },
-    cache: {
-      supported: true,
-      cacheableFields: ['messages', 'system', 'tools']
-    }
-  },
-
-  // Claude 3 Opus
-  {
-    baseId: 'claude-3-opus-20240229-v1:0',
-    name: 'Claude 3 Opus',
-    provider: 'anthropic',
-    category: 'text',
-    toolUse: true,
-    maxTokensLimit: 8192,
-    inferenceProfiles: [
-      {
-        type: 'regional-us',
-        prefix: 'us',
-        regions: ['us-east-1', 'us-west-2'],
-        displaySuffix: '(US)'
-      }
-    ]
-  },
-
-  // Claude Opus 4
-  {
-    baseId: 'claude-opus-4-20250514-v1:0',
-    name: 'Claude Opus 4',
-    provider: 'anthropic',
-    category: 'text',
-    toolUse: true,
-    maxTokensLimit: 32000,
-    supportsThinking: true,
-    inferenceProfiles: [
-      {
-        type: 'regional-us',
-        prefix: 'us',
-        regions: ['us-east-1', 'us-east-2', 'us-west-2'],
-        displaySuffix: '(US)'
-      }
-    ],
-    pricing: {
-      input: 0.015,
-      output: 0.075,
-      cacheRead: 0.0015,
-      cacheWrite: 0.01875
-    },
-    cache: {
-      supported: true,
-      cacheableFields: ['messages', 'system', 'tools']
-    }
-  },
-
   // Claude Opus 4.1
   {
     baseId: 'claude-opus-4-1-20250805-v1:0',
@@ -529,45 +222,10 @@ const MODEL_REGISTRY: ModelConfig[] = [
     supportsThinking: true,
     inferenceProfiles: [
       {
-        type: 'global',
-        prefix: 'global',
-        regions: ['us-west-2', 'us-east-1', 'us-east-2', 'eu-west-1', 'ap-northeast-1'],
-        displaySuffix: '(Global)'
-      },
-      {
         type: 'regional-us',
         prefix: 'us',
-        regions: ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2'],
+        regions: ['us-east-1', 'us-east-2', 'us-west-2'],
         displaySuffix: '(US)'
-      },
-      {
-        type: 'regional-apac',
-        prefix: 'apac',
-        regions: [
-          'ap-northeast-1',
-          'ap-northeast-2',
-          'ap-northeast-3',
-          'ap-south-1',
-          'ap-south-2',
-          'ap-southeast-1',
-          'ap-southeast-2',
-          'ap-southeast-3',
-          'ap-southeast-4'
-        ],
-        displaySuffix: '(APAC)'
-      },
-      {
-        type: 'regional-eu',
-        prefix: 'eu',
-        regions: [
-          'eu-central-1',
-          'eu-north-1',
-          'eu-south-1',
-          'eu-south-2',
-          'eu-west-1',
-          'eu-west-3'
-        ],
-        displaySuffix: '(EU)'
       }
     ],
     pricing: {
@@ -575,6 +233,35 @@ const MODEL_REGISTRY: ModelConfig[] = [
       output: 0.015,
       cacheRead: 0.0003,
       cacheWrite: 0.00375
+    },
+    cache: {
+      supported: true,
+      cacheableFields: ['messages', 'system', 'tools']
+    }
+  },
+
+  // Claude Opus 4
+  {
+    baseId: 'claude-opus-4-20250514-v1:0',
+    name: 'Claude Opus 4',
+    provider: 'anthropic',
+    category: 'text',
+    toolUse: true,
+    maxTokensLimit: 32000,
+    supportsThinking: true,
+    inferenceProfiles: [
+      {
+        type: 'regional-us',
+        prefix: 'us',
+        regions: ['us-east-1', 'us-east-2', 'us-west-2'],
+        displaySuffix: '(US)'
+      }
+    ],
+    pricing: {
+      input: 0.015,
+      output: 0.075,
+      cacheRead: 0.0015,
+      cacheWrite: 0.01875
     },
     cache: {
       supported: true,
@@ -631,6 +318,156 @@ const MODEL_REGISTRY: ModelConfig[] = [
       output: 0.015,
       cacheRead: 0.0003,
       cacheWrite: 0.00375
+    },
+    cache: {
+      supported: true,
+      cacheableFields: ['messages', 'system', 'tools']
+    }
+  },
+
+  // Claude Sonnet 4.6
+  {
+    baseId: 'claude-sonnet-4-6',
+    name: 'Claude Sonnet 4.6',
+    provider: 'anthropic',
+    category: 'text',
+    toolUse: true,
+    maxTokensLimit: 64000,
+    supportsThinking: true,
+    inferenceProfiles: [
+      {
+        type: 'jp',
+        prefix: 'jp',
+        regions: ['ap-northeast-1', 'ap-northeast-3'],
+        displaySuffix: '(JP)'
+      },
+      {
+        type: 'global',
+        prefix: 'global',
+        regions: ['us-west-2', 'us-east-1', 'us-east-2', 'eu-west-1', 'ap-northeast-1'],
+        displaySuffix: '(Global)'
+      },
+      {
+        type: 'regional-us',
+        prefix: 'us',
+        regions: ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2'],
+        displaySuffix: '(US)'
+      },
+      {
+        type: 'regional-eu',
+        prefix: 'eu',
+        regions: [
+          'eu-central-1',
+          'eu-central-2',
+          'eu-north-1',
+          'eu-south-1',
+          'eu-south-2',
+          'eu-west-1',
+          'eu-west-2',
+          'eu-west-3'
+        ],
+        displaySuffix: '(EU)'
+      }
+    ],
+    pricing: {
+      input: 0.003,
+      output: 0.015,
+      cacheRead: 0.0003,
+      cacheWrite: 0.00375
+    },
+    cache: {
+      supported: true,
+      cacheableFields: ['messages', 'system', 'tools']
+    }
+  },
+
+  // Claude Opus 4.6
+  {
+    baseId: 'claude-opus-4-6-v1',
+    name: 'Claude Opus 4.6',
+    provider: 'anthropic',
+    category: 'text',
+    toolUse: true,
+    maxTokensLimit: 128000,
+    supportsThinking: true,
+    inferenceProfiles: [
+      {
+        type: 'global',
+        prefix: 'global',
+        regions: ['us-west-2', 'us-east-1', 'us-east-2', 'eu-west-1', 'ap-northeast-1'],
+        displaySuffix: '(Global)'
+      },
+      {
+        type: 'regional-us',
+        prefix: 'us',
+        regions: ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2'],
+        displaySuffix: '(US)'
+      }
+    ],
+    pricing: {
+      input: 0.005,
+      output: 0.025,
+      cacheRead: 0.0005,
+      cacheWrite: 0.00625
+    },
+    cache: {
+      supported: true,
+      cacheableFields: ['messages', 'system', 'tools']
+    }
+  },
+
+  // Amazon Nova Premier
+  {
+    baseId: 'nova-premier-v1:0',
+    name: 'Amazon Nova Premier',
+    provider: 'amazon',
+    category: 'text',
+    toolUse: true,
+    maxTokensLimit: 32000,
+    inferenceProfiles: [
+      {
+        type: 'regional-us',
+        prefix: 'us',
+        regions: ['us-east-1', 'us-east-2', 'us-west-2'],
+        displaySuffix: '(US)'
+      }
+    ]
+  },
+
+  // Claude Opus 4.7
+  {
+    baseId: 'claude-opus-4-7',
+    name: 'Claude Opus 4.7',
+    provider: 'anthropic',
+    category: 'text',
+    toolUse: true,
+    maxTokensLimit: 128000,
+    supportsThinking: false,
+    inferenceProfiles: [
+      {
+        type: 'global',
+        prefix: 'global',
+        regions: ['us-west-2', 'us-east-1', 'us-east-2', 'eu-west-1', 'ap-northeast-1'],
+        displaySuffix: '(Global)'
+      },
+      {
+        type: 'jp',
+        prefix: 'jp',
+        regions: ['ap-northeast-1', 'ap-northeast-3'],
+        displaySuffix: '(JP)'
+      },
+      {
+        type: 'regional-us',
+        prefix: 'us',
+        regions: ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2'],
+        displaySuffix: '(US)'
+      }
+    ],
+    pricing: {
+      input: 0.005,
+      output: 0.025,
+      cacheRead: 0.0005,
+      cacheWrite: 0.00625
     },
     cache: {
       supported: true,
@@ -746,6 +583,30 @@ const MODEL_REGISTRY: ModelConfig[] = [
       supported: true,
       cacheableFields: ['messages', 'system']
     }
+  },
+
+  // Amazon Nova 2 Lite
+  {
+    baseId: 'nova-2-lite-v1:0',
+    name: 'Amazon Nova 2 Lite',
+    provider: 'amazon',
+    category: 'text',
+    toolUse: true,
+    maxTokensLimit: 5120,
+    inferenceProfiles: [
+      {
+        type: 'regional-us',
+        prefix: 'us',
+        regions: ['us-east-1', 'us-west-2'],
+        displaySuffix: '(US)'
+      },
+      {
+        type: 'global',
+        prefix: 'global',
+        regions: ['us-east-1', 'us-west-2'],
+        displaySuffix: '(Global)'
+      }
+    ]
   },
 
   // Amazon Nova Micro

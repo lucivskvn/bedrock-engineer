@@ -32,7 +32,7 @@ import { LoaderWithReasoning } from './components/LoaderWithReasoning'
 import { DiagramExplanationView } from './components/DiagramExplanationView'
 import { MdOutlineArticle } from 'react-icons/md'
 import { Tooltip } from 'flowbite-react'
-import { useNavigate } from 'react-router'
+import { useNavigate } from 'react-router-dom'
 import { generateCDKPrompt } from './utils/awsDetector'
 import { DiagramModeSelector, DiagramMode } from './components/DiagramModeSelector'
 import { useSystemPromptModal } from '../ChatPage/modals/useSystemPromptModal'
@@ -159,7 +159,7 @@ export default function DiagramGeneratorPage() {
     return agentTools
   }, [enableSearch, getAgentTools, diagramAgentId])
 
-  const { messages, loading, handleSubmit, executingTool, latestReasoningText } = useAgentChat(
+  const { messages, loading, handleSubmit, executingTools, latestReasoningText } = useAgentChat(
     llm?.modelId,
     systemPrompt,
     diagramAgentId,
@@ -554,7 +554,7 @@ export default function DiagramGeneratorPage() {
                     progressMessage={isXmlGenerating ? progressMessage : undefined}
                     showProgress={isXmlGenerating}
                   >
-                    {executingTool === 'tavilySearch' ? <WebLoader /> : <Loader />}
+                    {executingTools.has('tavilySearch') ? <WebLoader /> : <Loader />}
                   </LoaderWithReasoning>
                 </div>
               ) : null

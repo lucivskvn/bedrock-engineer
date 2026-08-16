@@ -23,11 +23,11 @@ Bedrock Engineer is a native app, you can download the app or build the source c
 
 MacOS:
 
-[<img src="https://img.shields.io/badge/Download_FOR_MAC-Latest%20Release-blue?style=for-the-badge&logo=apple" alt="Download Latest Release" height="40">](https://github.com/aws-samples/bedrock-engineer/releases/latest/download/bedrock-engineer-1.19.2.pkg)
+[<img src="https://img.shields.io/badge/Download_FOR_MAC-Latest%20Release-blue?style=for-the-badge&logo=apple" alt="Download Latest Release" height="40">](https://github.com/aws-samples/bedrock-engineer/releases/latest/download/bedrock-engineer-1.21.0.pkg)
 
 Windows:
 
-[<img src="https://img.shields.io/badge/Download_FOR_WINDOWS-Latest%20Release-blue?style=for-the-badge" alt="Download Latest Release" height="40">](https://github.com/aws-samples/bedrock-engineer/releases/latest/download/bedrock-engineer-1.19.2-setup.exe)
+[<img src="https://img.shields.io/badge/Download_FOR_WINDOWS-Latest%20Release-blue?style=for-the-badge" alt="Download Latest Release" height="40">](https://github.com/aws-samples/bedrock-engineer/releases/latest/download/bedrock-engineer-1.21.0-setup.exe)
 
 It is optimized for MacOS, but can also be built and used on Windows and Linux OS. If you have any problems, please report an issue.
 
@@ -58,6 +58,16 @@ When opening the PKG file, you may see this security warning:
 This security warning appears because the application is not distributed through the Mac App Store.
 
 ![PKG Security Warning Privacy Setting](./assets/macos-security-warning-pkg-privacy-setting.png)
+
+### macOS Code Signing (Required)
+
+Due to macOS security restrictions, you must run the following command after installation to properly sign the application:
+
+```bash
+sudo codesign --force --deep --sign - "/Applications/Bedrock Engineer.app"
+```
+
+This ad-hoc code signing is required to ensure the application functions correctly on macOS, including proper handling of system permission dialogs.
 
 ### Configuration Issues
 

@@ -3,9 +3,11 @@ dist
 out
 .DS_Store
 *.log*
+*.tsbuildinfo
 .env
 
 ash_output/
 .bedrock-engineer/workspaces/
 
 test-outputs
+coverage/

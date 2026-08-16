@@ -41,8 +41,8 @@ system: |-
   assist users with their information needs.
 scenarios: []
 tags:
+  - bedrock
   - knowledge-base
-  - rag
 isCustom: true
 icon: database
 iconColor: '#60770d'
@@ -66,3 +66,6 @@ knowledgeBases:
     description: <YOUR_KNOWLEDGE_BASE_DESCRIPTION>
 isShared: true
 author: daisuke-awaji
+environmentContextSettings:
+  projectRule: false
+  visualExpressionRules: true

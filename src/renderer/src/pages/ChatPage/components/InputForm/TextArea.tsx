@@ -133,6 +133,13 @@ export const TextArea: React.FC<TextAreaProps> = ({
     }
   }, [value, isManuallyResized, onHeightChange])
 
+  // Automatically scroll to the bottom when the value changes (to follow new lines)
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight
+    }
+  }, [value])
+
   // No scroll position monitoring needed as we're keeping the border visible at all times
 
   const validateAndProcessImage = useCallback(
@@ -172,9 +179,23 @@ export const TextArea: React.FC<TextAreaProps> = ({
       const items = e.clipboardData?.items
       if (!items) return
 
+      // Check for text data (prioritize text over images)
+      const hasTextData = Array.from(items).some(
+        (item) => item.type === 'text/plain' || item.type === 'text/html'
+      )
+
+      // If text data exists, allow default paste behavior (paste as text)
+      if (hasTextData) {
+        return
+      }
+
+      // Only process as images if no text data exists
       const imageItems = Array.from(items).filter((item) => item.type.indexOf('image') !== -1)
 
       if (imageItems.length === 0) return
+
+      // Prevent default paste behavior when handling as images
+      e.preventDefault()
 
       if (attachedImages.length + imageItems.length > 20) {
         toast.error(t('textarea.imageValidation.tooManyImages'))
@@ -198,21 +219,6 @@ export const TextArea: React.FC<TextAreaProps> = ({
   )
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Cmd+Shift+A でPlan/Actモードを切り替え（テキストエリア内でも有効にする）
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
-      e.preventDefault()
-      setPlanMode(!planMode)
-
-      // モード切り替え通知
-      const newMode = !planMode ? 'Plan' : 'Act'
-      toast.success(t(`Switched to ${newMode} mode`), {
-        duration: 2000,
-        position: 'bottom-center',
-        icon: '🔄'
-      })
-      return
-    }
-
     // メッセージ送信のキー入力処理
     if (isComposing) {
       return

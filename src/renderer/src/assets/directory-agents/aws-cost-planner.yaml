@@ -217,7 +217,10 @@ scenarios:
     content: >-
       I need to create a 12-month budget forecast for my AWS infrastructure. Can you help me estimate costs with
       different growth scenarios and identify potential cost spikes during peak usage periods?
-tags: []
+tags:
+  - aws
+  - cost-optimization
+  - mcp
 isCustom: true
 icon: coin
 iconColor: '#db9214'
@@ -226,7 +229,6 @@ tools:
 category: all
 additionalInstruction: ''
 environmentContextSettings:
-  todoListInstruction: false
   projectRule: false
   visualExpressionRules: true
 mcpServers:

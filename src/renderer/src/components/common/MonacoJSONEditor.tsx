@@ -58,7 +58,8 @@ export const MonacoJSONEditor: React.FC<MonacoJSONEditorProps> = ({
   // JSONスキーマの設定（MCPサーバー用）
   const setupJSONValidation = (monaco: Monaco) => {
     // モナコにJSONスキーマを登録
-    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(monaco.languages.json as any).jsonDefaults.setDiagnosticsOptions({
       validate: true,
       schemas: [
         {

@@ -20,16 +20,19 @@ import {
   LLM,
   BEDROCK_SUPPORTED_REGIONS,
   ThinkingMode,
-  ApplicationInferenceProfile
+  ApplicationInferenceProfile,
+  BedrockSupportRegion
 } from '@/types/llm'
 import { useModelManagement } from '@renderer/hooks/useModelManagement'
 import type { AwsCredentialIdentity } from '@smithy/types'
 import { BedrockAgent } from '@/types/agent'
 import { AgentCategory } from '@/types/agent-chat'
 import { getToolsForCategory } from '../constants/defaultToolSets'
-import { Tool } from '@aws-sdk/client-bedrock-runtime'
+import type { Tool } from '@aws-sdk/client-bedrock-runtime'
 import { CodeInterpreterContainerConfig } from 'src/preload/tools/handlers/interpreter/types'
 import { SystemPromptBuilder } from '@/common/agents/toolRuleGenerator'
+import { getImageGenerationModelsForRegion } from '@/common/models/models'
+import { toastService } from '@renderer/services/ToastService'
 
 const DEFAULT_INFERENCE_PARAMS: InferenceParameters = {
   maxTokens: 4096,
@@ -56,6 +59,8 @@ export interface SettingsContextType {
   updateContextLength: (length: number) => void
   enablePromptCache: boolean
   setEnablePromptCache: (enabled: boolean) => void
+  requestTimeout: number
+  setRequestTimeout: (timeout: number) => void
 
   // Notification Settings
   notification: boolean
@@ -264,6 +269,10 @@ export interface SettingsContextType {
   addOrganization: (org: OrganizationConfig) => void
   updateOrganization: (org: OrganizationConfig) => void
   removeOrganization: (orgId: string) => void
+
+  // Agent List View Mode Settings
+  agentListViewMode: 'card' | 'table'
+  setAgentListViewMode: (mode: 'card' | 'table') => void
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined)
@@ -283,19 +292,19 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Agent Chat Settings
   const [contextLength, setContextLength] = useState<number>(60)
   const [enablePromptCache, setStateEnablePromptCache] = useState<boolean>(true)
+  const [requestTimeout, setStateRequestTimeout] = useState<number>(15)
 
   // Notification Settings
   const [notification, setStateNotification] = useState<boolean>(true)
 
   // recognizeImage Tool Settings
   const [recognizeImageModel, setStateRecognizeImageModel] = useState<string>(
-    'anthropic.claude-3-5-sonnet-20241022-v2:0'
+    'global.anthropic.claude-haiku-4-5-20251001-v1:0'
   )
 
   // generateImage Tool Settings
-  const [generateImageModel, setStateGenerateImageModel] = useState<string>(
-    'amazon.titan-image-generator-v2:0'
-  )
+  const [generateImageModel, setStateGenerateImageModel] =
+    useState<string>('amazon.nova-canvas-v1:0')
 
   // generateVideo Tool Settings
   const [generateVideoS3Uri, setStateGenerateVideoS3Uri] = useState<string>('')
@@ -310,11 +319,11 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // LLM Settings
   const defaultModel = {
-    modelId: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
-    modelName: 'Claude 3.5 Sonnet v2',
+    modelId: 'global.anthropic.claude-sonnet-4-6',
+    modelName: 'Claude Sonnet 4.6 (Global)',
     toolUse: true,
     regions: BEDROCK_SUPPORTED_REGIONS,
-    supportsThinking: false
+    supportsThinking: true
   }
   const [currentLLM, setCurrentLLM] = useState<LLM>(defaultModel)
   const [inferenceParams, setInferenceParams] =
@@ -349,7 +358,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   } = useModelManagement({
     bedrockSettings,
     currentLLM,
-    onModelUpdate: setCurrentLLM
+    lightProcessingModel,
+    onModelUpdate: setCurrentLLM,
+    onLightProcessingModelUpdate: setLightProcessingModel
   })
 
   // Guardrail Settings
@@ -430,6 +441,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Organization Settings
   const [organizations, setOrganizations] = useState<OrganizationConfig[]>([])
+
+  // Agent List View Mode Settings
+  const [agentListViewMode, setStateAgentListViewMode] = useState<'card' | 'table'>('card')
 
   // Initialize all settings
   useEffect(() => {
@@ -682,6 +696,14 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // enablePromptCache の状態を更新
     setStateEnablePromptCache(agentChatConfig.enablePromptCache)
 
+    // requestTimeout の設定
+    if (agentChatConfig.requestTimeout === undefined) {
+      agentChatConfig.requestTimeout = 15
+    }
+
+    // requestTimeout の状態を更新
+    setStateRequestTimeout(agentChatConfig.requestTimeout)
+
     // 設定を保存
     window.store.set('agentChatConfig', agentChatConfig)
 
@@ -706,6 +728,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const storedOrganizations = window.store.get('organizations') as OrganizationConfig[]
     if (storedOrganizations) {
       setOrganizations(storedOrganizations)
+    }
+
+    // Load Agent List View Mode Settings
+    const storedViewMode = window.store.get('agentListViewMode') as 'card' | 'table'
+    if (storedViewMode === 'card' || storedViewMode === 'table') {
+      setStateAgentListViewMode(storedViewMode)
     }
   }, [])
 
@@ -981,6 +1009,64 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ...bedrockSettings,
       availableFailoverRegions: [...BEDROCK_SUPPORTED_REGIONS]
     })
+
+    // ツールモデルの自動切り替え（recognizeImage, generateImage）
+    const regionAsBedrockRegion = region as BedrockSupportRegion
+
+    // recognizeImageModelの検証と自動切り替え
+    if (recognizeImageModel && availableModels.length > 0) {
+      const isRecognizeModelAvailable = availableModels.some(
+        (model) =>
+          model.modelId === recognizeImageModel &&
+          model.regions &&
+          model.regions.includes(regionAsBedrockRegion)
+      )
+
+      if (!isRecognizeModelAvailable) {
+        // 代替モデルを検索（同じモデルファミリーを優先）
+        const regionModels = availableModels.filter(
+          (model) => model.regions && model.regions.includes(regionAsBedrockRegion)
+        )
+
+        if (regionModels.length > 0) {
+          const currentModel = availableModels.find((m) => m.modelId === recognizeImageModel)
+          const alternativeModel = currentModel
+            ? regionModels.find(
+                (model) =>
+                  model.modelName.includes(currentModel.modelName.split(' ')[0]) &&
+                  model.toolUse === currentModel.toolUse
+              ) || regionModels[0]
+            : regionModels[0]
+
+          setStateRecognizeImageModel(alternativeModel.modelId)
+          window.store.set('recognizeImageTool', { modelId: alternativeModel.modelId })
+          toastService.info(
+            `RecognizeImageTool Model switched: ${recognizeImageModel} → ${alternativeModel.modelId}`
+          )
+        }
+      }
+    }
+
+    // generateImageModelの検証と自動切り替え
+    if (generateImageModel) {
+      const availableImageModels = getImageGenerationModelsForRegion(regionAsBedrockRegion)
+      const isGenerateModelAvailable = availableImageModels.some(
+        (model) => model.id === generateImageModel
+      )
+
+      if (!isGenerateModelAvailable && availableImageModels.length > 0) {
+        // 代替モデルを検索（Amazonプロバイダーを優先）
+        const alternativeModel =
+          availableImageModels.find((model) => model.id.startsWith('amazon')) ||
+          availableImageModels[0]
+
+        setStateGenerateImageModel(alternativeModel.id)
+        window.store.set('generateImageTool', { modelId: alternativeModel.id })
+        toastService.info(
+          `GenerateImageTool Model switched: ${generateImageModel} → ${alternativeModel.id}`
+        )
+      }
+    }
 
     // リージョン変更時にカスタムエージェントのツール設定を更新
     // 特にgenerateImageツールのリージョン対応を確認
@@ -1267,6 +1353,15 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     window.store.set('agentChatConfig', {
       ...agentChatConfig,
       enablePromptCache: enabled
+    })
+  }, [])
+
+  const setRequestTimeout = useCallback((timeout: number) => {
+    setStateRequestTimeout(timeout)
+    const agentChatConfig = window.store.get('agentChatConfig') || {}
+    window.store.set('agentChatConfig', {
+      ...agentChatConfig,
+      requestTimeout: timeout
     })
   }, [])
 
@@ -1747,6 +1842,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [organizations]
   )
 
+  // Agent List View Mode Settings function
+  const setAgentListViewMode = useCallback((mode: 'card' | 'table') => {
+    setStateAgentListViewMode(mode)
+    ;(window.store as any).set('agentListViewMode', mode)
+  }, [])
+
   const value = {
     // Advanced Settings
     sendMsgKey,
@@ -1761,6 +1862,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateContextLength,
     enablePromptCache,
     setEnablePromptCache,
+    requestTimeout,
+    setRequestTimeout,
 
     // Notification Settings
     notification,
@@ -1916,7 +2019,11 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     organizations,
     addOrganization,
     updateOrganization,
-    removeOrganization
+    removeOrganization,
+
+    // Agent List View Mode Settings
+    agentListViewMode,
+    setAgentListViewMode
   }
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>

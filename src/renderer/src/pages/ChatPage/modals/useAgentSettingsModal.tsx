@@ -92,7 +92,10 @@ const AgentSettingsModal = React.memo(
         ...agent,
         id: crypto.randomUUID(),
         name: `${agent.name} (${t('copy')})`,
-        isCustom: true // 明示的にtrueに設定して削除・編集可能にする
+        isCustom: true, // 明示的にtrueに設定して削除・編集可能にする
+        // 共有プロパティを削除（複製されたエージェントは通常のカスタムエージェントとして扱う）
+        isShared: undefined,
+        organizationId: undefined
       }
       saveCustomAgents([...customAgents, newAgent])
     }
@@ -212,13 +215,13 @@ const AgentSettingsModal = React.memo(
             )}
           </Modal.Header>
           <Modal.Body
-            className="p-0 bg-white dark:bg-gray-900 rounded-b-lg"
+            className="p-0 bg-white dark:bg-gray-900 rounded-b-lg overflow-hidden"
             onClick={(e) => {
               // モーダルボディのクリックイベントは伝播させない
               e.stopPropagation()
             }}
           >
-            <div className="space-y-6 min-h-[1100px] bg-white dark:bg-gray-900">
+            <div className="h-[80vh] bg-white dark:bg-gray-900">
               {editingAgent ? (
                 <AgentForm
                   agent={editingAgent}
@@ -226,7 +229,7 @@ const AgentSettingsModal = React.memo(
                   onCancel={() => setEditingAgent(null)}
                 />
               ) : (
-                <>
+                <div className="h-full overflow-y-auto">
                   <AgentList
                     agents={agents}
                     selectedAgentId={selectedAgentId}
@@ -242,7 +245,7 @@ const AgentSettingsModal = React.memo(
 
                   {/* 組織共有モーダル */}
                   <ShareToOrganizationModal />
-                </>
+                </div>
               )}
             </div>
           </Modal.Body>

@@ -124,7 +124,7 @@ scenarios:
 tags:
   - aws
   - documentation
-  - support
+  - mcp
 isCustom: true
 icon: aws
 iconColor: '#3174d8'
@@ -153,3 +153,6 @@ bedrockAgents: []
 flows: []
 isShared: true
 author: daisuke-awaji
+environmentContextSettings:
+  projectRule: false
+  visualExpressionRules: true
